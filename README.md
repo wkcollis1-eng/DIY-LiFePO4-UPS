@@ -110,7 +110,7 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
 
 - [Mean Well LRS-100-12](https://www.meanwell.com/Upload/PDF/LRS-100/LRS-100-SPEC.PDF)
 - [Victron Smart BatteryProtect BP-65 — Datasheet](https://www.victronenergy.com/upload/documents/Datasheet-Smart-Battery-Protect-65-A--100-A--220-A-EN.pdf)
-- [Victron Smart BatteryProtect — Manual](https://www.victronenergy.com/upload/documents/Manual-Smart-BatteryProtect-EN.pdf)
+- [Victron Smart BatteryProtect — Manual](https://www.victronenergy.com/upload/documents/Smart_BatteryProtect_12V_24V/114439-Smart_BatteryProtect-pdf-en.pdf)
 
 ---
 
