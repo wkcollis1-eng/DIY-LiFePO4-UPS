@@ -38,10 +38,10 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
 └────────────────┬───────────────────┘
                  │ 11.71–13.16V at device terminals
             ┌────┴─────┐
-          [F3:2A]   [F4:5A]
-            │           │
-         HA Green    XB7 Modem
-           (3W)       (~14W)
+         [F3:2A]    [F4:5A]
+            │          │
+         HA Green   XB7 Modem
+           (3W)      (~14W)
 
 ┌────────────────────────────────────┐
 │  Shelly Plus Uni (Monitoring)      │
