@@ -33,8 +33,8 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
                  ↓
 ┌────────────────────────────────────┐
 │  Victron BatteryProtect BP-65      │
-│  LVD: 11.8V (Setting 7)           │
-│  Reconnect: 12.8V, 90s delay      │
+│  LVD: 11.8V (Setting 7)            │
+│  Reconnect: 12.8V, 90s delay       │
 └────────────────┬───────────────────┘
                  │ 11.71–13.16V at device terminals
             ┌────┴─────┐
