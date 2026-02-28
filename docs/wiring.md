@@ -72,12 +72,12 @@ All wiring is 16AWG. See [voltage-drop-analysis.md](voltage-drop-analysis.md) fo
 
 | From | To | Notes |
 |---|---|---|
-| BP-65 OUT terminal | Lever Nut (+) — F3 input (2A) | HA Green load circuit |
+| BP-65 OUT terminal | F3 input (2A) | HA Green load circuit |
 | F3 output | HA Green barrel plug (center +) | 5.5mm × 2.1mm, center-positive |
-| BP-65 OUT terminal | Lever Nut (+) — F4 input (5A) | Xfinity Modem load circuit |
+| BP-65 OUT terminal | F4 input (5A) | Xfinity Modem load circuit |
 | F4 output | XB7 Modem barrel plug (center +) | 5.5mm × 2.1mm, center-positive |
-| Terminal Block − | Lever Nut − HA Green barrel plug (sleeve) | Common return |
-| Terminal Block − | Lever Nut − XB7 Modem barrel plug (sleeve) | Common return |
+| Terminal Block − | HA Green barrel plug (sleeve) | Common return |
+| Terminal Block − | XB7 Modem barrel plug (sleeve) | Common return |
 
 ### Shelly Plus Uni Monitoring
 
