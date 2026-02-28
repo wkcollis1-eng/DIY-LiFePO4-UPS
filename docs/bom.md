@@ -31,7 +31,6 @@ All prices as-specified at time of design (February 2026). Amazon prices subject
 | Beren Inds. 9' 16/3 Power Cord w/Pigtail | Amazon | $6.99 | AC input to PSU |
 | Opfiue #6 Fork Connectors 16-14AWG, 200 pcs | Amazon | $6.99 | PSU terminal connections |
 | 50PCS Blue 16-14AWG Nylon Female Spade Connectors | Amazon | $4.99 | Battery F2 terminal connections |
-| Lever Wire Connectors Assortment 28-12AWG | Amazon | $4.99 | Distribution junctions |
 | Screw Terminal Block 2 Pin, 5mm Pitch, 4 pcs | Pololu | $1.89 | Ideal diode connections |
 | 2 In 4 Out Terminal Block Module | Amazon | $9.99 | Battery bus |
 
