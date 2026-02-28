@@ -25,7 +25,6 @@ All wiring is 16AWG. See [voltage-drop-analysis.md](voltage-drop-analysis.md) fo
 | Victron BatteryProtect BP-65 | Velcro to enclosure base |
 | Pololu Ideal Diode | Float — secure with wire ties |
 | Shelly Plus Uni | Float — secure with wire ties |
-| Lever Nuts | Float — secure with wire ties |
 | Wiring | Cable clips as needed for strain relief |
 
 ---
