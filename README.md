@@ -67,7 +67,7 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
 | Runtime at typical load | ~6.3 hours |
 | Enclosure | LeMotech IP65 ABS, 9.6″×7.6″×4.5″ |
 | Monitoring | Shelly Plus Uni → Home Assistant |
-| Total build cost | ~$234 |
+| Total build cost | ~$215 |
 
 ---
 
