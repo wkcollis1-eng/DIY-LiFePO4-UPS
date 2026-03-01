@@ -105,6 +105,7 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
 | [docs/cost-analysis.md](docs/cost-analysis.md) | Build cost breakdown and 10-year lifecycle comparison |
 | [docs/safety.md](docs/safety.md) | AC and battery safety procedures |
 | [docs/voltage-drop-analysis.md](docs/voltage-drop-analysis.md) | Wiring resistance and voltage drop calculations |
+| [docs/supplemental-analysis.md](docs/supplemental-analysis.md) | Thermal Analysis & Enclosure Heat Budget, Runtime Analysis, Failure Modes & Effects Analysis (FMEA) |
 
 ## Datasheets
 
