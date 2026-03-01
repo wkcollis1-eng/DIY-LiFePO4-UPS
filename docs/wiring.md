@@ -71,10 +71,10 @@ All wiring is 16AWG. See [voltage-drop-analysis.md](voltage-drop-analysis.md) fo
 
 | From | To | Notes |
 |---|---|---|
-| BP-65 OUT terminal | F3 input (2A) | HA Green load circuit |
-| F3 output | HA Green barrel plug (center +) | 5.5mm × 2.1mm, center-positive |
-| BP-65 OUT terminal | F4 input (5A) | Xfinity Modem load circuit |
-| F4 output | XB7 Modem barrel plug (center +) | 5.5mm × 2.1mm, center-positive |
+| BP-65 OUT terminal | F3 input (2A) | Stacked ring terminals on BP-65 OUT; HA Green load circuit |
+| F3 output | Butt splice → HA Green barrel plug (center +) | 5.5mm × 2.1mm, center-positive |
+| BP-65 OUT terminal | F4 input (5A) | Stacked ring terminals on BP-65 OUT; Xfinity Modem load circuit |
+| F4 output | Butt splice → XB7 Modem barrel plug (center +) | 5.5mm × 2.1mm, center-positive |
 | Terminal Block − | HA Green barrel plug (sleeve) | Common return |
 | Terminal Block − | XB7 Modem barrel plug (sleeve) | Common return |
 
@@ -101,4 +101,4 @@ The enclosure is a LeMotech IP65 ABS junction box (9.6″×7.6″×4.5″ interi
 - Cable glands (1/2" NPT) on the bottom face: AC input on the left, DC output barrel jacks on the right.
 - Victron BP-65 mounts on the right side wall. Terminal block sits between battery and BP-65.
 - Shelly and ideal diode float above the battery, secured with wire ties.
-- All 16AWG runs are kept to approximately 6" segments to hold voltage drop within the analyzed 88mV budget.
+- All 16AWG runs are kept to approximately 6" segments to hold voltage drop within the analyzed 86mV budget.
