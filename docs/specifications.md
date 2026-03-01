@@ -25,7 +25,7 @@
 | Output Regulation | 11.71–13.16V (battery-tracked) | Within device ±10% tolerance envelope |
 | Annual Electricity Cost | ~$58/yr | ~$52/yr |
 
-> Runtime is calculated from 9Ah usable × 12.5V average ÷ 18W typical load. Actual runtime will be updated from measured load data when 7-day baseline is complete.
+> Runtime is calculated from 9Ah usable × 12.5V average ÷ 18W typical load. XB7 power consumption validated via 3-day Kill-a-Watt measurement (14.7W average, 20.3W peak).
 
 ## Device Power Requirements
 
@@ -44,17 +44,17 @@
 |---|---|
 | Input Voltage | 12V DC nominal (±10% inferred; not manufacturer-published) |
 | Connector | 5.5mm × 2.1mm barrel jack, center-positive |
-| Typical Power | 15W (1.25A) — *pending 7-day measurement; Kill-a-Watt showed 13.9W average, 17.4W peak over 47 min sample* |
-| Maximum Power | 36W (3A) — *OEM adapter rated 12V/4.6A; actual peak TBD from measurement baseline* |
+| Typical Power | 14.7W (1.22A) — *measured via Kill-a-Watt: 1.066 kWh over 3 days 26 min 30 sec* |
+| Maximum Power | 20.3W (1.69A) peak measured; OEM adapter rated 12V/4.6A (36W) |
 
 ### Combined System Load
 
 | Parameter | Value |
 |---|---|
-| Typical Combined Power | 18W (3W + 15W) |
+| Typical Combined Power | ~18W (3W + 14.7W + ~1W Shelly) |
 | Typical Combined Current | 1.5A @ 12V |
-| Peak Power | 48W (12W + 36W worst case) |
-| Peak Current | 4A @ 12V |
+| Peak Power | 32W (12W + 20.3W measured peaks) |
+| Peak Current | 2.7A @ 12V |
 | Design Margin | 33% above typical at 2A continuous |
 
 > Input voltage tolerance (±10%) is an engineering inference based on IEC 62368-1 / UL 62368-1 design practice for 12V DC input rails. Neither Nabu Casa nor Comcast publish explicit input voltage ranges for these products. The system's 11.71–13.16V device terminal envelope falls within this inferred tolerance.

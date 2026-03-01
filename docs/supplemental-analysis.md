@@ -17,7 +17,7 @@ This document provides supplemental engineering analysis derived from the compon
 
 ## Appendix A — Thermal Analysis & Enclosure Heat Budget
 
-Heat dissipation at typical ~17–18W combined load (HA Green ~3W + XB7 ~14W + Shelly ~1W). PSU efficiency per project documentation: ~81% at approximately 18% of rated 102W load.
+Heat dissipation at typical ~18W combined load (HA Green ~3W + XB7 14.7W measured + Shelly ~1W). PSU efficiency per project documentation: ~81% at approximately 18% of rated 102W load.
 
 ### A.1 Component Heat Dissipation
 
@@ -69,7 +69,7 @@ The repo README specifies ~6.3 hours runtime at typical combined load. This sect
 | Usable capacity (defined voltage range) | 9 Ah | 13.3V → 11.5V per specifications |
 | Average discharge voltage | 12.4 V | (13.3V + 11.5V) ÷ 2; LiFePO4 flat plateau |
 | Usable energy | **111.6 Wh** | 9 Ah × 12.4 V |
-| Typical system load | ~17–18 W | HA Green ~3W + XB7 ~14W + Shelly ~1W |
+| Typical system load | ~18 W | HA Green ~3W + XB7 14.7W (measured) + Shelly ~1W |
 | Runtime @ 18W | 6.2 h | 111.6 Wh ÷ 18W |
 | Runtime @ 17W | 6.6 h | 111.6 Wh ÷ 17W |
 | **Stated runtime** | **~6.3 h** | Consistent with ~17.7W effective load |
