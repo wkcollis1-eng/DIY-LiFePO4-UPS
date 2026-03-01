@@ -41,7 +41,7 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
          [F3:2A]    [F4:5A]
             │          │
          HA Green   XB7 Modem
-           (3W)      (~14W)
+           (3W)      (14.7W)
 
 ┌────────────────────────────────────┐
 │  Shelly Plus Uni (Monitoring)      │
@@ -121,7 +121,9 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
 - [x] Components specified
 - [ ] Components ordered / received
 - [ ] Build
-- [ ] 7-day power measurement baseline (in progress — Kill-a-Watt, devices measured separately)
+- [x] XB7 power measurement complete (14.7W avg, 20.3W peak via 3-day Kill-a-Watt test)
+- [ ] HA Green power measurement baseline
+- [ ] Combined system power measurement baseline
 - [ ] Home Assistant automation documentation
 
 ---

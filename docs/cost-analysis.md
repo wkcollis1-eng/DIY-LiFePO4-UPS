@@ -35,10 +35,10 @@ The DIY build costs approximately $155–180 more over 10 years than the cheapes
 
 ## Annual Operating Cost
 
-Device and monitoring load: ~18W (HA Green 3W + XB7 ~14W + Shelly 1W + BP-65 parasitic 0.018W).
+Device and monitoring load: ~18W (HA Green 3W + XB7 14.7W measured + Shelly 1W + BP-65 parasitic 0.018W).
 
 At PSU efficiency of ~81% at light load, wall draw is approximately 22–23W.
 
 Annual electricity: ~200 kWh/yr at $0.29/kWh (CT average) ≈ **$58/year**.
 
-> The 18W figure will be updated from 7-day Kill-a-Watt measurements. Preliminary 47-minute XB7 sample showed 13.9W average vs. the 15W document estimate. Combined system baseline measurement is planned after individual device baselines are complete.
+> XB7 modem power validated via 3-day Kill-a-Watt measurement: 1.066 kWh consumed over 72.44 hours = 14.7W average, 20.3W peak. Combined system baseline measurement planned after HA Green baseline is complete.
