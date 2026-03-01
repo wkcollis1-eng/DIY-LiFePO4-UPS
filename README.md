@@ -2,7 +2,7 @@
 
 A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Green and Xfinity XB7 cable modem running during grid outages. Built into an IP65 enclosure with Home Assistant monitoring via Shelly Plus Uni.
 
-> **Honest context:** A $75 APC BE600M1 would do the same job out of the box. This build costs roughly $200 more over 10 years than that option. The engineering rationale — longer battery life, faster switchover, direct HA integration, no DC-DC converter voltage regulation — is documented in [design-rationale.md](docs/design-rationale.md). Build this if those tradeoffs matter to you.
+> **Honest context:** A $75 APC BE600M1 would do the same job out of the box. This build costs roughly $130–155 more over 10 years than that option. The engineering rationale — longer battery life, faster switchover, direct HA integration, no DC-DC converter voltage regulation — is documented in [design-rationale.md](docs/design-rationale.md). Build this if those tradeoffs matter to you.
 
 ---
 
