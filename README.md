@@ -1,4 +1,15 @@
+<div align="center">
+
 # DIY UPS for Home Assistant Green & Xfinity XB7 Modem
+
+**12V LiFePO4-Based Uninterruptible Power Supply**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Build%20Pending-yellow.svg)](#status)
+[![Runtime](https://img.shields.io/badge/Runtime-8.2%20hours-green.svg)](#measured-performance)
+[![Switchover](https://img.shields.io/badge/Switchover-%3C1ms-brightgreen.svg)](#key-specifications)
+
+</div>
 
 A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Green and Xfinity XB7 cable modem running during grid outages. Built into an IP65 enclosure with Home Assistant monitoring via Shelly Plus Uni.
 
@@ -90,6 +101,13 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 - [Mean Well HDR-60-12](https://www.meanwell.com/Upload/PDF/HDR-60/HDR-60-SPEC.PDF)
 - [Victron Smart BatteryProtect BP-65 — Datasheet](https://www.victronenergy.com/upload/documents/Datasheet-Smart-Battery-Protect-65-A--100-A--220-A-EN.pdf)
 - [Victron Smart BatteryProtect — Manual](https://www.victronenergy.com/upload/documents/Smart_BatteryProtect_12V_24V/114439-Smart_BatteryProtect-pdf-en.pdf)
+
+---
+
+## Related Projects
+
+- [LiFePO₄ Battery Bank Study](https://github.com/wkcollis1-eng/Lifepo4-Battery-Banks) — 500Ah DIY battery bank with 130+ days of monitoring
+- [Home Assistant Config](https://github.com/wkcollis1-eng/home-assistant-config) — HVAC monitoring implementation
 
 ---
 
