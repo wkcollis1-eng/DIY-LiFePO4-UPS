@@ -14,6 +14,20 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 
 ---
 
+## Measured Performance
+
+| Metric | Value | Method |
+|---|---|---|
+| HA Green typical power | 0.73W DC | 48.5h Kill-a-Watt test × 82.5% eff |
+| XB7 modem typical power | 12.14W DC | 72.4h Kill-a-Watt test × 82.5% eff |
+| Combined system load | 13.68W DC | 63.7h combined test (incl. Shelly + BP-65) |
+| Calculated runtime | 8.2 hours | 112.5Wh usable ÷ 13.68W |
+| Voltage at device terminals | 11.74–13.26V | Calculated from wiring resistance |
+
+> Power measurements derived from extended Kill-a-Watt AC monitoring, converted to DC using 82.5% efficiency assumption for switching adapters at partial load. Runtime pending validation after build.
+
+---
+
 ## Key Specifications
 
 | Parameter | Value |
@@ -69,6 +83,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 | [docs/safety.md](docs/safety.md) | AC and battery safety procedures |
 | [docs/voltage-drop-analysis.md](docs/voltage-drop-analysis.md) | Wiring resistance and voltage drop calculations |
 | [docs/supplemental-analysis.md](docs/supplemental-analysis.md) | Thermal Analysis & Enclosure Heat Budget, Runtime Analysis, Failure Modes & Effects Analysis (FMEA) |
+| [docs/design-specification.md](docs/design-specification.md) | Formal requirements, design decisions, and verification matrix |
 
 ## Datasheets
 
