@@ -8,7 +8,7 @@ All prices as-purchased (March 2026). Amazon prices subject to change; Pololu pr
 
 | Item | Vendor | Unit Price | Notes |
 |---|---|---|---|
-| Mean Well HDR-60-12 PSU | Amazon | $26.53 | Incl. $2.40 shipping. 4.5A/54W, 88% eff., OVP 13.8–16.2V |
+| Mean Well HDR-60-12 PSU | Amazon | $26.53 | Incl. $2.40 shipping. 4.5A/54W, 88% peak eff. (~87% at 22% operating load), OVP 13.8–16.2V |
 | Cyclenbatt 12V 10Ah LiFePO4 Battery | Amazon | $29.99 | Built-in 10A BMS, 5000+ cycles, F2 spade terminals |
 | Victron BatteryProtect BP-65 12/24V | Amazon | $36.53 | LVD: Setting 7 = 11.8V cutoff / 12.8V reconnect. MOSFET, IP67, 5-yr warranty |
 | Ideal Diode 4-60V 10A, 2 pcs | Pololu | $7.58 | Pololu #5382. Only 1 required. Prevents PSU backfeed from battery |
@@ -38,7 +38,7 @@ All prices as-purchased (March 2026). Amazon prices subject to change; Pololu pr
 
 | Item | Vendor | Unit Price | Notes |
 |---|---|---|---|
-| LeMotech Junction Box 10"×7.9"×4.7" | Amazon | $21.84 | IP65 ABS, includes mounting hardware (5% discount applied) |
+| LeMotech Junction Box 10"×7.9"×4.7" | Amazon | $21.84 | IP65 ABS (exterior dims; interior 9.6"×7.6"×4.5"), includes mounting hardware (5% discount applied) |
 | 1/2" NPT Cable Glands, 5-Pack | Amazon | $4.99 | AC and DC cable entries |
 | Velcro Heavy Duty, 2"×4", 3 sets | Amazon | $4.93 | PSU and Victron BP-65 wall mounting |
 

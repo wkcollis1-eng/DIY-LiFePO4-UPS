@@ -43,10 +43,10 @@ For transparency, here's how the economics compare over a 10-year period:
 |---|---|---|---|
 | Initial Cost | $224 | $85 | $180 |
 | Battery Replacement (10yr) | ~$30 (1×) | $60–90 (2–3×) | $100–150 (2–3×) |
-| Annual Electricity | $46/yr ($460) | $51/yr ($510) | $64/yr ($640) |
-| **10-Year Total** | **~$714** | **~$655–685** | **~$920–970** |
+| Annual Electricity | $40/yr ($400) | $51/yr ($510) | $64/yr ($640) |
+| **10-Year Total** | **~$654** | **~$655–685** | **~$920–970** |
 
-**Bottom line:** Over 10 years, this DIY build costs roughly the same as the cheapest commercial option (BE600M1) — perhaps $30–60 more or less depending on actual electricity rates and battery replacement timing. The economics are marginal either way.
+**Bottom line:** Over 10 years, this DIY build costs roughly the same as the cheapest commercial option (BE600M1). The economics are essentially break-even — don't build this expecting significant savings or expecting to lose money.
 
 The real value is the 3× longer runtime, instant switchover, and HA integration — not cost savings.
 

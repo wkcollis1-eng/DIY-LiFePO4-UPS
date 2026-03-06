@@ -8,7 +8,7 @@ All wiring is 16AWG. See [voltage-drop-analysis.md](voltage-drop-analysis.md) fo
 
 | Fuse | Rating | Location | Purpose |
 |---|---|---|---|
-| F1 | 10A fast-blow | PSU output | Protects PSU output circuit |
+| F1 | 10A fast-blow | PSU output | Protects PSU output circuit. Note: PSU internal OCP trips at ~5–6.75A; F1 provides backup for hard shorts exceeding PSU recovery capability. |
 | F2 | 10A fast-blow | Battery positive | **INSTALL FIRST** — protects battery circuit |
 | F3 | 2A fast-blow | BP-65 OUT → HA Green | Protects HA Green load circuit |
 | F4 | 5A fast-blow | BP-65 OUT → XB7 Modem | Protects Xfinity Modem load circuit |

@@ -11,14 +11,14 @@ This design addresses each limitation:
 | Limitation | Commercial SLA UPS | This Design |
 |---|---|---|
 | Battery lifespan | 2–3 years (SLA, 100% SoC float) | 7–10 years (LiFePO4, 13.3V float) |
-| Runtime @ 13.39W measured | 2–2.5 hours | 8.2 hours |
+| Runtime @ 13.68W measured | 2–2.5 hours | 8.2 hours |
 | Switchover time | 4–10ms | <1ms (MOSFET ideal diode) |
 | Output voltage | Regulated (with DC-DC losses) | Direct battery feed, 11.74–13.26V |
 | Monitoring | None or proprietary | Native Home Assistant integration |
 | Load visibility | None | Voltage, temperature, SoC, runtime |
 | Annual Electricity Cost | ~$51/yr | ~$41/yr |
 
-> **Honest context:** A $85 APC BE600M1 would do the same job out of the box and costs about the same over 10 years. This build offers <1ms switchover (vs 4–10ms that can cause modem reboots), 3× longer runtime, and native Home Assistant integration. Don't expect significant cost savings — build this if those capabilities matter to you.
+> **Honest context:** A $85 APC BE600M1 would do the same job out of the box. Over 10 years, both cost roughly the same (~$655). This build offers <1ms switchover (vs 4–10ms that can cause modem reboots), 3× longer runtime, and native Home Assistant integration. The economics are break-even — build this if those capabilities matter to you.
 
 ---
 
