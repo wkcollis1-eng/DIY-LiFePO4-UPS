@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+title: "DIY LiFePO₄ UPS for Home Assistant & Network Equipment"
+message: "If you use this design or documentation, please cite as below."
+type: software
+authors:
+  - family-names: Collis
+    given-names: William K.
+repository-code: "https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS"
+url: "https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS"
+license: MIT
+version: "2026-03-06"
+date-released: "2026-03-06"
+keywords:
+  - UPS
+  - uninterruptible power supply
+  - LiFePO4
+  - battery
+  - home-assistant
+  - victron
+  - shelly
+  - DIY electronics
+  - 12V
+  - power backup
+  - MOSFET ideal diode
+abstract: >-
+  Complete design documentation for a 12V LiFePO₄-based uninterruptible 
+  power supply for Home Assistant Green and network equipment. Features 
+  sub-millisecond switchover via MOSFET ideal diode, 8+ hour runtime on 
+  10Ah battery, Victron BP-65 low-voltage disconnect, and Shelly Plus Uni 
+  monitoring integration. Includes bill of materials, wiring diagrams, 
+  thermal analysis, FMEA, and cost comparison with commercial alternatives.
