@@ -12,8 +12,6 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
 
 ![System Architecture](assets/System_Overview.png)
 
-```
-
 ---
 
 ## Key Specifications
@@ -82,11 +80,11 @@ AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12
 
 - [x] Design complete
 - [x] Components specified
-- [ ] Components ordered / received
+- [x] Components ordered / received
 - [ ] Build
 - [x] XB7 power measurement complete (14.7W avg, 20.3W peak via 3-day Kill-a-Watt test)
-- [ ] HA Green power measurement baseline
-- [ ] Combined system power measurement baseline
+- [x] HA Green power measurement baseline
+- [x] Combined system power measurement baseline
 - [ ] Home Assistant automation documentation
 
 ---
