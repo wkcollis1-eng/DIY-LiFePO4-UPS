@@ -23,7 +23,7 @@ LiFePO4 is the safest lithium chemistry — thermal runaway threshold above 270�
 - F2 (10A, battery positive) must be the first connection made when installing the battery
 - Never short the battery terminals
 - The battery's built-in BMS provides cell-level over-voltage, under-voltage, and 10A overcurrent protection
-- Do not charge with a voltage above 14.4V — the PSU is set to 13.3V and the OVP ceiling is 13.8V minimum
+- Do not charge with a voltage above 14.4V — the PSU is set to 13.3V and the BMS OVP ceiling is 14.4–14.6V
 
 ---
 
