@@ -10,7 +10,6 @@ A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Gr
 
 AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12V 10Ah LiFePO4 battery through a MOSFET ideal diode. On grid failure, loads switch directly to battery in under 1ms. A Victron BatteryProtect BP-65 disconnects loads at 11.8V to prevent over-discharge. A Shelly Plus Uni reports battery voltage and temperature to Home Assistant.
 
-```
 ![System Architecture](assets/System_Overview.png)
 
 ```
