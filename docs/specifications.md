@@ -19,7 +19,7 @@
 
 | Parameter | This DIY UPS | Commercial SLA UPS |
 |---|---|---|
-| Runtime @ 13.39W measured | ~8.2 hours | 2–2.5 hours |
+| Runtime @ 13.68W measured | ~8.2 hours | 2–2.5 hours |
 | Switchover Time | <1ms | 4–10ms |
 | Battery Lifespan | 7–10 years | 2–3 years |
 | Output Regulation | 11.73–13.26V (battery-tracked) | Within device ±10% tolerance envelope |
@@ -51,7 +51,7 @@
 
 | Parameter | Value | Calculation Details/Assumptions |
 |---|---|---|
-| Typical Combined Power | ~13.68W DC | HA Green + XB7 13.17W (measured over 63.67 hours) + Shelly 0.50W (eco mode est.) + BP-65 0.018W (parasitic) |
+| Typical Combined Power | ~13.68W DC | HA Green + XB7 13.17W (combined measurement over 63.67 hours) + Shelly 0.50W (eco mode est.) + BP-65 0.018W (parasitic). Note: combined measurement (13.17W) exceeds sum of individual measurements (12.87W) by 0.30W, likely due to different operating states during separate test runs. Combined figure used for system calculations. |
 | Typical Combined Current | 1.029A @ 13.3V | Typical power / 13.3V (float max). At 12.5V avg discharge: 13.67W / 12.5V ≈ 1.094A |
 | Peak Power | ~18.67W DC | HA Green + XB7 17.655W (measured) + Shelly 1.0W + BP-65 0.018W (simultaneous peak load) |
 | Peak Current | 1.582A @ 11.8V | Peak power / 11.8V (LVD min) |

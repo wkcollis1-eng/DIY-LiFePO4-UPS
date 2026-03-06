@@ -24,7 +24,7 @@ Heat dissipation at typical ~13.68W combined load (HA Green 0.73W + XB7 12.14W m
 | Component | Parameter | Value | Heat Dissipated |
 |-----------|-----------|-------|-----------------|
 | Mean Well HDR-60-12 | Efficiency @ ~22% load | 87% | **~2.0 W** |
-| | AC wall draw | 15.39 W | *(dominant source — ~90% of total)* |
+| | AC wall draw | 15.7 W | *(dominant source — ~95% of total)* |
 | Pololu Ideal Diode | Vf × typical current | 0.005V × 1.029A | 0.005 W |
 | Victron BP-65 | MOSFET drop + quiescent | 0.003V drop + 1.5mA | 0.02 W |
 | Fuse holders (×3 in path) | ~5mΩ each @ 1.029A | 0.015Ω × 1.06 | 0.02 W |
