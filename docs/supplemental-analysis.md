@@ -1,7 +1,7 @@
 # DIY UPS — Supplemental Engineering Analysis
 
-**DIY LiFePO4 UPS for Home Assistant Green & Xfinity XB7 Modem**  
-February 2026
+**DIY LiFePO4 UPS for Home Assistant Green & Xfinity XB7 Modem**
+March 2026
 
 This document provides supplemental engineering analysis derived from the component specifications and design parameters in the project repository. All values are sourced from the current repo documentation.
 
@@ -17,21 +17,21 @@ This document provides supplemental engineering analysis derived from the compon
 
 ## Appendix A — Thermal Analysis & Enclosure Heat Budget
 
-Heat dissipation at typical ~18W combined load (HA Green ~3W + XB7 14.7W measured + Shelly ~1W). PSU efficiency per project documentation: ~81% at approximately 18% of rated 102W load.
+Heat dissipation at typical ~13.68W combined load (HA Green 0.73W + XB7 12.14W measured + Shelly 0.50W + BP-65 0.018W). PSU efficiency per project documentation: ~87% at approximately 22% of rated 54W load.
 
 ### A.1 Component Heat Dissipation
 
 | Component | Parameter | Value | Heat Dissipated |
 |-----------|-----------|-------|-----------------|
-| Mean Well LRS-100-12 | Efficiency @ ~18% load | 81% | **~4.2 W** |
-| | AC wall draw | 22.2 W | *(dominant source — 93% of total)* |
-| Pololu Ideal Diode | Vf × typical current | 0.04V × 1.5A | 0.06 W |
-| Victron BP-65 | MOSFET drop + quiescent | 0.006V drop + 1.5mA | 0.03 W |
-| Fuse holders (×3 in path) | ~5mΩ each @ 1.5A | 0.015Ω × 2.25 | 0.03 W |
-| Wiring (~6–8 ft 16AWG round trip) | ~75mΩ total | 0.075Ω × 2.25 | 0.17 W |
-| **TOTAL** | | | **~4.5 W continuous** |
+| Mean Well HDR-60-12 | Efficiency @ ~22% load | 87% | **~2.0 W** |
+| | AC wall draw | 15.39 W | *(dominant source — ~90% of total)* |
+| Pololu Ideal Diode | Vf × typical current | 0.005V × 1.029A | 0.005 W |
+| Victron BP-65 | MOSFET drop + quiescent | 0.003V drop + 1.5mA | 0.02 W |
+| Fuse holders (×3 in path) | ~5mΩ each @ 1.029A | 0.015Ω × 1.06 | 0.02 W |
+| Wiring (~4 segments 16AWG round trip) | ~40mΩ total | 0.040Ω × 1.06 | 0.04 W |
+| **TOTAL** | | | **~2.1 W continuous** |
 
-Wire resistance (~75mΩ round trip) is consistent with the stated device voltage envelope of 11.71–13.16V, which implies 0.09–0.14V drop at 1.5A typical. The Victron BP-65 MOSFET design eliminates the ~0.73W of continuous relay coil dissipation that a mechanical relay alternative would have added.
+Wire resistance (~40mΩ round trip) is consistent with the stated device voltage envelope of 11.73–13.26V, which implies 0.041V drop at 1.029A typical. The Victron BP-65 MOSFET design eliminates the ~0.73W of continuous relay coil dissipation that a mechanical relay alternative would have added.
 
 ### A.2 Enclosure Thermal Model
 
@@ -42,49 +42,57 @@ Enclosure: LeMotech IP65 ABS, 9.6″×7.6″×4.5″. Passive convection, no fan
 | Enclosure surface area | 2,104 cm² (0.21 m²) | All 6 faces |
 | Natural convection coefficient (ABS, still air) | ~6 W/m²·K | Conservative estimate |
 | Estimated thermal resistance | ~0.79 °C/W | 1/(h × A) |
-| ΔT above ambient @ 4.5W | **~3.5–4.0 °C** | ΔT = Q × R_th |
+| ΔT above ambient @ 2.1W | **~1.7 °C** | ΔT = Q × R_th |
 
 ### A.3 Internal Temperature Projections
 
 | Condition | Ambient | Est. Internal | Status |
 |-----------|---------|---------------|--------|
-| Typical winter | 63°F / 17°C | ~21°C | ✅ Optimal |
-| Typical summer | 75°F / 24°C | ~28°C | ✅ Optimal |
-| DS18B20 alert threshold | — | 40°C | 17°C headroom vs max ambient |
-| LiFePO4 max continuous | — | 45°C | 22°C headroom vs max ambient |
+| Typical winter | 63°F / 17°C | ~19°C | Optimal |
+| Typical summer | 75°F / 24°C | ~26°C | Optimal |
+| DS18B20 alert threshold | — | 40°C | 14°C headroom vs max ambient |
+| LiFePO4 max continuous | — | 45°C | 19°C headroom vs max ambient |
 
-**Conclusion:** The climate-controlled bedroom installation provides substantial margin to all battery thermal limits year-round. At 4.5W total internal dissipation, enclosure rise above ambient is only 3.5–4°C. No active cooling is warranted or beneficial.
+**Conclusion:** The climate-controlled bedroom installation provides substantial margin to all battery thermal limits year-round. At ~2.1W total internal dissipation (reduced from prior estimates due to lower measured load and higher PSU efficiency), enclosure rise above ambient is only ~1.7°C. No active cooling is warranted or beneficial.
 
 ---
 
 ## Appendix B — Runtime Analysis
 
-The repo README specifies ~6.3 hours runtime at typical combined load. This section documents the calculation basis and confirms consistency with the stated capacity parameters.
+The repo README specifies ~8.2 hours runtime at typical combined load. This section documents the calculation basis and confirms consistency with the stated capacity parameters.
 
 ### B.1 Usable Energy Budget
 
 | Parameter | Value | Source |
 |-----------|-------|--------|
 | Nominal capacity | 10 Ah | Cyclenbatt 12V 10Ah datasheet |
-| Usable capacity (defined voltage range) | 9 Ah | 13.3V → 11.5V per specifications |
-| Average discharge voltage | 12.4 V | (13.3V + 11.5V) ÷ 2; LiFePO4 flat plateau |
-| Usable energy | **111.6 Wh** | 9 Ah × 12.4 V |
-| Typical system load | ~18 W | HA Green ~3W + XB7 14.7W (measured) + Shelly ~1W |
-| Runtime @ 18W | 6.2 h | 111.6 Wh ÷ 18W |
-| Runtime @ 17W | 6.6 h | 111.6 Wh ÷ 17W |
-| **Stated runtime** | **~6.3 h** | Consistent with ~17.7W effective load |
-
-The 6.3-hour figure corresponds to 111.6 Wh ÷ 17.7W effective load, bracketed by the 17W and 18W calculations. No additional derating is applied, which is appropriate for a new battery in a climate-controlled environment.
+| Usable capacity (defined voltage range) | 9 Ah | 13.3V → 11.8V per specifications |
+| Average discharge voltage | 12.5 V | (13.3V + 11.8V) ÷ 2; LiFePO4 flat plateau |
+| Usable energy | **112.5 Wh** | 9 Ah × 12.5 V |
+| Typical system load | ~13.68 W | HA Green 0.73W + XB7 12.14W (measured) + Shelly 0.50W + BP-65 0.018W |
+| Runtime @ 13.68W | 8.2 h | 112.5 Wh ÷ 13.68W |
+| **Stated runtime** | **~8.2 h** | Consistent with measured load |
 
 ### B.2 Runtime Sensitivity
 
 | Scenario | Runtime | Notes |
 |----------|---------|-------|
-| Specification (new battery, ~17.7W) | **~6.3 h** | Theoretical from 9Ah × 12.4V |
-| Peak load only (4A, ~48W worst case) | ~2.3 h | 111.6 Wh ÷ 48W; unrealistic for sustained operation |
-| End-of-life estimate (~10 yr, 80% capacity) | ~5.0 h | 80% of 111.6 Wh ÷ 17.7W |
+| Specification (new battery, 13.68W) | **~8.2 h** | Theoretical from 9Ah × 12.5V |
+| Peak load only (1.582A, ~18.67W) | ~6.0 h | 112.5 Wh ÷ 18.67W; unrealistic for sustained operation |
+| End-of-life estimate (~10 yr, 80% capacity) | ~6.6 h | 80% of 112.5 Wh ÷ 13.68W |
 
-### B.3 Protection Chain — Voltage Thresholds
+### B.3 Key Runtime Milestones
+
+The following timeline assumes a constant typical draw of 1.007A (13.39W):
+
+| Time Elapsed | Battery Voltage | Voltage at Devices | System State |
+|--------------|-----------------|-------------------|--------------|
+| 0.0 hrs | 13.30V | 13.26V | AC Failure: Seamless switchover (<1ms) |
+| 0.5 – 7.5 hrs | 13.2V - 12.8V | 13.16V - 12.76V | Nominal Backup: Flat LiFePO4 plateau period |
+| ~8.1 hrs | 12.20V | 12.11V | Soft Alert: HA Green initiates graceful shutdown |
+| 8.4 hrs | 11.80V | 11.73V | LVD Cutoff: Victron BP-65 disconnects all loads |
+
+### B.4 Protection Chain — Voltage Thresholds
 
 The system uses hardware-only over-discharge protection. No automated software shutdown is implemented. The Shelly Plus Uni provides voltage and temperature monitoring to Home Assistant dashboards only.
 
@@ -92,9 +100,9 @@ The system uses hardware-only over-discharge protection. No automated software s
 |-----------------|-----------|--------|
 | **Victron BP-65 LVD (Primary)** | **11.8V** | MOSFET opens after 90-second hold-off. Loads disconnect cleanly. Reconnects at 12.8V after AC restores and battery recovers. |
 | **Battery BMS UVP (Backup)** | **10.0V** | Fires only if BP-65 fails to open. Hard cutoff — abrupt shutdown of loads. No hardware damage; minor HA data loss possible. Battery cells protected from further discharge. |
-| Shelly Plus Uni (Monitoring) | N/A | Voltage and temperature data to HA dashboard only. No automated protective action. |
+| Shelly Plus Uni (Monitoring) | N/A | Voltage and temperature data to HA dashboard only. No automated protective action. Primary shutdown trigger at 12.2V alerts HA for graceful shutdown. |
 
-The 90-second BP-65 hold-off at 11.8V adds only ~0.02V of additional battery voltage drop at 2A before disconnect — analytically negligible and does not materially affect device voltage at cutoff.
+The 90-second BP-65 hold-off at 11.8V adds only ~0.02V of additional battery voltage drop at typical current before disconnect — analytically negligible and does not materially affect device voltage at cutoff.
 
 ---
 
@@ -118,9 +126,9 @@ Scale 1–10 for each factor. For Occurrence and Detection, lower is better. For
 
 | Component | Failure Mode | S | O | D | RPN | Controls / Mitigation |
 |-----------|-------------|---|---|---|-----|-----------------------|
-| PSU LRS-100-12 | Output voltage drifts high | 6 | 2 | 2 | 24 | PSU OVP 13.8–16.2V limits exposure; BMS secondary OVP at 14.4V; Shelly ADC continuous monitoring alerts HA. |
-| PSU LRS-100-12 | Catastrophic OV (OVP fails) | 8 | 1 | 3 | 24 | BMS secondary OVP 14.4–14.6V is backstop. PSU OVP + BMS dual-layer is primary safeguard for battery integrity. |
-| PSU LRS-100-12 | Output fails low or off | 3 | 2 | 1 | 6 | System transfers to battery seamlessly (<1ms). Shelly ADC reports voltage change to HA. Runtime clock starts. |
+| PSU HDR-60-12 | Output voltage drifts high | 6 | 2 | 2 | 24 | PSU OVP 13.8–16.2V limits exposure; BMS secondary OVP at 14.4–14.6V; Shelly ADC continuous monitoring alerts HA. |
+| PSU HDR-60-12 | Catastrophic OV (OVP fails) | 8 | 1 | 3 | 24 | BMS secondary OVP 14.4–14.6V is backstop. PSU OVP + BMS dual-layer is primary safeguard for battery integrity. |
+| PSU HDR-60-12 | Output fails low or off | 3 | 2 | 1 | 6 | System transfers to battery seamlessly (<1ms). Shelly ADC reports voltage change to HA. Runtime clock starts. |
 | Pololu Ideal Diode | MOSFET fails shorted | 5 | 2 | 4 | 40 | Battery current exposure limited by BMS (10A). 12–13V differential; no sustained overvoltage on PSU output stage. |
 | Pololu Ideal Diode | MOSFET fails open | 4 | 2 | 2 | 16 | Battery cannot recharge. Shelly ADC detects: voltage stagnates at discharge rate rather than recovering to 13.3V. |
 | Victron BP-65 | Fails to open (stuck closed) | 4 | 2 | 5 | 40 | Battery discharges to BMS UVP at 10.0V. Abrupt load cutoff — no hardware damage; minor HA data loss possible. BMS protects cells from further discharge. Severity 4: consequence bounded to recoverable data loss only. |
@@ -152,7 +160,7 @@ No failure modes exceed the RPN 70 review threshold. The three highest items are
 
 No single credible failure mode produces hardware damage, injury, or fire risk in this design. The protection stack is appropriately layered:
 
-- **Overcharge:** PSU OVP (13.8V) → BMS OVP (14.4V)
+- **Overcharge:** PSU OVP (13.8V) → BMS OVP (14.4–14.6V)
 - **Over-discharge:** BP-65 LVD (11.8V, primary) → BMS UVP (10.0V, backup)
 - **Overcurrent / short:** Branch fuses F3/F4 → F2 → BMS current limit (10A)
 - **Monitoring:** Shelly Plus Uni (voltage + temperature to HA) — passive, no shutdown authority
