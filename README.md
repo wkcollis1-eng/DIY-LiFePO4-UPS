@@ -2,7 +2,7 @@
 
 A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Green and Xfinity XB7 cable modem running during grid outages. Built into an IP65 enclosure with Home Assistant monitoring via Shelly Plus Uni.
 
-> **Honest context:** A $85 APC BE600M1 would do the same job out of the box. This build saves roughly $25 over 10 years vs that option (based on battery replacements and electricity usage). The engineering rationale — longer battery life, faster switchover, direct HA integration, no DC-DC converter voltage regulation — is documented in [design-rationale.md](docs/design-rationale.md). Build this if those tradeoffs matter to you.
+> **Honest context:** A $85 APC BE600M1 would do the same job out of the box and costs about the same over 10 years. This DIY build offers <1ms switchover (vs 4–10ms), 3× longer runtime, and native Home Assistant integration — but don't expect significant cost savings. Build this if those capabilities matter to you. See [design-rationale.md](docs/design-rationale.md) and [cost-analysis.md](docs/cost-analysis.md) for details.
 
 ---
 
@@ -22,7 +22,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 | Float voltage | 13.3V (set on PSU trimmer) |
 | LVD cutoff | 11.8V (Victron BP-65, Setting 7) |
 | LVD reconnect | 12.8V (30s delay after threshold met) |
-| Device voltage envelope | 11.73–13.26V at terminals |
+| Device voltage envelope | 11.74–13.26V at terminals |
 | Switchover time | <1ms (MOSFET ideal diode) |
 | Typical load | ~13.68W DC combined (measured) |
 | Runtime at typical load | ~8.2 hours |
@@ -91,7 +91,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 
 ## Notes
 
-- Device input voltage tolerance (±10%) is inferred from IEC 62368-1 design practice; neither Nabu Casa nor Comcast publish explicit DC input voltage ranges for these products. The 11.73–13.26V device terminal envelope falls within this inferred tolerance.
+- Device input voltage tolerance (±10%) is inferred from IEC 62368-1 design practice; neither Nabu Casa nor Comcast publish explicit DC input voltage ranges for these products. The 11.74–13.26V device terminal envelope falls within the inferred 10.8V–13.2V tolerance range.
 - The HDR-60-12 PSU output trimmer is set to 13.3V and lacquered. Drift analysis shows expected aging drift of 3–5 mV/year — negligible relative to the 1.1V headroom before OVP (14.4–14.6V BMS threshold).
 - No DC-DC converter is used. The direct battery feed strategy is documented in [design-rationale.md](docs/design-rationale.md).
 - Power measurements derived from Kill-a-Watt AC readings converted to DC using 82.5% efficiency assumption for switching adapters at partial load.

@@ -9,7 +9,7 @@
 | Input Voltage | 85–264VAC, 47–63Hz | Universal AC input |
 | PSU Float Voltage | 13.3V DC | Set on HDR-60-12 pot; matches LiFePO4 resting voltage |
 | Battery Voltage Range | 11.8–13.3V | Victron BP-65 cutoff to full charge (float equilibrium) |
-| Device Input Voltage Range | 11.73–13.26V | At device terminals after wiring drop at 1.029A typical (see [voltage-drop-analysis.md](voltage-drop-analysis.md)) |
+| Device Input Voltage Range | 11.74–13.26V | At device terminals after wiring drop (see [voltage-drop-analysis.md](voltage-drop-analysis.md)) |
 | Typical Load Current | 1.029A @ 13.3V | ~13.68W measured DC / 13.3V |
 | Peak Load Current | 1.582A @ 11.8V | 18.67W simultaneous peak load / 11.8V |
 | Battery Capacity | 10Ah nominal | ~125Wh energy storage (10Ah × 12.5V avg) |
@@ -57,7 +57,7 @@
 | Peak Current | 1.582A @ 11.8V | Peak power / 11.8V (LVD min) |
 | Design Margin | Peak 1.582A vs. F4 5A fuse (65A BP-65 capacity) | 16AWG conductors rated ~13A in free air. F3=2A protects HA Green branch; F4=5A protects XB7 branch |
 
-> Input voltage tolerance (±10%) is an engineering inference based on IEC 62368-1 / UL 62368-1 design practice for 12V DC input rails. Neither Nabu Casa nor Comcast publish explicit input voltage ranges for these products. The system's 11.73–13.26V device terminal envelope falls within this inferred tolerance.
+> Input voltage tolerance (±10%) is an engineering inference based on IEC 62368-1 / UL 62368-1 design practice for 12V DC input rails. Neither Nabu Casa nor Comcast publish explicit input voltage ranges for these products. The system's 11.74–13.26V device terminal envelope falls within this inferred tolerance (10.8V–13.2V).
 
 ## Protection
 

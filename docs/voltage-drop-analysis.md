@@ -39,9 +39,11 @@ Current path: Battery → F2 → Terminal Block → BP-65 → F3 or F4 → Devic
 
 | Condition | Battery Voltage | Voltage Drop | Device Terminal Voltage |
 |---|---|---|---|
-| Normal (AC On) | 13.30V | 0.041V | 13.26V |
-| Backup Start | 13.30V | 0.041V | 13.26V |
-| Backup End (LVD) | 11.80V | 0.069V (Peak) | 11.73V |
+| Normal (AC On) | 13.30V | 0.041V (typical) | 13.26V |
+| Backup Start | 13.30V | 0.041V (typical) | 13.26V |
+| Backup End (LVD) | 11.80V | 0.063V (peak) | 11.74V |
+
+> Note: At LVD cutoff, load current increases slightly as voltage drops (constant power loads), resulting in peak current of 1.582A. The 11.74V minimum is within the ±10% tolerance envelope for 12V devices (10.8V–13.2V).
 
 ---
 
@@ -68,9 +70,9 @@ Current path: PSU → Crimp → Ideal Diode → F1 → Terminal Block → Batter
 |---|---|---|
 | PSU Float Setpoint | 13.3V | 13.3V |
 | Battery Voltage Range | 11.80V (LVD cutoff) | 13.3V (float equilibrium) |
-| Device Voltage Range | 11.73V | 13.26V |
+| Device Voltage Range | 11.74V | 13.26V |
 
-The 11.73–13.26V device terminal envelope is within the ±10% tolerance inferred for 12V DC input rails per IEC 62368-1 / UL 62368-1 design practice. See [specifications.md](specifications.md) for the caveat on manufacturer-published tolerances.
+The 11.74–13.26V device terminal envelope is within the ±10% tolerance (10.8V–13.2V) inferred for 12V DC input rails per IEC 62368-1 / UL 62368-1 design practice. See [specifications.md](specifications.md) for the caveat on manufacturer-published tolerances.
 
 ---
 
