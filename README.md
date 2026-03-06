@@ -10,49 +10,9 @@ A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Gr
 
 AC grid powers a Mean Well LRS-100-12 PSU set to 13.3V float, which charges a 12V 10Ah LiFePO4 battery through a MOSFET ideal diode. On grid failure, loads switch directly to battery in under 1ms. A Victron BatteryProtect BP-65 disconnects loads at 11.8V to prevent over-discharge. A Shelly Plus Uni reports battery voltage and temperature to Home Assistant.
 
+```
 ![System Architecture](assets/System_Overview.png)
 
-
-```
-
-           AC Power (Wall)
-                 ↓
-┌────────────────────────────────────┐
-│  Mean Well LRS-100-12 PSU          │
-│  Input: 85-264VAC  Out: 13.3V      │
-└────────────────┬───────────────────┘
-                 │ 13.3V (float)
-                 ↓
-┌────────────────────────────────────┐
-│  Pololu Ideal Diode (4-60V, 10A)   │
-│  Prevents PSU backfeed from batt.  │
-└────────────────┬───────────────────┘
-                 │
-                 ↓
-┌────────────────────────────────────┐
-│  Cyclenbatt 12V 10Ah LiFePO4       │
-│  Built-in 10A BMS, 5000+ cycles    │
-└────────────────┬───────────────────┘
-                 │
-                 ↓
-┌────────────────────────────────────┐
-│  Victron BatteryProtect BP-65      │
-│  LVD: 11.8V (Setting 7)            │
-│  Reconnect: 12.8V, 90s delay       │
-└────────────────┬───────────────────┘
-                 │ 11.71–13.16V at device terminals
-            ┌────┴─────┐
-         [F3:2A]    [F4:5A]
-            │          │
-         HA Green   XB7 Modem
-           (3W)      (14.7W)
-
-┌────────────────────────────────────┐
-│  Shelly Plus Uni (Monitoring)      │
-│  ADC → Battery Voltage             │
-│  GPIO → DS18B20 Temperature        │
-│  WiFi → Home Assistant             │
-└────────────────────────────────────┘
 ```
 
 ---
