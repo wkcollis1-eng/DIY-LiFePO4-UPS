@@ -31,7 +31,7 @@ Heat dissipation at typical ~13.68W combined load (HA Green 0.73W + XB7 12.14W m
 | Wiring (~4 segments 16AWG round trip) | ~40mΩ total | 0.040Ω × 1.06 | 0.04 W |
 | **TOTAL** | | | **~2.1 W continuous** |
 
-Wire resistance (~40mΩ round trip) is consistent with the stated device voltage envelope of 11.73–13.26V, which implies 0.041V drop at 1.029A typical. The Victron BP-65 MOSFET design eliminates the ~0.73W of continuous relay coil dissipation that a mechanical relay alternative would have added.
+Wire resistance (~40mΩ round trip) is consistent with the stated device voltage envelope of 11.74–13.26V, which implies 0.041V drop at 1.029A typical. The Victron BP-65 MOSFET design eliminates the ~0.73W of continuous relay coil dissipation that a mechanical relay alternative would have added.
 
 ### A.2 Enclosure Thermal Model
 
@@ -83,14 +83,16 @@ The repo README specifies ~8.2 hours runtime at typical combined load. This sect
 
 ### B.3 Key Runtime Milestones
 
-The following timeline assumes a constant typical draw of 1.007A (13.39W):
+The following timeline assumes the measured typical load of 13.68W (~1.03A at 13.3V):
 
 | Time Elapsed | Battery Voltage | Voltage at Devices | System State |
 |--------------|-----------------|-------------------|--------------|
 | 0.0 hrs | 13.30V | 13.26V | AC Failure: Seamless switchover (<1ms) |
-| 0.5 – 7.5 hrs | 13.2V - 12.8V | 13.16V - 12.76V | Nominal Backup: Flat LiFePO4 plateau period |
-| ~8.1 hrs | 12.20V | 12.11V | Soft Alert: HA Green initiates graceful shutdown |
-| 8.4 hrs | 11.80V | 11.73V | LVD Cutoff: Victron BP-65 disconnects all loads |
+| 0.5 – 7.5 hrs | 13.2V – 12.8V | 13.16V – 12.76V | Nominal Backup: Flat LiFePO4 plateau period |
+| ~7.9 hrs | 12.20V | 12.16V | Soft Alert: HA Green initiates graceful shutdown |
+| ~8.2 hrs | 11.80V | 11.74V | LVD Cutoff: Victron BP-65 disconnects all loads |
+
+> Note: The HA Green graceful shutdown at 12.2V provides ~15–20 minutes of warning before LVD cutoff. After shutdown, only the XB7 modem remains powered, reducing load and extending the remaining runtime slightly.
 
 ### B.4 Protection Chain — Voltage Thresholds
 

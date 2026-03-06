@@ -37,7 +37,7 @@ All wiring is 16AWG. See [voltage-drop-analysis.md](voltage-drop-analysis.md) fo
 |---|---|---|
 | Power Cord — Black (Hot) | PSU Pin 1 AC/L | — |
 | Power Cord — White (Neutral) | PSU Pin 2 AC/N | — |
-| Power Cord — Green (Ground) | — | Wire nut and electrical tape — not required for HDR-60-12 (Class II design) |
+| Power Cord — Green (Ground) | — | Cut back to cable gland entry, capped with wire nut and electrical tape. Not required for HDR-60-12 (Class II double-insulated design). |
 
 ### PSU → Ideal Diode
 
