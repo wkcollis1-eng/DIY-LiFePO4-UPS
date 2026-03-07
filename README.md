@@ -46,11 +46,13 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 |---|---|---|
 | HA Green typical power | 0.73W DC | 48.5h Kill-a-Watt test × 82.5% eff |
 | XB7 modem typical power | 12.14W DC | 72.4h Kill-a-Watt test × 82.5% eff |
-| Combined system load | 13.68W DC | 63.7h combined test (incl. Shelly + BP-65) |
-| Calculated runtime | 8.2 hours | 112.5Wh usable ÷ 13.68W |
+| Combined load (modem + HA Green) | 13.17W DC | 74.1h Kill-a-Watt test (1.182 kWh) × 82.5% eff |
+| Peak load | 17.66W DC | 21.4W AC peak × 82.5% eff |
+| Total system load | ~13.8W DC | Combined + Shelly + BP-65 (~0.6W) |
+| Calculated runtime | 8.2 hours | 112.5Wh usable ÷ 13.8W |
 | Voltage at device terminals | 11.74–13.26V | Calculated from wiring resistance |
 
-> Power measurements derived from extended Kill-a-Watt AC monitoring, converted to DC using 82.5% efficiency assumption for switching adapters at partial load. Runtime pending validation after build.
+> Power measurements derived from extended Kill-a-Watt AC monitoring, converted to DC using 82.5% efficiency assumption for switching adapters at partial load. Combined test: 3 days, 2 hours, 4 minutes. Runtime pending validation after build.
 
 ---
 

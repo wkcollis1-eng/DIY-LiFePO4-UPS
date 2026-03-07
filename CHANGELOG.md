@@ -15,6 +15,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-03-06b] — 2026-03-06
+
+### Changed
+- Updated combined power measurement: 74.1h test, 1.182 kWh, 13.17W DC average
+- Added peak load measurement: 21.4W AC / 17.66W DC
+- Updated total system load estimate: ~13.8W DC (combined + Shelly + BP-65)
+- Updated documentation in specs, design-rationale, supplemental-analysis
+
+---
+
 ## [2026-03-06] — 2026-03-06
 
 ### Added
