@@ -17,7 +17,7 @@ This document provides supplemental engineering analysis derived from the compon
 
 ## Appendix A — Thermal Analysis & Enclosure Heat Budget
 
-Heat dissipation at typical ~13.8W combined load (HA Green 0.73W + XB7 12.14W measured + Shelly 0.50W + BP-65 0.018W). PSU efficiency per project documentation: ~87% at approximately 22% of rated 54W load.
+Heat dissipation at typical ~13.7W combined load (HA Green 0.73W + XB7 12.14W measured + Shelly 0.50W + BP-65 0.018W). PSU efficiency per project documentation: ~87% at approximately 22% of rated 54W load.
 
 ### A.1 Component Heat Dissipation
 
@@ -69,21 +69,21 @@ The repo README specifies ~8.2 hours runtime at typical combined load. This sect
 | Usable capacity (defined voltage range) | 9 Ah | 13.3V → 11.8V per specifications |
 | Average discharge voltage | 12.5 V | (13.3V + 11.8V) ÷ 2; LiFePO4 flat plateau |
 | Usable energy | **112.5 Wh** | 9 Ah × 12.5 V |
-| Typical system load | ~13.8 W | HA Green 0.73W + XB7 12.14W (measured) + Shelly 0.50W + BP-65 0.018W |
-| Runtime @ 13.8W | 8.2 h | 112.5 Wh ÷ 13.8W |
+| Typical system load | ~13.7 W | HA Green 0.73W + XB7 12.14W (measured) + Shelly 0.50W + BP-65 0.018W |
+| Runtime @ 13.7W | 8.2 h | 112.5 Wh ÷ 13.7W |
 | **Stated runtime** | **~8.2 h** | Consistent with measured load |
 
 ### B.2 Runtime Sensitivity
 
 | Scenario | Runtime | Notes |
 |----------|---------|-------|
-| Specification (new battery, 13.8W) | **~8.2 h** | Theoretical from 9Ah × 12.5V |
+| Specification (new battery, 13.7W) | **~8.2 h** | Theoretical from 9Ah × 12.5V |
 | Peak load only (1.582A, ~18.67W) | ~6.0 h | 112.5 Wh ÷ 18.67W; unrealistic for sustained operation |
-| End-of-life estimate (~10 yr, 80% capacity) | ~6.6 h | 80% of 112.5 Wh ÷ 13.8W |
+| End-of-life estimate (~10 yr, 80% capacity) | ~6.6 h | 80% of 112.5 Wh ÷ 13.7W |
 
 ### B.3 Key Runtime Milestones
 
-The following timeline assumes the measured typical load of 13.8W (~1.03A at 13.3V):
+The following timeline assumes the estimated typical load of ~13.7W (~1.03A at 13.3V):
 
 | Time Elapsed | Battery Voltage | Voltage at Devices | System State |
 |--------------|-----------------|-------------------|--------------|

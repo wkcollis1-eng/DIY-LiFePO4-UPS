@@ -22,7 +22,7 @@ This document formalizes the engineering requirements, design decisions, and ver
 | ID | Requirement | Specification | Rationale |
 |---|---|---|---|
 | ER-1 | Output voltage range | 11.74–13.26V at device terminals | Within inferred ±10% tolerance of 12V nominal devices |
-| ER-2 | Typical load capacity | ≥15W continuous | Combined device load is 13.8W typical |
+| ER-2 | Typical load capacity | ≥15W continuous | Combined device load is ~13.7W estimated |
 | ER-3 | Peak load capacity | ≥20W for 5 seconds | Accommodate simultaneous device peak (18.67W) |
 | ER-4 | Low-voltage disconnect | 11.8V ± 0.1V | Prevent battery damage while maximizing runtime |
 | ER-5 | Reconnect threshold | 12.8V ± 0.1V | Ensure adequate charge before reconnecting loads |
@@ -158,9 +158,9 @@ This document formalizes the engineering requirements, design decisions, and ver
 
 | Parameter | Calculated Value | Method |
 |---|---|---|
-| Typical load | 13.8W DC | Kill-a-Watt measurement × 82.5% efficiency |
+| Typical load | 13.7W DC (estimated) | Kill-a-Watt AC measurement × 82.5% assumed efficiency |
 | Peak load | 18.67W DC | Kill-a-Watt peak measurement × 82.5% efficiency |
-| Runtime at typical load | 8.2 hours | 112.5Wh usable ÷ 13.8W |
+| Runtime at typical load | 8.2 hours | 112.5Wh usable ÷ 13.7W |
 | Minimum device voltage | 11.74V | 11.8V LVD − 0.063V wiring drop |
 | Maximum device voltage | 13.26V | 13.3V float − 0.041V wiring drop |
 | Annual electricity cost | ~$41/year | 15.7W wall draw × 8,760h × $0.30/kWh |

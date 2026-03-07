@@ -42,17 +42,17 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 
 ## Measured Performance
 
-| Metric | Value | Method |
-|---|---|---|
-| HA Green typical power | 0.73W DC | 48.5h Kill-a-Watt test × 82.5% eff |
-| XB7 modem typical power | 12.14W DC | 72.4h Kill-a-Watt test × 82.5% eff |
-| Combined load (modem + HA Green) | 13.17W DC | 74.1h Kill-a-Watt test (1.182 kWh) × 82.5% eff |
-| Peak load | 17.66W DC | 21.4W AC peak × 82.5% eff |
-| Total system load | ~13.8W DC | Combined + Shelly + BP-65 (~0.6W) |
-| Calculated runtime | 8.2 hours | 112.5Wh usable ÷ 13.8W |
-| Voltage at device terminals | 11.74–13.26V | Calculated from wiring resistance |
+| Metric | AC Measured | DC Estimated | Method |
+|---|---|---|---|
+| HA Green typical | 0.89W | 0.73W | 48.5h Kill-a-Watt (0.043 kWh) |
+| XB7 modem typical | 14.72W | 12.14W | 72.4h Kill-a-Watt (1.066 kWh) |
+| Combined (modem + HA Green) | 15.96W | 13.17W | 74.1h Kill-a-Watt (1.182 kWh) |
+| Peak load | 21.4W | 17.66W | Kill-a-Watt peak reading |
+| Total system load | — | ~13.7W | Combined 13.17W + Shelly 0.50W + BP-65 0.02W |
+| Calculated runtime | — | 8.2 hours | 112.5Wh usable ÷ 13.7W |
+| Voltage at terminals | — | 11.74–13.26V | Calculated from wiring resistance |
 
-> Power measurements derived from extended Kill-a-Watt AC monitoring, converted to DC using 82.5% efficiency assumption for switching adapters at partial load. Combined test: 3 days, 2 hours, 4 minutes. Runtime pending validation after build.
+> **Note on DC estimates:** DC values are calculated from AC measurements × 82.5% assumed adapter efficiency. This efficiency assumption is based on typical switching adapter behavior at partial load (Mean Well datasheets show 80–85%), not measured values for these specific adapters. Combined test duration: 3 days, 2 hours, 4 minutes.
 
 ---
 
