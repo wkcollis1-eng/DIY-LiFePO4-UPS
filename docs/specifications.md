@@ -11,7 +11,7 @@
 | Battery Voltage Range | 11.8–13.3V | Victron BP-65 cutoff to full charge (float equilibrium) |
 | Device Input Voltage Range | 11.74–13.26V | At device terminals after wiring drop (see [voltage-drop-analysis.md](voltage-drop-analysis.md)) |
 | Typical Load Current | 1.03A @ 13.3V | ~13.7W estimated DC / 13.3V |
-| Peak Load Current | 1.582A @ 11.8V | 18.67W simultaneous peak load / 11.8V |
+| Peak Load Current | 1.58A @ 11.8V | 18.7W peak system load / 11.8V |
 | Battery Capacity | 10Ah nominal | ~125Wh energy storage (10Ah × 12.5V avg) |
 | Usable Capacity | ~9Ah | 13.3V → 11.8V range; 112.5Wh (9Ah × 12.5V avg) |
 
@@ -53,7 +53,7 @@
 |---|---|---|
 | Typical Combined Power | ~13.7W DC (estimated) | 15.96W AC measured (74.1h, 1.182 kWh) × 82.5% assumed efficiency = 13.17W DC + Shelly 0.50W + BP-65 0.02W = 13.69W ≈ 13.7W. Note: 82.5% efficiency is an assumption based on typical switching adapter behavior at partial load, not measured for these specific adapters. |
 | Typical Combined Current | 1.03A @ 13.3V | 13.7W / 13.3V. At 12.5V avg discharge: 13.7W / 12.5V ≈ 1.10A |
-| Peak Power | ~18.67W DC | HA Green + XB7 17.655W (measured) + Shelly 1.0W + BP-65 0.018W (simultaneous peak load) |
+| Peak Power | ~18.7W DC | Base peak 17.66W DC (21.4W AC × 82.5% eff) + Shelly 1.0W + BP-65 0.02W = 18.68W |
 | Peak Current | 1.582A @ 11.8V | Peak power / 11.8V (LVD min) |
 | Design Margin | Peak 1.582A vs. F4 5A fuse (65A BP-65 capacity) | 16AWG conductors rated ~13A in free air. F3=2A protects HA Green branch; F4=5A protects XB7 branch |
 

@@ -43,7 +43,7 @@ This document formalizes the engineering requirements, design decisions, and ver
 | ID | Requirement | Target | Rationale |
 |---|---|---|---|
 | RR-1 | Battery lifespan | ≥7 years | Exceed commercial UPS 2–3 year SLA lifespan |
-| RR-2 | PSU MTBF | >500,000 hours | Industrial-grade reliability |
+| RR-2 | PSU MTBF | 927,600 hours | Per HDR-60-12 datasheet |
 | RR-3 | System availability | >99.9% | Critical home infrastructure |
 
 ---
