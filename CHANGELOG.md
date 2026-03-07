@@ -15,12 +15,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-03-06c] — 2026-03-06
+
+### Changed
+- Corrected total system load: ~13.8W → ~13.7W (13.17 + 0.50 + 0.02 = 13.69W)
+- Clarified that DC values are estimates based on 82.5% assumed adapter efficiency
+- Added "AC Measured" column to README performance table
+- Updated terminology: "measured" → "estimated" for DC power values
+
+---
+
 ## [2026-03-06b] — 2026-03-06
 
 ### Changed
-- Updated combined power measurement: 74.1h test, 1.182 kWh, 13.17W DC average
+- Updated combined power measurement: 74.1h test, 1.182 kWh, 15.96W AC / 13.17W DC
 - Added peak load measurement: 21.4W AC / 17.66W DC
-- Updated total system load estimate: ~13.8W DC (combined + Shelly + BP-65)
+- Updated total system load estimate: ~13.7W DC (combined + Shelly + BP-65)
 - Updated documentation in specs, design-rationale, supplemental-analysis
 
 ---
