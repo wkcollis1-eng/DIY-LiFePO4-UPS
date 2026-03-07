@@ -10,7 +10,7 @@
 | PSU Float Voltage | 13.3V DC | Set on HDR-60-12 pot; matches LiFePO4 resting voltage |
 | Battery Voltage Range | 11.8–13.3V | Victron BP-65 cutoff to full charge (float equilibrium) |
 | Device Input Voltage Range | 11.74–13.26V | At device terminals after wiring drop (see [voltage-drop-analysis.md](voltage-drop-analysis.md)) |
-| Typical Load Current | 1.029A @ 13.3V | ~13.68W measured DC / 13.3V |
+| Typical Load Current | 1.029A @ 13.3V | ~13.8W measured DC / 13.3V |
 | Peak Load Current | 1.582A @ 11.8V | 18.67W simultaneous peak load / 11.8V |
 | Battery Capacity | 10Ah nominal | ~125Wh energy storage (10Ah × 12.5V avg) |
 | Usable Capacity | ~9Ah | 13.3V → 11.8V range; 112.5Wh (9Ah × 12.5V avg) |
@@ -19,13 +19,13 @@
 
 | Parameter | This DIY UPS | Commercial SLA UPS |
 |---|---|---|
-| Runtime @ 13.68W measured | ~8.2 hours | 2–2.5 hours |
+| Runtime @ 13.8W measured | ~8.2 hours | 2–2.5 hours |
 | Switchover Time | <1ms | 4–10ms |
 | Battery Lifespan | 7–10 years | 2–3 years |
 | Output Regulation | 11.73–13.26V (battery-tracked) | Within device ±10% tolerance envelope |
 | Annual Electricity Cost | ~$41/yr | ~$51/yr |
 
-> Runtime is calculated from 9Ah usable × 12.5V average ÷ 13.68W typical load = 8.2 hours. Power measurements derived from Kill-a-Watt AC readings converted to DC using 82.5% efficiency assumption.
+> Runtime is calculated from 9Ah usable × 12.5V average ÷ 13.8W typical load = 8.2 hours. Power measurements derived from Kill-a-Watt AC readings converted to DC using 82.5% efficiency assumption.
 
 ## Device Power Requirements
 
@@ -51,7 +51,7 @@
 
 | Parameter | Value | Calculation Details/Assumptions |
 |---|---|---|
-| Typical Combined Power | ~13.68W DC | HA Green + XB7 13.17W (combined measurement over 63.67 hours) + Shelly 0.50W (eco mode est.) + BP-65 0.018W (parasitic). Note: combined measurement (13.17W) exceeds sum of individual measurements (12.87W) by 0.30W, likely due to different operating states during separate test runs. Combined figure used for system calculations. |
+| Typical Combined Power | ~13.8W DC | HA Green + XB7 13.17W (combined measurement over 74.1 hours, 1.182 kWh) + Shelly 0.50W (eco mode est.) + BP-65 0.018W (parasitic). Note: combined measurement (13.17W) exceeds sum of individual measurements (12.87W) by 0.30W, likely due to different operating states during separate test runs. Combined figure used for system calculations. |
 | Typical Combined Current | 1.029A @ 13.3V | Typical power / 13.3V (float max). At 12.5V avg discharge: 13.67W / 12.5V ≈ 1.094A |
 | Peak Power | ~18.67W DC | HA Green + XB7 17.655W (measured) + Shelly 1.0W + BP-65 0.018W (simultaneous peak load) |
 | Peak Current | 1.582A @ 11.8V | Peak power / 11.8V (LVD min) |

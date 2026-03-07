@@ -11,7 +11,7 @@ This design addresses each limitation:
 | Limitation | Commercial SLA UPS | This Design |
 |---|---|---|
 | Battery lifespan | 2–3 years (SLA, 100% SoC float) | 7–10 years (LiFePO4, 13.3V float) |
-| Runtime @ 13.68W measured | 2–2.5 hours | 8.2 hours |
+| Runtime @ 13.8W measured | 2–2.5 hours | 8.2 hours |
 | Switchover time | 4–10ms | <1ms (MOSFET ideal diode) |
 | Output voltage | Regulated (with DC-DC losses) | Direct battery feed, 11.74–13.26V |
 | Monitoring | None or proprietary | Native Home Assistant integration |
