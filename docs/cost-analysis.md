@@ -27,39 +27,34 @@ This project costs more up-front than a commercial UPS. The value proposition is
 | Capability | This DIY UPS | Commercial SLA UPS |
 |---|---|---|
 | **Switchover time** | <1ms (imperceptible) | 4–10ms (can cause modem reboots) |
-| **Runtime @ ~14W load** | ~8.2 hours | 2–2.5 hours |
+| **Runtime @ 14.5W DC load** | ~7.8 hours | 2–2.5 hours |
+| **Battery lifespan** | 10–20 years | 2–3 years |
 | **Home Assistant integration** | Native (voltage, temp, SoC, runtime) | None or proprietary software |
-| **Battery lifespan** | 7–10 years | 2–3 years |
 
 Build this if you want seamless switchover, extended runtime, or native HA monitoring. Don't build this expecting significant cost savings.
 
 ---
 
-## 10-Year Lifecycle Cost Comparison
+## Annual Operating Cost
 
-For transparency, here's how the economics compare over a 10-year period:
-
-| Metric | This DIY UPS | APC BE600M1 | APC BX1500M |
+| Option | Wall Draw | Annual kWh | Annual Cost |
 |---|---|---|---|
-| Initial Cost | $224 | $85 | $180 |
-| Battery Replacement (10yr) | ~$30 (1×) | $60–90 (2–3×) | $100–150 (2–3×) |
-| Annual Electricity | $40/yr ($400) | $51/yr ($510) | $64/yr ($640) |
-| **10-Year Total** | **~$654** | **~$655–685** | **~$920–970** |
+| Bare wall warts (OEM adapters, no UPS) | 16.0W measured | 140 kWh | ~$41/yr |
+| This DIY UPS (DC load through HDR-60-12 at ~81% efficiency) | ~17.9W | 157 kWh | ~$46/yr |
+| APC BE600M1 (SLA, Line-Interactive) | ~20W estimated | 175 kWh | ~$52/yr |
+| APC BX1500M | ~25W estimated | 219 kWh | ~$64/yr |
 
-**Bottom line:** Over 10 years, this DIY build costs roughly the same as the cheapest commercial option (BE600M1). The economics are essentially break-even — don't build this expecting significant savings or expecting to lose money.
-
-The real value is the 3× longer runtime, instant switchover, and HA integration — not cost savings.
+> Wall wart baseline measured via Kill-a-Watt: 2.538 kWh over 158.8 hours (6 days 14h 50min) = 16.0W average, confirmed stable across three independent combined measurement windows. XB7 OEM adapter DoE Level VI (≥88% efficiency, model NBC56B120460VU). The DIY UPS adds only ~$5/yr vs running devices on bare wall warts — UPS capability is essentially free to operate compared to doing nothing. Commercial alternatives cost $6–18/yr more to run.
 
 ---
 
-## Annual Operating Cost
+## 10-Year Lifecycle Cost Comparison
 
-| Parameter | Value | Calculation |
-|---|---|---|
-| DC load (measured) | 13.68W | HA Green + XB7 + Shelly + BP-65 |
-| PSU efficiency @ 22% load | ~87% | HDR-60-12 datasheet |
-| AC wall draw | 15.7W | 13.68W ÷ 0.87 |
-| Annual consumption | 138 kWh | 15.7W × 8760h ÷ 1000 |
-| Annual cost @ $0.29/kWh | ~$40 | 138 kWh × $0.29 |
+| Metric | This DIY UPS | Bare Wall Warts | APC BE600M1 | APC BX1500M |
+|---|---|---|---|---|
+| Initial Cost | $224 | $0 | $85 | $180 |
+| Battery Replacement (10yr) | $30 (1×) | — | $60–90 (2–3×) | $100–150 (2–3×) |
+| Annual Electricity | $46/yr ($460) | $41/yr ($410) | $52/yr ($520) | $64/yr ($640) |
+| **10-Year Grand Total** | **~$714** | **~$410** | **~$665–695** | **~$920–970** |
 
-For comparison, commercial UPS units consume 175–220 kWh/yr due to lower efficiency and transformer losses, costing $51–64/yr. The ~$10–20/yr electricity savings is real but modest.
+The DIY UPS costs ~$304 more over 10 years than running bare wall warts — this is the cost of UPS capability. It costs roughly the same as the APC BE600M1 over 10 years while delivering 3× more runtime (7.8h vs 2–3h), 10× faster switchover, and 5× longer battery life.
