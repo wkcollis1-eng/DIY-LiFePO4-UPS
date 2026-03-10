@@ -13,7 +13,7 @@
 
 A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Green and Xfinity XB7 cable modem running during grid outages. Built into an IP65 enclosure with Home Assistant monitoring via Shelly Plus Uni.
 
-> **Honest context:** A $85 APC BE600M1 would do the same job out of the box. Over 10 years, both cost roughly the same (~$655). This DIY build offers <1ms switchover (vs 4–10ms), 3× longer runtime, and native Home Assistant integration. Build this if those capabilities matter to you — the economics are break-even either way. See [design-rationale.md](docs/design-rationale.md) and [cost-analysis.md](docs/cost-analysis.md) for details.
+> **Honest context:** A $85 APC BE600M1 would do the same job out of the box. This build costs roughly the same over 10 years as that option (based on battery replacements and electricity usage). The engineering rationale — longer battery life, faster switchover, direct HA integration, no DC-DC converter voltage regulation — is documented in [design-rationale.md](docs/design-rationale.md). Build this if those tradeoffs matter to you.
 
 ---
 
@@ -40,38 +40,24 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 
 ---
 
-## Measured Performance
-
-| Metric | AC Measured | DC Estimated | Method |
-|---|---|---|---|
-| HA Green typical | 0.89W | 0.73W | 48.5h Kill-a-Watt (0.043 kWh) |
-| XB7 modem typical | 14.72W | 12.14W | 72.4h Kill-a-Watt (1.066 kWh) |
-| Combined (modem + HA Green) | 15.96W | 13.17W | 74.1h Kill-a-Watt (1.182 kWh) |
-| Peak load (devices only) | 21.4W | 17.66W | Kill-a-Watt peak reading |
-| Peak system load | — | ~18.7W | Devices 17.66W + Shelly 1.0W + BP-65 0.02W |
-| Total system load | — | ~13.7W | Combined 13.17W + Shelly 0.50W + BP-65 0.02W |
-| Calculated runtime | — | 8.2 hours | 112.5Wh usable ÷ 13.7W |
-| Voltage at terminals | — | 11.74–13.26V | Calculated from wiring resistance |
-
-> **Note on DC estimates:** DC values are calculated from AC measurements × 82.5% assumed adapter efficiency. This efficiency assumption is based on typical switching adapter behavior at partial load (Mean Well datasheets show 80–85%), not measured values for these specific adapters. Combined test duration: 3 days, 2 hours, 4 minutes.
-
----
-
 ## Key Specifications
 
 | Parameter | Value |
 |---|---|
+| PSU | Mean Well HDR-60-12, 13.3V float |
 | Battery | Cyclenbatt 12V 10Ah LiFePO4 |
 | Float voltage | 13.3V (set on PSU trimmer) |
 | LVD cutoff | 11.8V (Victron BP-65, Setting 7) |
 | LVD reconnect | 12.8V (30s delay after threshold met) |
-| Device voltage envelope | 11.74–13.26V at terminals |
+| Device voltage envelope | 11.71–13.11V at terminals (2A worst-case) |
 | Switchover time | <1ms (MOSFET ideal diode) |
-| Typical load | ~13.68W DC combined (measured) |
-| Runtime at typical load | ~8.2 hours |
+| Typical load | 16.0W AC wall / 14.5W DC at devices (Kill-a-Watt measured) |
+| Runtime at typical load | ~7.8 hours (DC-based) |
+| Battery lifespan | 10–20 years (calendar aging at 13.3V float, 63–75°F) |
 | Enclosure | LeMotech IP65 ABS, 9.6″×7.6″×4.5″ |
 | Monitoring | Shelly Plus Uni → Home Assistant |
 | Total build cost | ~$224 |
+
 
 ---
 
@@ -134,17 +120,16 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 - [x] Design complete
 - [x] Components specified
 - [x] Components ordered / received
-- [ ] Build
-- [x] XB7 power measurement complete (12.14W DC typical, 16.75W DC peak via Kill-a-Watt test)
-- [x] HA Green power measurement complete (0.73W DC typical, 2.56W DC peak via Kill-a-Watt test)
-- [x] Combined system power measurement complete (13.68W DC typical including Shelly and BP-65)
+- [ ] Build complete
+- [x] XB7 power measurement complete (14.7W avg, 20.3W peak — 1.066 kWh / 72.4 hr standalone)
+- [x] Combined system power measurement complete (16.0W avg, 23.0W peak — 2.538 kWh / 158.8 hr)
 - [ ] Home Assistant automation documentation
 
 ---
 
 ## Notes
 
-- Device input voltage tolerance (±10%) is inferred from IEC 62368-1 design practice; neither Nabu Casa nor Comcast publish explicit DC input voltage ranges for these products. The 11.74–13.26V device terminal envelope falls within the inferred 10.8V–13.2V tolerance range.
-- The HDR-60-12 PSU output trimmer is set to 13.3V and lacquered. Drift analysis shows expected aging drift of 3–5 mV/year — negligible relative to the 1.1V headroom before OVP (14.4–14.6V BMS threshold).
+- Device input voltage tolerance (±10%) is inferred from IEC 62368-1 design practice; neither Nabu Casa nor Comcast publish explicit DC input voltage ranges for these products.
+- The PSU output trimmer is set to 13.3V and lacquered. Drift analysis shows expected aging drift of 3–5 mV/year — negligible relative to the 500mV headroom before OVP.
 - No DC-DC converter is used. The direct battery feed strategy is documented in [design-rationale.md](docs/design-rationale.md).
-- Power measurements derived from Kill-a-Watt AC readings converted to DC using 82.5% efficiency assumption for switching adapters at partial load.
+
