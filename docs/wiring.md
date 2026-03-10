@@ -183,7 +183,7 @@ All Wago 221-series: 24–12AWG, 20A, 450V. One conductor per port — do not in
 
 See [README](../README.md) for the assembly drawing image.
 
-The enclosure is a LeMotech IP65 ABS junction box (9.6″ × 7.6″ × 4.5″ interior). Key layout decisions:
+The enclosure is a LeMotech ABS junction box (9.6″ × 7.6″ × 4.5″ interior), originally IP65-rated. Six ¼″ ventilation holes have been drilled (3 intake low on the PSU wall, 3 exhaust high on the BP-65 wall), reducing the effective rating to approximately IP4X. This is a non-issue for an indoor floor installation. Key layout decisions:
 
 - PSU lies flat on the enclosure floor against one wall, trimmer facing up; battery occupies the center floor with ~¾″ gap between them forming a DC wiring chase.
 - BP-65 mounts on the left wall. Both supply sources (PSU and battery) run directly to the BP-65 IN stud — no terminal block in the positive power path.
