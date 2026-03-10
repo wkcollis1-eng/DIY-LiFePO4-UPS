@@ -14,7 +14,7 @@ Selected for its adjustable voltage range and efficiency characteristics:
 - DIN rail mount capability, compact form factor
 - OVP range of 13.8–16.2V provides a hard ceiling above the 13.3V float setpoint
 
-At the 13.68W typical system load (~1.03A), the PSU operates at approximately 22% of its 4.5A rated capacity. Light loading reduces thermal stress and extends service life.
+At the 14.5W DC typical system load (~1.2A), the PSU operates at approximately 26% of its 4.5A rated capacity. Light loading reduces thermal stress and extends service life.
 
 ---
 
@@ -24,12 +24,12 @@ LiFePO4 chemistry selected over SLA for:
 
 - Thermal stability: thermal runaway threshold above 270°C, non-flammable under normal conditions
 - Cycle life: rated 5000+ cycles vs. 200–500 for SLA
-- Calendar life: 7–10 years expected at 13.3V float vs. 2–3 years for SLA at conventional float voltage
+- Calendar life: 10–20 years expected at 13.3V float and 63–75°F (1–2%/yr calendar aging) vs. 2–3 years for SLA at conventional float voltage
 - Weight: approximately 40% lighter than equivalent SLA
 
 Built-in 10A BMS provides cell-level over-voltage (14.4–14.6V), under-voltage (10.0V), and overcurrent protection as a secondary layer behind the system-level protections.
 
-The 10Ah capacity provides approximately 8.2 hours runtime at the measured 13.68W combined load.
+The 10Ah capacity provides approximately 7.8 hours runtime at the measured 14.5W DC combined load (Kill-a-Watt confirmed, 16.0W AC avg with adapter losses removed).
 
 ---
 
@@ -39,7 +39,7 @@ A MOSFET-based ideal diode rather than a conventional Schottky diode eliminates 
 
 Function: blocks reverse current from battery to PSU during AC failure. Without this, the battery would attempt to back-power the PSU through its output terminals (PSU has no reverse protection).
 
-10A rating provides 5× margin over 2A typical load. Two units purchased; one installed, one spare.
+10A rating provides 8× margin over 1.2A typical load (5× over 2A worst-case design current). Two units purchased; one installed, one spare.
 
 ---
 
@@ -86,6 +86,6 @@ Update rates: voltage every 5 seconds, temperature every 30 seconds. Power consu
 
 IP65-rated ABS enclosure with flame-retardant rating (UL94 fire safety standards). The 9.6″×7.6″×4.5″ interior provides adequate space for all components with room for cable management. Rubber gasket seal on lid. Pre-punched knockouts accept the 1/2" NPT cable glands.
 
-ABS self-extinguishing rating is appropriate for an enclosure containing a lithium battery and 120VAC wiring — significantly safer than basic polypropylene storage containers. The enclosure is not thermally sealed — IP65 refers to dust and water ingress, not airtight containment. Passive convection through the gasket joint is sufficient for the ~10W heat dissipation at typical load.
+ABS self-extinguishing rating is appropriate for an enclosure containing a lithium battery and 120VAC wiring — significantly safer than basic polypropylene storage containers. Six ¼″ ventilation holes have been drilled (3 intake low on PSU wall, 3 exhaust high on BP-65 wall). Thermal analysis confirms the holes contribute negligible active cooling (~0.05W, ~1.5% of total load) at the ~3.5W heat dissipation level — wall conduction dominates. The holes provide pressure equalization during thermal cycling. Note: the drilled holes reduce the enclosure rating from IP65 to approximately IP4X (splash-resistant; no longer water-jet resistant). This is a non-issue for an indoor floor installation.
 
 Physical AC/DC segregation: PSU (AC input side) is mounted on the left; battery, BP-65, and DC components occupy the center and right. AC and DC cable glands are on opposite sides of the bottom face.
