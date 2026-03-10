@@ -32,7 +32,7 @@ All prices as-purchased (March 2026). Amazon prices subject to change; Pololu pr
 | 3' 16/3 Power Cord w/Pigtail | Amazon | $5.99 | AC input to PSU |
 | 16-14AWG Nylon Female Spade Connectors | Amazon | $4.49 | Battery F2 terminal connections |
 | Screw Terminal Block 2 Pin, 5mm Pitch, 4 pcs | Pololu | $1.89 | Ideal diode connections |
-| 2 In 4 Out Terminal Block Module | Amazon | $9.99 | Battery bus |
+| Wago Lever Nuts, 5-Port | Amazon | $9.99 | All Wago connectors — 8 used|
 
 ## Enclosure & Hardware
 
