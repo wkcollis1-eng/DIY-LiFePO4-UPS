@@ -36,10 +36,11 @@ To fix the typo: rename the device in the Shelly app → update entity ID in HA 
 | File | Purpose |
 |---|---|
 | `sensor.yaml` | Filtered voltage sensor + runtime/duration template sensors |
+| `scripts.yaml` | `script.ups_graceful_shutdown` — parameterized shutdown with test mode gate |
 | `automations.yaml` | Main control loop + temperature automations + watchdog |
 | `ui-lovelace.yaml` | Lovelace UPS card (or paste into dashboard editor) |
 
-All content is currently consolidated in `ups_ha_config_v2.yaml` pending deployment split.
+All content is currently consolidated in `ups_ha_config_v4.yaml` pending deployment split.
 
 ---
 
@@ -57,7 +58,7 @@ sensor.ups_battery_voltge_ups_battery_voltage_voltmeter   (raw Shelly ADC)
 [30-second moving average, precision=2]
     │
     ▼
-sensor.ups_battery_voltage_filtered   ← used by ALL automations
+sensor.ups_battery_voltage_filtered   ← used by ALL automations and scripts
 ```
 
 **Critical:** Never use the raw ADC sensor in automation conditions. The Shelly reports at ~1-second intervals with ±0.03V quantization noise. Using raw values would cause threshold thrashing.
@@ -79,12 +80,26 @@ The shutdown architecture mirrors telecom DC plant design:
 
 ```
 13.3V  ── PSU float voltage (normal operation)
+13.0V  ── Phase 1 / Phase 1b discriminator (real outage vs. Kasa flap)
 12.2V  ── Stage 1 LVD: HA graceful shutdown (software)
 12.0V  ── PSU failure fallback: emergency shutdown (software)
 11.8V  ── Stage 2 LVD: Victron BP-65 hard cutoff (hardware, independent)
 ```
 
 Stage 2 is fully independent of HA. Even if HA crashes or the automation fails, the BP-65 protects the battery.
+
+### Graceful Shutdown Script (`script.ups_graceful_shutdown`)
+
+Both software shutdown paths (Phase 2 and Phase 3) route through a shared script rather than inline sequences. This provides:
+
+- **Single control point for `hassio.host_shutdown`** — one place to modify the shutdown sequence
+- **Test mode gate** — `input_boolean.ups_test_mode` checked here; blocks the actual hardware call while allowing all upstream logic and notifications to run normally
+- **Parameterized behavior** — caller specifies `delay_seconds` and `voltage_threshold`; the script re-checks voltage after the delay and aborts if it has recovered
+
+| Caller | delay_seconds | voltage_threshold | Rationale |
+|---|---|---|---|
+| Phase 2 (PSU failure) | 15 | 12.0V | At 12.0V there is <20 min to BP-65 cutoff; shorter buffer |
+| Phase 3 (Stage 1 LVD) | 25 | 12.2V | HA Green disk sync observed at 12–18s; 25s conservative |
 
 ### Main Control Loop (`UPS: Power Outage Management`)
 
@@ -107,9 +122,15 @@ The 60-second filter on `grid_down` is critical. Kasa plugs frequently show `una
 
 Most false-unavailable events resolve within 45 seconds.
 
+#### Variables Block
+
+The main automation captures `voltage` and `runtime` once at trigger time via a `variables:` block. These are used in notification messages for Phases 1, 1b, 2, and 3. Phase 4 recovery uses `states()` directly since voltage is read after a 10-minute wait and the trigger-time snapshot would be stale.
+
 #### Phase 1 — Grid Down
 
-Fires when Kasa is offline for 60s **and** `ups_outage_active` is `off`.
+Fires when Kasa is offline for 60s **and** `ups_outage_active` is `off` **and** `voltage < 13.0V`.
+
+The voltage discriminator is the v3 fix: during a real outage the PSU loses AC and battery voltage drops below float (13.3V) within seconds. A Kasa cloud flap with PSU still running keeps voltage above 13.0V and falls through to Phase 1b instead.
 
 The `ups_outage_active = off` guard is essential — without it, a Wi-Fi flap during a real outage resets `ups_outage_start` to the flap timestamp, corrupting the duration calculation.
 
@@ -117,7 +138,9 @@ Sets `ups_outage_start` via `input_datetime` — this persists through hardware 
 
 #### Phase 1b — Kasa Flap Discriminator
 
-If Kasa goes offline 60s but filtered voltage stays above 13.0V, the PSU is still running — it's a Wi-Fi flap, not a real outage. Sends a non-alarmist monitoring notification without setting the outage flag.
+Reached only when Kasa goes offline 60s but filtered voltage stays above 13.0V — PSU still running. Sends a non-alarmist monitoring notification without setting the outage flag.
+
+Prior to v3, this branch was unreachable: Phase 1 had no voltage condition, so it always fired first in the `choose:` block. The mutual exclusion on 13.0V makes Phase 1b reachable.
 
 #### Phase 2 — PSU Failure Fallback
 
@@ -127,15 +150,13 @@ Covers: PSU internal failure, blown F1 or F2 fuse, ideal diode failure. These fa
 
 Includes Shelly availability guard — see Reliability Notes below.
 
+Calls `script.ups_graceful_shutdown` with `delay_seconds: 15, voltage_threshold: 12.0`.
+
 #### Phase 3 — Low Battery Graceful Shutdown (Stage 1 LVD)
 
 Fires when filtered voltage < 12.2V for 1 minute **and** outage is active.
 
-Sequence:
-1. Send critical battery notification with current voltage
-2. Wait 25 seconds (HA Green disk sync observed at 12–18 seconds)
-3. Re-check voltage — if it recovered above 12.2V during the delay, abort
-4. `hassio.host_shutdown` — full hardware power-off, not OS halt
+Calls `script.ups_graceful_shutdown` with `delay_seconds: 25, voltage_threshold: 12.2`.
 
 **`hassio.host_shutdown` vs `homeassistant.stop`:** `homeassistant.stop` halts the HA software but leaves the HA Green Linux OS running and drawing power. `hassio.host_shutdown` powers down the hardware, allowing a clean cold boot when DC power is restored. Must be verified on hardware before marking Commit 2 complete.
 
@@ -176,6 +197,8 @@ Threshold: **0°C** (inhibit) / **5°C** (restore, hysteresis).
 
 LiFePO4 cells suffer permanent lithium plating if charged below 0°C. The automation cuts the Kasa plug (disables PSU) to stop charging. Loads remain on battery during inhibit — monitor voltage manually if this fires. 5°C hysteresis prevents rapid PSU cycling.
 
+Test mode blocks the Kasa `switch.turn_off` / `switch.turn_on` calls while still allowing the inhibit/restore notifications to fire. This is intentional: during simulation testing you want to see the notification without actually cutting PSU power to a running system.
+
 This is an unlikely scenario for an indoor East Hampton installation but correct to have documented and implemented.
 
 ---
@@ -190,6 +213,33 @@ Watchdog condition uses `not unavailable` rather than `state: on` for the Kasa c
 
 ---
 
+## Test Mode (`input_boolean.ups_test_mode`)
+
+**Purpose:** Run the full automation logic end-to-end — including all notifications and state machine transitions — without issuing real hardware commands.
+
+**What test mode blocks:**
+- `hassio.host_shutdown` — guarded inside `script.ups_graceful_shutdown`
+- `switch.turn_off` (PSU charge inhibit cutoff)
+- `switch.turn_on` (PSU charge inhibit restore)
+
+**What test mode does NOT block:**
+- All notifications (you want to see these during testing)
+- `input_boolean` and `input_datetime` state changes
+- Phase 1/1b/2/3/4 condition evaluation
+- Watchdog
+
+**Simulation procedure:**
+1. Create `input_boolean.ups_test_mode` helper (toggle, default OFF)
+2. Turn test mode **ON** in HA UI
+3. Switch phone to cellular
+4. Unplug Kasa — confirm Phase 1 notification within 60–65 seconds
+5. Wait or manually set `input_boolean.ups_outage_active` to simulate low battery path
+6. Confirm `script.ups_graceful_shutdown` is called but HA Green stays running
+7. Replug Kasa — confirm Phase 4 recovery notification
+8. Turn test mode **OFF** before live deployment
+
+---
+
 ## Reliability Notes
 
 ### Kasa False-Unavailable Events
@@ -197,7 +247,7 @@ Watchdog condition uses `not unavailable` rather than `state: on` for the Kasa c
 Kasa plugs cloud-poll by default. False-unavailable events are common and expected. Mitigations in this config:
 
 1. **60-second `for:` filter** on `grid_down` — most flaps resolve within 45 seconds
-2. **Phase 1b discriminator** — alerts without setting flag when voltage contradicts a real outage
+2. **Phase 1b discriminator** — alerts without setting flag when voltage contradicts a real outage (>13.0V)
 3. **PSU failure fallback at 12.0V** — catches real faults even when Kasa is incorrectly online
 
 Optional additional hardening not implemented here:
@@ -220,6 +270,7 @@ Create in Settings → Devices & Services → Helpers before deploying:
 |---|---|---|
 | `input_boolean.ups_outage_active` | Toggle | Tracks active outage state; guards Phase 1 against timer resets |
 | `input_datetime.ups_outage_start` | Date and Time | Outage start timestamp; survives hardware shutdown for accurate duration |
+| `input_boolean.ups_test_mode` | Toggle | Dry-run gate; blocks hardware actions while preserving logic and notifications |
 
 ---
 
@@ -229,6 +280,7 @@ Create in Settings → Devices & Services → Helpers before deploying:
 |---|---|---|
 | 13.3V | PSU float — normal operation | None |
 | 13.2V | Top of battery operating range | None |
+| 13.0V | Phase 1 / 1b discriminator | Real outage vs. Kasa flap |
 | 12.8V | BP-65 Setting 7 reconnect threshold | Loads restored after outage |
 | 12.2V | Stage 1 LVD — ~20% SOC remaining | HA graceful shutdown |
 | 12.0V | PSU failure fallback threshold | Emergency shutdown |
@@ -269,7 +321,7 @@ The `input_datetime.ups_outage_start` value is preserved through this entire seq
 
 ### How Likely Is This?
 
-Requires: outage long enough to hit 12.2V (>~6 hours at 14.5W load on a full 10Ah battery) but short enough to not reach 11.8V. A narrow window. In practice, outages either resolve quickly (well before 12.2V) or last long enough for the BP-65 to cut cleanly. The deadlock requires a specific and somewhat unlikely timing coincidence.
+Requires: outage long enough to hit 12.2V (>~6 hours at 14.5W load on a full 10Ah battery) but short enough to not reach 11.8V. A narrow window. In practice, outages either resolve quickly (well before 12.2V) or last long enough for the BP-65 to cut cleanly.
 
 ---
 
@@ -277,8 +329,9 @@ Requires: outage long enough to hit 12.2V (>~6 hours at 14.5W load on a full 10A
 
 ### Commit 1 — Logic (Current)
 - `sensor.yaml` with filtered voltage and template sensors
+- `scripts.yaml` with `script.ups_graceful_shutdown`
 - `automations.yaml` with all four automations
-- Create helpers in HA UI
+- Create helpers in HA UI (including `input_boolean.ups_test_mode`)
 - Deploy and confirm sensors are reading correctly
 
 ### Hardware Assertion (Before Commit 2)
@@ -287,16 +340,19 @@ Requires: outage long enough to hit 12.2V (>~6 hours at 14.5W load on a full 10A
 - [ ] Disconnect and reconnect 12V DC barrel — confirm clean cold boot
 - [ ] Compare `sensor.ups_battery_voltage_filtered` vs raw ADC in history graph — confirm smoothing visible
 
-### End-to-End Simulation
-- [ ] Switch phone to cellular (XB7 will lose WAN during test)
+### End-to-End Simulation (Test Mode ON)
+- [ ] Set `input_boolean.ups_test_mode` ON
+- [ ] Switch phone to cellular
 - [ ] Unplug Kasa — confirm Phase 1 "Power Outage" notification within 60–65 seconds
+- [ ] Confirm `ups_outage_active` set to ON
 - [ ] Monitor voltage drop — confirm Phase 3 "Critical Battery" notification at 12.2V
-- [ ] Confirm `hassio.host_shutdown` executes (LED goes dark)
+- [ ] Confirm `script.ups_graceful_shutdown` called but HA Green stays running (test mode active)
 - [ ] Replug Kasa — confirm "Power Restored" notification with correct duration
 - [ ] Verify `ups_outage_active` cleared after notification
+- [ ] Set `input_boolean.ups_test_mode` OFF for live deployment
 
 ### Commit 2 — Verified
-- Update `CHANGELOG.md`: move HA automation to `[2026-03-10] — Verified`
+- Update `CHANGELOG.md`: move HA automation to `[2026-03-11] — Verified`
 - Note `hassio.host_shutdown` confirmed on HA Green hardware
 
 ---
@@ -315,9 +371,13 @@ sensor.ups_battery_voltage_filtered
 sensor.ups_estimated_runtime
 sensor.ups_outage_duration
 
+# Script (created by scripts.yaml)
+script.ups_graceful_shutdown
+
 # Helpers (created manually in HA UI)
 input_boolean.ups_outage_active
 input_datetime.ups_outage_start
+input_boolean.ups_test_mode      ← new in v4; turn ON for simulation testing
 
 # Replace with your actual entity IDs:
 switch.kasa_smart_plug_energy_monitoring   # Kasa plug on PSU AC input
