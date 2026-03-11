@@ -19,6 +19,8 @@
 #     Phase 4 condition updated to use or: across both IDs
 #   - Phase 2 timestamp overwrite fixed: ups_outage_start only set when flag is off
 #     preserves original t0 when Phase 1 already fired before voltage hit 12.0V
+#   - Phase 1b voltage condition removed: now a true else-branch, eliminating the
+#     13.0V exact-boundary gap where neither Phase 1 nor Phase 1b would have fired
 #   - Phase 1 / Phase 1b condition logic corrected (static analysis bug fix)
 #     Phase 1b was unreachable: Phase 1 conditions were a superset of Phase 1b.
 #     Fix: added voltage < 13.0V to Phase 1; branches are now mutually exclusive.
@@ -243,17 +245,17 @@ script:
                   Est. runtime: {{ runtime }} min.
 
         # --- PHASE 1b: KASA FLAP ---
-        # Reached only when voltage > 13.0V (PSU still running, not a real outage).
-        # Sends a non-alarmist alert without setting the outage flag.
+        # True else-branch for grid_down + flag=off: fires whenever Phase 1 does not.
+        # Phase 1 requires voltage < 13.0V (real outage); anything at or above 13.0V
+        # falls through here — including exactly 13.0V, eliminating the boundary gap.
+        # No voltage condition needed: the choose: top-to-bottom evaluation makes this
+        # a genuine fallthrough. Monitoring-only — does NOT set the outage flag.
         - conditions:
             - condition: trigger
               id: "grid_down"
             - condition: state
               entity_id: input_boolean.ups_outage_active
               state: "off"
-            - condition: numeric_state
-              entity_id: sensor.ups_battery_voltage_filtered
-              above: 13.0   # PSU running: voltage stays >13.0V; real outage will drop
           sequence:
             - service: notify.mobile_app_your_phone
               data:
