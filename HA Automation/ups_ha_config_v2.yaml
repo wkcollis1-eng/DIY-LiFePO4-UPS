@@ -1,8 +1,16 @@
 # =============================================================================
-# DIY LiFePO4 UPS — Home Assistant Configuration v2
+# DIY LiFePO4 UPS — Home Assistant Configuration v3
 # Repository: wkcollis1-eng/DIY-LiFePO4-UPS
-# Last Updated: 2026-03-10
+# Last Updated: 2026-03-11
 # Status: Commit 1 — Pending Hardware Assertion
+#
+# Changes from v2:
+#   - Phase 1 / Phase 1b condition logic corrected (static analysis bug fix)
+#     Phase 1b was unreachable: Phase 1 conditions were a superset of Phase 1b,
+#     so Phase 1 always fired first in the choose: block regardless of voltage.
+#     Fix: added voltage < 13.0V guard to Phase 1 so the two branches are
+#     mutually exclusive. Real outages drop below PSU float (13.3V) quickly;
+#     Kasa flaps with PSU running stay above 13.0V.
 #
 # Changes from v1:
 #   - Outlier radius corrected 0.15V → 0.04V (validated against ADC dataset)
@@ -147,12 +155,19 @@ template:
     - choose:
 
         # --- PHASE 1: GRID DOWN ---
+        # voltage < 13.0V discriminates a real outage from a Kasa cloud flap:
+        # during a real outage the PSU loses AC and battery voltage drops below
+        # float (13.3V) within seconds. A Kasa flap with PSU still running
+        # keeps voltage above 13.0V — those fall through to Phase 1b instead.
         - conditions:
             - condition: trigger
               id: "grid_down"
             - condition: state
               entity_id: input_boolean.ups_outage_active
               state: "off"
+            - condition: numeric_state
+              entity_id: sensor.ups_battery_voltage_filtered
+              below: 13.0   # Real outage: voltage drops below PSU float (13.3V)
           sequence:
             - service: input_boolean.turn_on
               target:
@@ -169,8 +184,8 @@ template:
                   Grid power lost. Battery at {{ states('sensor.ups_battery_voltage_filtered') }}V.
                   Est. runtime: {{ states('sensor.ups_estimated_runtime') }} min.
 
-        # --- PHASE 1b: KASA FLAP (grid_down but outage already active, or
-        #     grid_down with Shelly still showing normal float voltage) ---
+        # --- PHASE 1b: KASA FLAP ---
+        # Reached only when voltage > 13.0V (PSU still running, not a real outage).
         # Sends a non-alarmist alert so you know Kasa is flapping without
         # triggering false outage logic. Does NOT set the outage flag.
         - conditions:
