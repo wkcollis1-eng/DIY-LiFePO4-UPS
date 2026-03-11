@@ -1,0 +1,658 @@
+# =============================================================================
+# DIY LiFePO4 UPS — Home Assistant Configuration v4
+# Repository: wkcollis1-eng/DIY-LiFePO4-UPS
+# Last Updated: 2026-03-11
+# Status: Commit 1 — Pending Hardware Assertion
+#
+# Changes from v3:
+#   - Test mode switch added (input_boolean.ups_test_mode)
+#     Wraps hassio.host_shutdown (script) and Kasa on/off (inhibit automation)
+#     so the full logic path can be exercised without real hardware consequences.
+#   - Graceful shutdown extracted to script.ups_graceful_shutdown (DRY)
+#     Parameterized: delay_seconds + voltage_threshold; test_mode guard inside.
+#     Phase 2 (15s / 12.0V) and Phase 3 (25s / 12.2V) both call it.
+#   - variables: block added to main automation and temperature automations
+#     Eliminates repeated states() calls inside notification messages.
+#
+# Changes from v2:
+#   - Trigger D/E duplicate id "grid_up" split into grid_up_kasa / grid_up_ha_start
+#     Phase 4 condition updated to use or: across both IDs
+#   - Phase 2 timestamp overwrite fixed: ups_outage_start only set when flag is off
+#     preserves original t0 when Phase 1 already fired before voltage hit 12.0V
+#   - Phase 1 / Phase 1b condition logic corrected (static analysis bug fix)
+#     Phase 1b was unreachable: Phase 1 conditions were a superset of Phase 1b.
+#     Fix: added voltage < 13.0V to Phase 1; branches are now mutually exclusive.
+#
+# Changes from v1:
+#   - Outlier radius corrected 0.15V → 0.04V (validated against ADC dataset)
+#   - Kasa for: increased 30s → 60s (guards against longer cloud/restart flaps)
+#   - Shelly availability guard added to Phase 2 (float(0) = 0V false shutdown)
+#   - PSU failure fallback trigger added (<12.0V with Kasa available)
+#   - Temperature alert >40°C added
+#   - Charge inhibit <0°C added (cuts Kasa plug = stops PSU charging)
+#   - Default branch added (Kasa flap alert without setting outage flag)
+#   - Lovelace UPS card added (see bottom of file)
+# =============================================================================
+
+
+# =============================================================================
+# sensor.yaml
+# =============================================================================
+
+sensor:
+  # ---------------------------------------------------------------------------
+  # Filtered Battery Voltage
+  # Outlier radius 0.04V validated against 391-sample ADC dataset:
+  #   actual noise envelope = 0.06V total, 99% within 0.04V
+  #   step sizes: 0.01V (88%), 0.02V (11%), 0.03V (1%) — pure quantization
+  #   0.04V radius passes all legitimate readings, rejects genuine spikes
+  # ---------------------------------------------------------------------------
+  - platform: filter
+    name: "UPS Battery Voltage Filtered"
+    entity_id: sensor.ups_battery_voltge_ups_battery_voltage_voltmeter
+    filters:
+      - filter: outlier
+        window_size: 4
+        radius: 0.04     # Corrected from 0.15V — matches actual ADC noise floor
+      - filter: time_simple_moving_average
+        window_size: "00:00:30"
+        precision: 2
+
+template:
+  - sensor:
+      # -----------------------------------------------------------------------
+      # Runtime Estimate (step function from voltage)
+      # Values based on 10Ah / 14.5W nominal load / 9Ah usable (11.8–13.2V)
+      # -----------------------------------------------------------------------
+      - name: "UPS Estimated Runtime"
+        unit_of_measurement: "min"
+        unique_id: ups_estimated_runtime
+        availability: "{{ states('sensor.ups_battery_voltage_filtered') not in ['unknown','unavailable'] }}"
+        state: >
+          {% set v = states('sensor.ups_battery_voltage_filtered') | float(0) %}
+          {% if v > 12.8 %} 468
+          {% elif v > 12.5 %} 360
+          {% elif v > 12.3 %} 120
+          {% elif v > 12.2 %} 45
+          {% else %} 10
+          {% endif %}
+        attributes:
+          design_capacity: "10Ah"
+          load_nominal: "14.5W"
+          usable_capacity: "9Ah"
+          voltage_now: "{{ states('sensor.ups_battery_voltage_filtered') }}"
+
+      # -----------------------------------------------------------------------
+      # Outage Duration (live counter — updates while outage_active is on)
+      # -----------------------------------------------------------------------
+      - name: "UPS Outage Duration"
+        unit_of_measurement: "min"
+        unique_id: ups_outage_duration
+        availability: "{{ is_state('input_boolean.ups_outage_active', 'on') }}"
+        state: >
+          {% if is_state('input_boolean.ups_outage_active', 'on') %}
+            {% set start = as_timestamp(states('input_datetime.ups_outage_start')) %}
+            {{ ((as_timestamp(now()) - start) / 60) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+        attributes:
+          formatted: >
+            {% if is_state('input_boolean.ups_outage_active', 'on') %}
+              {% set s = (as_timestamp(now()) - as_timestamp(states('input_datetime.ups_outage_start'))) | int %}
+              {{ (s // 3600) }}h {{ ((s % 3600) // 60) }}m
+            {% else %}
+              --
+            {% endif %}
+
+
+# =============================================================================
+# scripts.yaml
+# =============================================================================
+
+script:
+  ups_graceful_shutdown:
+    alias: "UPS: Graceful Shutdown"
+    description: >
+      Parameterized graceful shutdown sequence. Called by Phase 2 (15s / 12.0V)
+      and Phase 3 (25s / 12.2V). Test mode guard here is the single control
+      point — set input_boolean.ups_test_mode ON to run full logic dry.
+    mode: single
+    fields:
+      delay_seconds:
+        description: "Pre-shutdown wait in seconds (HA Green disk sync buffer)"
+        default: 25
+      voltage_threshold:
+        description: "Re-check threshold — abort if voltage recovers above this (V)"
+        default: 12.2
+    sequence:
+      # Buffer for HA Green disk sync (observed 12–18s; 25s default for Stage 1)
+      - delay:
+          seconds: "{{ delay_seconds | int }}"
+
+      # Re-check: abort if voltage recovered during the delay
+      - condition: numeric_state
+        entity_id: sensor.ups_battery_voltage_filtered
+        below: "{{ voltage_threshold | float }}"
+
+      # Test mode guard — single point of control for all shutdown paths
+      # Set input_boolean.ups_test_mode ON to exercise full logic without
+      # actually powering down hardware.
+      - condition: state
+        entity_id: input_boolean.ups_test_mode
+        state: "off"
+
+      # ASSERT BEFORE COMMIT 2: Developer Tools → Services → hassio.host_shutdown
+      # Confirm: HA Green LED goes completely dark; DC power cycle → clean cold boot
+      - service: hassio.host_shutdown
+
+
+# =============================================================================
+# automations.yaml
+# =============================================================================
+
+# --- MAIN UPS CONTROL LOOP ---
+- alias: "UPS: Power Outage Management"
+  description: >
+    Two-stage LVD: HA graceful shutdown at 12.2V (Stage 1), Victron BP-65
+    hardware disconnect at 11.8V (Stage 2). PSU failure fallback at 12.0V.
+    Recovery waits for Kasa heartbeat + battery >12.8V (BP-65 reconnect).
+    Shutdown routed through script.ups_graceful_shutdown (test mode aware).
+    Known edge case: deadlock state — see docs/operational-notes.md.
+  mode: restart
+
+  trigger:
+    # Trigger A: Grid Lost — Kasa plug offline
+    # 60s filter guards against: HA restarts, Kasa cloud blips, router hiccups
+    # Most Kasa false-unavailable events resolve within 30–45s
+    - platform: state
+      entity_id: switch.kasa_smart_plug_energy_monitoring   # ← replace with your entity ID
+      to: "unavailable"
+      id: "grid_down"
+      for:
+        seconds: 60
+
+    # Trigger B: Low Battery — Stage 1 LVD
+    # Requires outage_active + Shelly available — prevents float(0)=0V false shutdown
+    - platform: numeric_state
+      entity_id: sensor.ups_battery_voltage_filtered
+      below: 12.2
+      id: "low_battery"
+      for:
+        minutes: 1
+
+    # Trigger C: PSU Failure Fallback
+    # Fires if voltage drops below 12.0V even when Kasa shows online.
+    # Covers: PSU internal failure, blown F1/F2 fuse, ideal diode failure.
+    # 30s confirmation — at 12.0V there is <20 min to BP-65 cutoff.
+    - platform: numeric_state
+      entity_id: sensor.ups_battery_voltage_filtered
+      below: 12.0
+      id: "psu_failure"
+      for:
+        seconds: 30
+
+    # Trigger D: Grid Restored — Kasa back online
+    - platform: state
+      entity_id: switch.kasa_smart_plug_energy_monitoring
+      from: "unavailable"
+      id: "grid_up_kasa"
+
+    # Trigger E: HA Startup — catches recovery after hardware shutdown
+    - platform: homeassistant
+      event: start
+      id: "grid_up_ha_start"
+
+  variables:
+    # Captured once at trigger time — used in notification messages.
+    # Do NOT use these in Phase 4 recovery (voltage is read after a 10-min wait).
+    voltage: "{{ states('sensor.ups_battery_voltage_filtered') }}"
+    runtime: "{{ states('sensor.ups_estimated_runtime') }}"
+
+  action:
+    - choose:
+
+        # --- PHASE 1: GRID DOWN ---
+        # voltage < 13.0V discriminates a real outage from a Kasa cloud flap:
+        # during a real outage the PSU loses AC and battery voltage drops below
+        # float (13.3V) within seconds. A Kasa flap with PSU still running
+        # keeps voltage above 13.0V — those fall through to Phase 1b instead.
+        - conditions:
+            - condition: trigger
+              id: "grid_down"
+            - condition: state
+              entity_id: input_boolean.ups_outage_active
+              state: "off"
+            - condition: numeric_state
+              entity_id: sensor.ups_battery_voltage_filtered
+              below: 13.0   # Real outage: voltage drops below PSU float (13.3V)
+          sequence:
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.ups_outage_active
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: input_datetime.ups_outage_start
+              data:
+                timestamp: "{{ as_timestamp(now()) }}"
+            - service: notify.mobile_app_your_phone
+              data:
+                title: "⚠️ UPS: Power Outage"
+                message: >
+                  Grid power lost. Battery at {{ voltage }}V.
+                  Est. runtime: {{ runtime }} min.
+
+        # --- PHASE 1b: KASA FLAP ---
+        # Reached only when voltage > 13.0V (PSU still running, not a real outage).
+        # Sends a non-alarmist alert without setting the outage flag.
+        - conditions:
+            - condition: trigger
+              id: "grid_down"
+            - condition: state
+              entity_id: input_boolean.ups_outage_active
+              state: "off"
+            - condition: numeric_state
+              entity_id: sensor.ups_battery_voltage_filtered
+              above: 13.0   # PSU running: voltage stays >13.0V; real outage will drop
+          sequence:
+            - service: notify.mobile_app_your_phone
+              data:
+                title: "ℹ️ UPS: Kasa Offline (Monitoring)"
+                message: >
+                  Kasa plug offline 60s but battery at {{ voltage }}V —
+                  likely a Wi-Fi flap, not a real outage. Watching.
+
+        # --- PHASE 2: PSU FAILURE FALLBACK ---
+        # Fires when voltage <12.0V even with Kasa online.
+        # Covers: PSU failure, blown fuse, ideal diode failure.
+        # Timestamp guard: only sets ups_outage_start if the flag is currently off.
+        # If Phase 1 already fired (flag on, t0 already recorded), the original
+        # start time is preserved so Phase 4 reports the correct total duration.
+        - conditions:
+            - condition: trigger
+              id: "psu_failure"
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: sensor.ups_battery_voltage_filtered
+                  state: "unavailable"
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: sensor.ups_battery_voltage_filtered
+                  state: "unknown"
+          sequence:
+            # Only record flag + timestamp if this is the first outage event.
+            # If Phase 1 already fired, the flag is on and t0 is already set — leave it.
+            - choose:
+                - conditions:
+                    - condition: state
+                      entity_id: input_boolean.ups_outage_active
+                      state: "off"
+                  sequence:
+                    - service: input_boolean.turn_on
+                      target:
+                        entity_id: input_boolean.ups_outage_active
+                    - service: input_datetime.set_datetime
+                      target:
+                        entity_id: input_datetime.ups_outage_start
+                      data:
+                        timestamp: "{{ as_timestamp(now()) }}"
+              default: []   # Flag already on — preserve original t0, proceed to shutdown
+            - service: notify.mobile_app_your_phone
+              data:
+                title: "🚨 UPS: PSU FAILURE or Critical Battery"
+                message: >
+                  Voltage {{ voltage }}V with grid present.
+                  Possible PSU failure or fuse fault. Initiating emergency shutdown.
+            - service: script.ups_graceful_shutdown
+              data:
+                delay_seconds: 15      # Shorter: at 12.0V there is <20 min to BP-65
+                voltage_threshold: 12.0
+
+        # --- PHASE 3: LOW BATTERY — Stage 1 LVD (Graceful Shutdown) ---
+        - conditions:
+            - condition: trigger
+              id: "low_battery"
+            - condition: state
+              entity_id: input_boolean.ups_outage_active
+              state: "on"
+            # CRITICAL: Guard against Shelly unavailable → float(0) = 0V false trigger
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: sensor.ups_battery_voltage_filtered
+                  state: "unavailable"
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: sensor.ups_battery_voltage_filtered
+                  state: "unknown"
+          sequence:
+            - service: notify.mobile_app_your_phone
+              data:
+                title: "🛑 UPS: Critical Battery"
+                message: >
+                  Voltage {{ voltage }}V < 12.2V.
+                  Graceful shutdown in 25s. BP-65 hard cutoff at 11.8V.
+            - service: script.ups_graceful_shutdown
+              data:
+                delay_seconds: 25      # HA Green disk sync buffer (observed 12–18s)
+                voltage_threshold: 12.2
+
+        # --- PHASE 4: RECOVERY (Nominal) ---
+        # Fires on Kasa restore (D) OR HA startup (E) — both indicate grid/system up.
+        # Two distinct IDs used (grid_up_kasa / grid_up_ha_start) per HA recommendation;
+        # duplicate IDs work functionally but confuse the trace debugger.
+        - conditions:
+            - condition: or
+              conditions:
+                - condition: trigger
+                  id: "grid_up_kasa"
+                - condition: trigger
+                  id: "grid_up_ha_start"
+            - condition: state
+              entity_id: input_boolean.ups_outage_active
+              state: "on"
+          sequence:
+            # Step 1: Wait for Kasa + modem to re-establish WAN
+            # XB7 is on UPS so it doesn't cold boot — just needs WAN reconnect (~60–90s)
+            - wait_template: "{{ not is_state('switch.kasa_smart_plug_energy_monitoring', 'unavailable') }}"
+              timeout: "00:02:00"
+              continue_on_timeout: false   # Fail-secure: halt if Kasa never returns
+
+            # Step 2: Wait for battery to reach BP-65 Setting 7 reconnect threshold (12.8V)
+            # From 11.8V at HDR-60-12 charge rate → 12.8V typically <10 min
+            - wait_template: "{{ states('sensor.ups_battery_voltage_filtered') | float(0) > 12.8 }}"
+              timeout: "00:10:00"
+              continue_on_timeout: false   # Fail-secure: no false "Restored" on PSU fault
+
+            # Step 3: Buffer for BP-65 30s internal reconnect delay + device stabilization
+            - delay: "00:00:45"
+
+            - service: notify.mobile_app_your_phone
+              data:
+                title: "✅ UPS: Power Restored"
+                message: >
+                  {% set duration = (as_timestamp(now()) - as_timestamp(states('input_datetime.ups_outage_start'))) | int %}
+                  Grid is back. Total outage: {{ (duration // 3600) }}h {{ ((duration % 3600) // 60) }}m.
+                  Battery: {{ states('sensor.ups_battery_voltage_filtered') }}V.
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.ups_outage_active
+
+      # Default branch — catches any trigger combination not matched above
+      # Silently does nothing (no spurious actions on unmatched grid_up events)
+      default: []
+
+
+# --- TEMPERATURE: HIGH BATTERY ALERT ---
+- alias: "UPS: High Battery Temperature Alert"
+  description: "Alerts if battery temperature exceeds 40°C for 5 minutes"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.ups_battery_voltge_ups_temperature_temperature
+      above: 40
+      for:
+        minutes: 5
+  variables:
+    temp: "{{ states('sensor.ups_battery_voltge_ups_temperature_temperature') }}"
+    voltage: "{{ states('sensor.ups_battery_voltage_filtered') }}"
+  action:
+    - service: notify.mobile_app_your_phone
+      data:
+        title: "🔥 UPS: High Battery Temperature"
+        message: >
+          Battery temperature {{ temp }}°C exceeds 40°C threshold.
+          Check enclosure ventilation.
+          Battery voltage: {{ voltage }}V.
+
+
+# --- TEMPERATURE: CHARGE INHIBIT (BELOW FREEZING) ---
+- alias: "UPS: Low Temperature Charge Inhibit"
+  description: >
+    LiFePO4 charging below 0°C causes lithium plating and permanent capacity loss.
+    Cuts the PSU via Kasa plug to stop charging. Restores when temp >5°C (hysteresis).
+    NOTE: Loads remain on battery during inhibit. Monitor battery voltage.
+    Test mode blocks Kasa on/off — logic and notifications still run normally.
+  mode: single
+  trigger:
+    # Inhibit: temp drops below 0°C
+    - platform: numeric_state
+      entity_id: sensor.ups_battery_voltge_ups_temperature_temperature
+      below: 0
+      id: "too_cold"
+      for:
+        minutes: 2   # Confirm it's not a transient sensor reading
+    # Restore: temp recovers above 5°C (hysteresis prevents rapid cycling)
+    - platform: numeric_state
+      entity_id: sensor.ups_battery_voltge_ups_temperature_temperature
+      above: 5
+      id: "warm_enough"
+      for:
+        minutes: 2
+  variables:
+    temp: "{{ states('sensor.ups_battery_voltge_ups_temperature_temperature') }}"
+    voltage: "{{ states('sensor.ups_battery_voltage_filtered') }}"
+  action:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: "too_cold"
+          sequence:
+            - service: notify.mobile_app_your_phone
+              data:
+                title: "🧊 UPS: Charge Inhibited — Too Cold"
+                message: >
+                  Battery temp {{ temp }}°C below 0°C.
+                  PSU disabled to prevent lithium plating.
+                  Will restore when temp >5°C. Battery at {{ voltage }}V.
+            # Test mode guard: notify always fires; Kasa cutoff blocked during testing
+            - condition: state
+              entity_id: input_boolean.ups_test_mode
+              state: "off"
+            - service: switch.turn_off
+              target:
+                entity_id: switch.kasa_smart_plug_energy_monitoring
+
+        - conditions:
+            - condition: trigger
+              id: "warm_enough"
+            # Only restore if we actually inhibited (Kasa is off)
+            - condition: state
+              entity_id: switch.kasa_smart_plug_energy_monitoring
+              state: "off"
+          sequence:
+            - service: notify.mobile_app_your_phone
+              data:
+                title: "✅ UPS: Charge Restored — Temperature OK"
+                message: >
+                  Battery temp {{ temp }}°C above 5°C.
+                  PSU re-enabled. Battery at {{ voltage }}V.
+            # Test mode guard: notify always fires; Kasa restore blocked during testing
+            - condition: state
+              entity_id: input_boolean.ups_test_mode
+              state: "off"
+            - service: switch.turn_on
+              target:
+                entity_id: switch.kasa_smart_plug_energy_monitoring
+
+
+# --- WATCHDOG: STALE FLAG RECOVERY ---
+- alias: "UPS: Reset Stale Outage Flag"
+  description: >
+    If ups_outage_active stays on for 4+ hours with grid present and battery
+    healthy, a recovery sequence timed out and left the flag stuck. Clears it
+    and notifies. Without this, all future outage events go untracked.
+  mode: restart
+  trigger:
+    - platform: state
+      entity_id: input_boolean.ups_outage_active
+      to: "on"
+      for:
+        hours: 4
+  condition:
+    # Grid present (plug reachable, regardless of on/off state)
+    - condition: not
+      conditions:
+        - condition: state
+          entity_id: switch.kasa_smart_plug_energy_monitoring
+          state: "unavailable"
+    # Battery recovered — don't clear flag if still in danger zone
+    - condition: numeric_state
+      entity_id: sensor.ups_battery_voltage_filtered
+      above: 12.6
+  action:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.ups_outage_active
+    - service: notify.mobile_app_your_phone
+      data:
+        title: "⚠️ UPS: Stale Flag Cleared"
+        message: "Outage flag stuck 4+ hours with grid present. Investigate hardware state."
+
+
+# =============================================================================
+# Lovelace Dashboard Card (ui-lovelace.yaml or paste into dashboard editor)
+# =============================================================================
+#
+# type: vertical-stack
+# title: DIY LiFePO4 UPS
+# cards:
+#
+#   # --- Status Row ---
+#   - type: glance
+#     title: UPS Status
+#     entities:
+#       - entity: input_boolean.ups_outage_active
+#         name: Outage Active
+#       - entity: input_boolean.ups_test_mode
+#         name: Test Mode
+#       - entity: sensor.ups_battery_voltage_filtered
+#         name: Battery Voltage
+#       - entity: sensor.ups_estimated_runtime
+#         name: Est. Runtime (min)
+#       - entity: sensor.ups_outage_duration
+#         name: Outage Duration (min)
+#       - entity: sensor.ups_battery_voltge_ups_temperature_temperature
+#         name: Battery Temp °C
+#       - entity: switch.kasa_smart_plug_energy_monitoring
+#         name: PSU (Kasa)
+#
+#   # --- Voltage History Graph ---
+#   - type: history-graph
+#     title: Battery Voltage (Filtered)
+#     hours_to_show: 24
+#     refresh_interval: 30
+#     entities:
+#       - entity: sensor.ups_battery_voltage_filtered
+#         name: Voltage (V)
+#       - entity: sensor.ups_battery_voltge_ups_battery_voltage_voltmeter
+#         name: Raw ADC (V)
+#
+#   # --- Temperature History Graph ---
+#   - type: history-graph
+#     title: Battery Temperature
+#     hours_to_show: 24
+#     entities:
+#       - entity: sensor.ups_battery_voltge_ups_temperature_temperature
+#         name: Temp (°C)
+#
+#   # --- Threshold Reference Card ---
+#   - type: markdown
+#     title: UPS Thresholds
+#     content: |
+#       | Threshold | Voltage | Action |
+#       |---|---|---|
+#       | PSU Float | 13.3V | Normal operation |
+#       | Stage 1 LVD | 12.2V | HA graceful shutdown |
+#       | PSU Failure | 12.0V | Emergency shutdown |
+#       | BP-65 Reconnect | 12.8V | Loads restored |
+#       | Stage 2 LVD | 11.8V | BP-65 hard cutoff |
+#       | Temp Inhibit | <0°C | PSU disabled |
+#       | Temp Alert | >40°C | Check ventilation |
+#
+#
+# =============================================================================
+# Required Helpers (Settings → Devices & Services → Helpers)
+# =============================================================================
+#
+#   input_boolean.ups_outage_active
+#     Type: Toggle
+#     Purpose: Tracks active outage; guards Phase 1 against timer resets
+#
+#   input_datetime.ups_outage_start
+#     Type: Date and Time
+#     Purpose: Outage timestamp; persists through hardware shutdown
+#
+#   input_boolean.ups_test_mode
+#     Type: Toggle
+#     Purpose: Dry-run gate — blocks hassio.host_shutdown and Kasa on/off
+#              while allowing all notifications and logic to run normally.
+#              Turn ON before simulation testing; turn OFF before live deployment.
+#              Default: OFF
+#
+# =============================================================================
+# Entity IDs to Confirm Before Deployment
+# =============================================================================
+#
+#   switch.kasa_smart_plug_energy_monitoring     → your Kasa entity ID
+#   notify.mobile_app_your_phone                 → your notify target
+#   sensor.ups_battery_voltge_ups_battery_voltage_voltmeter  → confirm in HA developer tools
+#   sensor.ups_battery_voltge_ups_temperature_temperature → confirm in HA developer tools
+#
+# =============================================================================
+# Kasa Reliability Notes
+# =============================================================================
+#
+# Kasa plugs frequently show "unavailable" in HA during:
+#   - HA restarts (Kasa integration re-polls on startup, may take 30–90s)
+#   - Kasa cloud service hiccups (independent of local power state)
+#   - Router DHCP lease renewals
+#
+# Mitigations in this config:
+#   1. for: 60s on grid_down trigger (most flaps resolve within 45s)
+#   2. Phase 1b monitoring alert — notifies without setting outage flag
+#      when Kasa goes offline but voltage stays >13.0V (PSU still running)
+#   3. PSU failure fallback trigger — catches real problems when Kasa is
+#      incorrectly showing online during an actual outage
+#
+# Optional additional hardening (not implemented here):
+#   - Enable local Kasa control via python-kasa to reduce cloud dependency
+#   - Add a ping binary_sensor to router as secondary grid indicator
+#
+# =============================================================================
+# Shelly Unavailability Notes
+# =============================================================================
+#
+# Shelly Plus Uni may show "unavailable" during:
+#   - HA restarts (integration re-poll delay)
+#   - Shelly firmware updates
+#   - 2.4GHz WiFi interference
+#
+# Risk: sensor.ups_battery_voltage_filtered defaults to float(0) = 0.0V
+# when Shelly is unavailable. Without guards, this fires low_battery
+# immediately on Shelly reconnect during normal AC-on operation.
+#
+# Mitigation in this config:
+#   Phase 2 and Phase 3 both include explicit availability conditions blocking
+#   execution when the filtered sensor is unavailable or unknown.
+#
+# =============================================================================
+# Known Edge Case: The Deadlock State
+# =============================================================================
+#
+# Trigger: Outage drops voltage below 12.2V → HA shuts down, but AC
+#          restores before battery hits 11.8V BP-65 cutoff.
+#
+# State: HA Green hardware powered but OS halted. PSU resumes charging.
+#        HA never boots. No automation runs. "Zombie" state.
+#
+# Manual Recovery via Kasa app (cellular, not WiFi):
+#   1. Turn Kasa plug OFF
+#   2. Wait 10–20 min for battery to drain to 11.8V (BP-65 cuts loads)
+#   3. Turn Kasa plug ON
+#   4. BP-65 reconnects at 12.8V → HA Green cold boots cleanly
+#
+# =============================================================================
