@@ -73,7 +73,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 
 **Mode 5 — AC Restoration:** PSU resumes 13.3V, ideal diode switches source, BP-65 reconnects after 30s hold-off.
 
-![System Architecture](assets/lifepo4_discharge_curve.png)
+![System Architecture](assets/lifepo4 discharge curve.png)
 
 ---
 
