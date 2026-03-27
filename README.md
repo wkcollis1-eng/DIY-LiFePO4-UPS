@@ -5,15 +5,15 @@
 **12V LiFePO4-Based Uninterruptible Power Supply**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Build%20Pending-yellow.svg)](#status)
-[![Runtime](https://img.shields.io/badge/Runtime-8.2%20hours-green.svg)](#measured-performance)
+[![Status](https://img.shields.io/badge/Status-Complete-green.svg)](#status)
+[![Runtime](https://img.shields.io/badge/Runtime-7.8%20hours-green.svg)](#measured-performance)
 [![Switchover](https://img.shields.io/badge/Switchover-%3C1ms-brightgreen.svg)](#key-specifications)
 
 </div>
 
 A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Green and Xfinity XB7 cable modem running during grid outages. Built into an IP65 enclosure with Home Assistant monitoring via Shelly Plus Uni.
 
-> **Honest context:** A $85 APC BE600M1 would do the same job out of the box. This build costs roughly the same over 10 years as that option (based on battery replacements and electricity usage). The engineering rationale — longer battery life, faster switchover, direct HA integration, no DC-DC converter voltage regulation — is documented in [design-rationale.md](docs/design-rationale.md). Build this if those tradeoffs matter to you.
+> **Honest context:** A $85 APC BE600M1 provides comparable backup capability. This build costs roughly the same over 10 years as that option (based on battery replacements and electricity usage). The engineering rationale — longer battery life, faster switchover, direct HA integration, no DC-DC converter voltage regulation — is documented in [design-rationale.md](docs/design-rationale.md). Build this if those tradeoffs matter to you.
 
 ---
 
@@ -25,7 +25,7 @@ A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Gr
 - ✅ **Disconnect AC power** before any work inside the enclosure
 - ✅ Use appropriate **fusing** on battery connections
 - ✅ Never charge LiFePO4 below **0°C (32°F)**
-- ✅ Keep a **Class D fire extinguisher** accessible
+- ✅ Keep a **Class B or ABC fire extinguisher** accessible
 - ✅ Review [docs/safety.md](docs/safety.md) before building
 
 **Disclaimer:** Information provided for educational purposes only. Build at your own risk.
@@ -82,7 +82,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 
 ![Component Layout](assets/UPS_Layout_with_12_Volt_Regulator.png)
 
-*Elevation (top) and plan (bottom) views of LeMotech junction box. Dimensions in inches.*
+*Elevation (top) and plan (bottom) views of LeMotech junction box. Interior Dimensions in inches.*
 ---
 ## Assembly Pictures
 
