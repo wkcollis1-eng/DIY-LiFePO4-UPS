@@ -34,6 +34,23 @@ A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Gr
 ## Commissioning Results
 
 ![Commissioning Results](assets/Commissioning_Results_2026_03_26.png)
+
+The chart records a full two-cycle discharge test performed March 25–26, 2026 using a
+Netgear R6400 router (~7W DC) as a substitute load, with battery voltage logged via the
+Shelly Plus Uni at 5-second intervals.
+
+**Discharge 1 (7.76h):** Voltage held the characteristic LiFePO4 flat plateau from 13.2V
+to 13.0V over 7.76 hours — a drop of only 0.2V at light load, confirming textbook cell
+behavior. **Recharge (10.1h):** AC restored; PSU returned the battery to float within
+minutes, peaking at 13.28V and holding stable through a 10-hour recharge window.
+**Discharge 2 (9.36h):** A second full discharge ran the battery to LVD cutoff. The
+Victron BP-65 tripped at **11.77V** — within 0.03V of the 11.8V design target —
+confirming protection circuit accuracy. Post-LVD OCV rebound to 12.13V confirms healthy
+cell chemistry with no permanent capacity loss from the deep discharge.
+
+Key findings: discharge plateau variance under 0.2%/hr; BP-65 cutoff accuracy ±0.03V;
+internal resistance ~260mΩ at low SoC (derived from OCV recovery); bulk recharge from
+12.9V to 13.2V completed in under 12 minutes after AC restoration.
 ---
 ## System Overview
 
