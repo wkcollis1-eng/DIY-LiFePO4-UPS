@@ -29,10 +29,11 @@ sensor.ups_battery_voltge_ups_temperature_temperature     ← DS18B20 temp
 
 To fix the typo: rename the device in the Shelly app → update entity ID in HA Settings → Entity Registry. Not required for function.
 
-# Confirmed entity IDs:
-switch.ups_outlet                                         # Confirmed wntity ID for Kasa plug on PSU AC input
-notify.mobile_app_bills_iphone                            # mobile notify target
----
+## Confirmed Entity IDs:
+```
+switch.ups_outlet                     ←Confirmed entity ID for Kasa plug on PSU AC input
+notify.mobile_app_bills_iphone        ←mobile notify target
+```
 
 ## Files in This Directory
 
@@ -366,6 +367,10 @@ Requires: outage long enough to hit 12.2V (>~6 hours at 14.5W load on a full 10A
 # Shelly sensors (confirmed)
 sensor.ups_battery_voltge_ups_battery_voltage_voltmeter   # raw ADC voltage
 sensor.ups_battery_voltge_ups_temperature_temperature     # DS18B20 temperature
+
+# Entity IDs:
+switch.ups_outlet                     ←Confirmed entity ID for Kasa plug on PSU AC input
+notify.mobile_app_bills_iphone        ←mobile notify target
 
 # Filtered sensor (created by sensor.yaml)
 sensor.ups_battery_voltage_filtered
