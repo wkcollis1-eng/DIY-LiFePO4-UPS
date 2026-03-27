@@ -121,7 +121,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 - [x] Design complete
 - [x] Components specified
 - [x] Components ordered / received
-- [ ] Build complete
+- [x] Build complete
 - [x] XB7 power measurement complete (14.7W avg, 20.3W peak — 1.066 kWh / 72.4 hr standalone)
 - [x] Combined system power measurement complete (16.0W avg, 23.0W peak — 2.538 kWh / 158.8 hr)
 - [ ] Home Assistant automation documentation
