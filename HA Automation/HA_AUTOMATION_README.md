@@ -29,6 +29,9 @@ sensor.ups_battery_voltge_ups_temperature_temperature     ← DS18B20 temp
 
 To fix the typo: rename the device in the Shelly app → update entity ID in HA Settings → Entity Registry. Not required for function.
 
+# Confirmed entity IDs:
+switch.ups_outlet                          # Confirmed wntity ID for Kasa plug on PSU AC input
+notify.mobile_app_bills_iphone             # mobile notify target
 ---
 
 ## Files in This Directory
@@ -379,9 +382,7 @@ input_boolean.ups_outage_active
 input_datetime.ups_outage_start
 input_boolean.ups_test_mode      ← new in v4; turn ON for simulation testing
 
-# Replace with your actual entity IDs:
-switch.kasa_smart_plug_energy_monitoring   # Kasa plug on PSU AC input
-notify.mobile_app_your_phone               # mobile notify target
+
 ```
 
 Note: `ups_battery_voltge` has a typo (missing 'a') from the original Shelly device name. Entity IDs are correct as shown — do not "fix" the spelling without also updating the entity registry in HA.
