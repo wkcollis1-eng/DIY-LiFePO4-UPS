@@ -30,8 +30,8 @@ sensor.ups_battery_voltge_ups_temperature_temperature     ← DS18B20 temp
 To fix the typo: rename the device in the Shelly app → update entity ID in HA Settings → Entity Registry. Not required for function.
 
 # Confirmed entity IDs:
-switch.ups_outlet                          # Confirmed wntity ID for Kasa plug on PSU AC input
-notify.mobile_app_bills_iphone             # mobile notify target
+switch.ups_outlet                                         # Confirmed wntity ID for Kasa plug on PSU AC input
+notify.mobile_app_bills_iphone                            # mobile notify target
 ---
 
 ## Files in This Directory
