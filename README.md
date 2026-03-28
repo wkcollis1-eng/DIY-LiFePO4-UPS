@@ -123,6 +123,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 | [docs/voltage-drop-analysis.md](docs/voltage-drop-analysis.md) | Wiring resistance and voltage drop calculations |
 | [docs/supplemental-analysis.md](docs/supplemental-analysis.md) | Thermal Analysis & Enclosure Heat Budget, Runtime Analysis, Failure Modes & Effects Analysis (FMEA) |
 | [docs/design-specification.md](docs/design-specification.md) | Formal requirements, design decisions, and verification matrix |
+| [docs/commissioning.md](docs/commissioning.md) | System commissioning process and results |
 
 ## Datasheets
 
