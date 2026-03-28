@@ -102,7 +102,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 ![Component Layout](assets/UPS_Layout_with_12_Volt_Regulator.png)
 
 *Elevation (top) and plan (bottom) views of LeMotech junction box. Interior Dimensions in inches.*
----
+
 ## Assembly Pictures
 
 ![Assembly Pics](assets/IMG_1907.jpeg)
