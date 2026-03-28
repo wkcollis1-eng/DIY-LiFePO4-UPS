@@ -124,10 +124,11 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 | [docs/supplemental-analysis.md](docs/supplemental-analysis.md) | Thermal Analysis & Enclosure Heat Budget, Runtime Analysis, Failure Modes & Effects Analysis (FMEA) |
 | [docs/design-specification.md](docs/design-specification.md) | Formal requirements, design decisions, and verification matrix |
 | [docs/commissioning.md](docs/commissioning.md) | System commissioning process and results |
+| [docs/Final_As_Built_Performance_&_Cost_Summary.md](docs/Final_As_Built_Performance_&_Cost_Summary.md) | Final As-Built Performance & Cost Summary |
 
 ## Datasheets
 
-- [Mean Well HDR-60-12](https://www.meanwell.com/Upload/PDF/HDR-60/HDR-60-SPEC.PDF)
+- [Mean Well HDR-60-12 - Datasheet](https://www.meanwell.com/Upload/PDF/HDR-60/HDR-60-SPEC.PDF)
 - [Victron Smart BatteryProtect BP-65 — Datasheet](https://www.victronenergy.com/upload/documents/Datasheet-Smart-Battery-Protect-65-A--100-A--220-A-EN.pdf)
 - [Victron Smart BatteryProtect — Manual](https://www.victronenergy.com/upload/documents/Smart_BatteryProtect_12V_24V/114439-Smart_BatteryProtect-pdf-en.pdf)
 - [Shelly Plus Uni — Manual](https://kb.shelly.cloud/__attachments/176816159/Shelly%20Plus%20UNI%20multilingual%20printed%20user%20and%20safety%20guide.pdf?inst-v=01957c23-55ef-41a3-8fc1-d834919282d1)
