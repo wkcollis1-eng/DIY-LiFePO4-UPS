@@ -5,7 +5,7 @@
 **12V LiFePO4-Based Uninterruptible Power Supply**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Complete-green.svg)](#status)
+[![Status](https://img.shields.io/badge/Status-Operational-green.svg)](#status)
 [![Runtime](https://img.shields.io/badge/Runtime-7.8%20hours-green.svg)](#measured-performance)
 [![Switchover](https://img.shields.io/badge/Switchover-%3C1ms-brightgreen.svg)](#key-specifications)
 
