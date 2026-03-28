@@ -1,4 +1,3 @@
-This revised version incorporates your requested terminology changes to enhance the professional tone of the report.
 
 ***
 
@@ -8,7 +7,7 @@ This revised version incorporates your requested terminology changes to enhance 
 **Status:** Validated & Deployed
 
 ## Executive Summary
-Following 18+ hours of continuous full-load operation in its permanent 2nd-floor bedroom location, the DIY LiFePO4 UPS has been fully validated. The system currently supports an Xfinity XB7 modem and a Home Assistant Green hub. All thermal, electrical, and efficiency metrics align precisely with the original engineering models.
+Following 18+ hours of continuous full-load operation in its permanent 2nd-floor location, the DIY LiFePO4 UPS has been fully validated. The system currently supports an Xfinity XB7 modem and a Home Assistant Green hub. All thermal, electrical, and efficiency metrics align precisely with the original engineering models.
 
 ---
 
