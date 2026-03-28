@@ -48,9 +48,11 @@ Victron BP-65 tripped at **11.77V** — within 0.03V of the 11.8V design target 
 confirming protection circuit accuracy. Post-LVD OCV rebound to 12.13V confirms healthy
 cell chemistry with no permanent capacity loss from the deep discharge.
 
-Key findings: discharge plateau variance under 0.2%/hr; BP-65 cutoff accuracy ±0.03V;
-internal resistance ~260mΩ at low SoC (derived from OCV recovery); bulk recharge from
-12.9V to 13.2V completed in under 12 minutes after AC restoration.
+Key findings: 
+- Discharge plateau variance under 0.2%/hr
+- BP-65 cutoff accuracy ±0.03V
+- Internal resistance ~260mΩ at low SoC (derived from OCV recovery) 
+- Bulk recharge from 12.9V to 13.2V completed in under 12 minutes after AC restoration
 ---
 ## System Overview
 
