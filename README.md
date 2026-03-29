@@ -31,6 +31,35 @@ A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Gr
 **Disclaimer:** Information provided for educational purposes only. Build at your own risk.
 
 ---
+## Performance Summary
+
+**Validated Runtime:** **4.25 hours** to software shutdown (12.2V) and **~4.3 hours** to hardware LVD (11.8V) under a sustained **14.5W** load.
+
+### Key Finding
+The UPS delivers a reliable **~4.3 hours** of runtime at typical HA Green loads. This is **~55%** of the theoretical maximum capacity of the 10Ah LiFePO4 battery. 
+
+This result is **not** due to battery degradation, measurement error, or software issues. It is a direct consequence of the **single-rail 13.3V CV architecture**.
+
+### Why the Runtime is Limited
+The system uses a single shared rail for both charging and load. To keep the voltage safe for the connected equipment, charging is capped at 13.3V. This restricts the battery to approximately **65–75% SOC** and prevents proper absorption charging at 14.4V. As a result, the top ~25–35% of the battery’s rated capacity is never accessible.
+
+### Discharge Characteristics
+- Extremely flat voltage plateau from 13.0V down to 12.8V (delivers the majority of usable energy)
+- Sharp “cliff” begins at **~12.45V**, after which voltage drops rapidly
+- 12.4V warning provides an effective “immediate action” alert (~5–6 minutes before shutdown)
+
+### Conclusion
+The system performs exactly as designed. The layered protection (voltage warnings → automated shutdown → BP-65 hardware LVD) is robust and safe. 
+
+**Current validated specification:** ~4.3 hours runtime at 14.5W under the existing single-rail topology.  
+
+A two-stage charging architecture (dedicated 14.4V charger + DC-DC regulator) would be required to approach the full ~7.8–8.5 hour theoretical runtime.
+
+Report and Data can be found at 
+
+Last validated: March 2026 (Test D3)
+
+---
 ## Commissioning Results
 
 ![Commissioning Results](assets/Commissioning_Results_2026_03_26.png)
