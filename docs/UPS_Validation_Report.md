@@ -25,12 +25,15 @@ The following table represents the validated behavior of the battery under a **1
 | Phase | Voltage Range | Duration | Drop Rate | Engineering Note |
 | :--- | :--- | :--- | :--- | :--- |
 | **Settling** | $13.27\text{V} \rightarrow 13.00\text{V}$ | $8 \text{ min}$ | $18 \text{ mV/min}$ | Surface charge depletion. |
-| **Plateau** | $13.00\text{V} \rightarrow 12.80\text{V}$ | $146 \text{ min}$ | $1.4 \text{ mV/min}$ | Bulk energy delivery zone. |
-| **Knee** | $12.80\text{V} \rightarrow 12.45\text{V}$ | $81 \text{ min}$ | $4.2 \text{ mV/min}$ | Extended transition; 3x rate increase. |
-| **Cliff** | $12.45\text{V} \rightarrow 11.80\text{V}$ | $22 \text{ min}$ | $29 \text{ mV/min}$ | Chemical collapse; 7x rate increase. |
+| **Plateau** | $13.00\text{V} \rightarrow 12.80\text{V}$ | $146 \text{ min}$ | $1.4 \text{ mV/min}$ | Extremely flat, bulk capacity delivery |
+| **Knee** | $12.80\text{V} \rightarrow 12.45\text{V}$ | $81 \text{ min}$ | $4.2 \text{ mV/min}$ | Gradual acceleration |
+| **Cliff** | $12.45\text{V} \rightarrow 11.80\text{V}$ | $22 \text{ min}$ | $29 \text{ mV/min}$ | Rapid collapse (steepest below 12.4V) |
 
 **Total Modeled Runtime:** 257 Minutes (4.28 Hours)
 
+**Key Finding:** The **cliff begins at 12.45V**. The 12.4V warning fires at the inflection point, giving ~5–6 minutes until the 12.2V software shutdown.
+
+---
 ---
 
 ## 4. State of Charge (SOC) & Capacity Utilization
