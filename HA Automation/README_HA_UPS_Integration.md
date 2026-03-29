@@ -29,7 +29,7 @@ The integration provides:
 | Mean Well HDR-60-12 | PSU, float charging | 13.3 V float setpoint |
 | Victron BP-65 | Hardware LVD | Trips at ~11.8 V |
 | Pololu #5382 ideal diode | Reverse current block | — |
-| Shelly Plus Uni | Battery voltage telemetry | Built-in 0–30 V ADC |
+| Shelly Plus Uni | Battery voltage telemetry | Built-in 0–15 V ADC |
 | HA Green | Automation executor | ~0.8 W DC load |
 | Xfinity XB7 modem | Protected load | ~12.2 W DC |
 
@@ -53,7 +53,7 @@ The integration provides:
 
 **Software-to-hardware margin:** 0.4 V (12.2 → 11.8 V)  
 **Time across 0.4 V margin at 15 W load:** ~20.7 min  
-**Total automation chain:** 2.5 min — leaves ~18 min of margin
+**Total automation chain:** 2.5 min — leaves ~5-9 min of margin
 
 ---
 
@@ -157,7 +157,7 @@ Add to `automations.yaml`. Three automations, all `mode: single`.
         title: "⚠️ Preparing for HA Green Shutdown at 12.2V"
         message: >
           Battery voltage {{ states('sensor.ups_battery_voltage_filtered') }}V —
-          below 12.4V. HA Green will be powered down shortly.
+          below 12.4V. HA Green will shut down in approximately 5 minutes.
 ```
 
 ### Automation 3 — Low Battery Shutdown (12.2 V)
@@ -241,7 +241,7 @@ The original v2 Minimal design specified `for: minutes: 2` on the shutdown trigg
 | 15 W (actual) | 19.3 mV/min | 20.7 min | 3.5 min | **+1.5 min** (with `for: 2`) |
 | 15 W (actual) | 19.3 mV/min | 20.7 min | 2.5 min | **+18.2 min** (with `for: 1`) |
 
-The 1-minute trigger still provides adequate transient rejection (genuine dips from load spikes are short; a 1-minute sustained drop at 12.2 V is unambiguously a real discharge event), while recovering 1 minute of timing margin. Total chain: 1.0 min trigger + 0.5 min delay + 1.0 min HA shutdown = **2.5 min consumed**, leaving ~18 min of margin before the BP-65 fires.
+The 1-minute trigger still provides adequate transient rejection (genuine dips from load spikes are short; a 1-minute sustained drop at 12.2 V is unambiguously a real discharge event), while recovering 1 minute of timing margin. Total chain: 1.0 min trigger + 0.5 min delay + 1.0 min HA shutdown = **2.5 min consumed**, leaving ~5-9 min of margin before the BP-65 fires.
 
 ---
 
@@ -278,10 +278,10 @@ This means:
 
 ### Pre-Deployment
 
-- [ ] Confirm `sensor.ups_battery_voltage_filtered` appears in Developer Tools → States after HA restart
-- [ ] Compare filtered vs. raw voltage in history — filtered line should be visibly smoother
-- [ ] Verify `float_precision: 4` in apexcharts-card series shows 4dp in header (e.g. `13.2367 V`)
-- [ ] Confirm all three UPS automations appear in Settings → Automations and are enabled
+- [x] Confirm `sensor.ups_battery_voltage_filtered` appears in Developer Tools → States after HA restart
+- [x] Compare filtered vs. raw voltage in history — filtered line should be visibly smoother
+- [x] Verify `float_precision: 4` in apexcharts-card series shows 4dp in header (e.g. `13.2367 V`)
+- [x] Confirm all three UPS automations appear in Settings → Automations and are enabled
 
 ### Hardware Verification (Completed)
 
@@ -291,8 +291,8 @@ This means:
 
 ### Live Discharge Test (Pending)
 
-- [ ] Observe or simulate discharge below 13.0 V — confirm early warning notification fires
-- [ ] Continue discharge to 12.4 V — confirm approaching shutdown notification fires
+- [x] Observe or simulate discharge below 13.0 V — confirm early warning notification fires
+- [x] Continue discharge to 12.4 V — confirm approaching shutdown notification fires
 - [ ] Confirm 12.2 V trigger armed message in HA log
 - [ ] Confirm 1-min timer fires, 30s delay, revalidation, shutdown issued
 - [ ] Confirm HA shuts down before BP-65 trips
