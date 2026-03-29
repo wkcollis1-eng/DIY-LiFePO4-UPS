@@ -55,7 +55,7 @@ The system performs exactly as designed. The layered protection (voltage warning
 
 A two-stage charging architecture (dedicated 14.4V charger + DC-DC regulator) would be required to approach the full ~7.8–8.5 hour theoretical runtime.
 
-Report and Data can be found at 
+Report and Data can be found at: docs/UPS_Validation_Report.md
 
 Last validated: March 2026 (Test D3)
 
