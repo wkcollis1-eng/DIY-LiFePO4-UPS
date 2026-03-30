@@ -5,7 +5,7 @@
 **12V LiFePO4-Based Uninterruptible Power Supply**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Operational-green.svg)](#status)
+[![Status](https://img.shields.io/badge/Status-Complete-green.svg)](#status)
 [![Runtime](https://img.shields.io/badge/Runtime-7.8%20hours-green.svg)](#measured-performance)
 [![Switchover](https://img.shields.io/badge/Switchover-%3C1ms-brightgreen.svg)](#key-specifications)
 
@@ -178,7 +178,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 - [x] Build complete
 - [x] XB7 power measurement complete (14.7W avg, 20.3W peak — 1.066 kWh / 72.4 hr standalone)
 - [x] Combined system power measurement complete (16.0W avg, 23.0W peak — confirmed across 5 windows, 525 hours total)
-- [ ] Home Assistant automation documentation
+- [x] Home Assistant automation documentation
 
 ---
 
