@@ -154,6 +154,7 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 | [docs/design-specification.md](docs/design-specification.md) | Formal requirements, design decisions, and verification matrix |
 | [docs/commissioning.md](docs/commissioning.md) | System commissioning process and results |
 | [docs/Final_As_Built_Performance_&_Cost_Summary.md](docs/Final_As_Built_Performance_&_Cost_Summary.md) | Final As-Built Performance & Cost Summary |
+| [docs/docs/UPS_Validation_Report.md](docs/UPS_Validation_Report.md) | Final Validation Report with Home Assistant configuration |
 
 ## Datasheets
 
