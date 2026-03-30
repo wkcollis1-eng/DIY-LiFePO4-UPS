@@ -3,7 +3,7 @@
 ## 1. Executive Summary
 This document provides the technical validation of the DIY LiFePO4 UPS system (10Ah nominal capacity). Following a series of empirical discharge tests (**Test D3**), the system has been characterized as a **Voltage-Constrained Architecture**.
 
-While the hardware is capable of 10Ah, the single-rail 13.3V design limits starting SOC to approximately 70%. This report reconciles the measured 4.25–4.3 hour runtime with a four-phase physical model, achieving a **model accuracy of >99%**.
+While the hardware is capable of 10Ah, the single-rail 13.3V design limits starting SOC to approximately 70%. This report reconciles the measured ~4.1h to software shutdown (12.2V); ~4.3h estimated to hardware LVD runtime with a four-phase physical model, achieving a **model accuracy of >99%**.
 
 ---
 
@@ -12,7 +12,7 @@ The system utilizes a "Single-Rail" topology where the charger and load share a 
 
 | Requirement | Target Voltage | System Provision |
 | :--- | :--- | :--- |
-| Sensitive Load Ceiling | $\le 13.3\text{V}$ | 13.3V CV Float |
+| Sensitive Load Ceiling | $\le 13.2\text{V}$ (12V ±10%) | 13.3V CV Float |
 | LiFePO4 Full Saturation | $14.2\text{V} - 14.4\text{V}$ | **Not Attainable** |
 
 **Verdict:** The system is energy-limited by design. By floating the battery at 13.3V, we ensure 100% equipment safety and significantly extend the battery's calendar life by avoiding high-voltage stress.
@@ -51,8 +51,7 @@ Because the system operates in a restricted voltage band, "100% SOC" is defined 
 Based on the high-resolution "Cliff" data, the following thresholds are used for the Home Assistant monitoring stack:
 
 *   **13.00V (Grid Loss):** Initial notification. The system is entering the stable Plateau.
-*   **12.80V (Warning):** Plateau end. The system has entered the 81-minute Knee phase.
-*   **12.45V (Critical):** Cliff onset. Action required. Only $\sim 10$ minutes remain before software shutdown begins.
+*   **12.40V (Warning):** Cliff onset. Action required. Only $\sim 10$ minutes remain before software shutdown begins.
 *   **12.20V (Shutdown):** Automatic graceful shutdown command issued to Home Assistant Green.
 *   **11.80V (LVD):** Hardware disconnect via Victron BP-65 to prevent permanent cell damage.
 
