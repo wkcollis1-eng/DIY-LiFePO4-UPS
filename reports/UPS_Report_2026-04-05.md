@@ -204,7 +204,7 @@ This inaugural report documents the commissioning of the DIY LiFePO4 UPS protect
 | Recovery time to float | ~84 s | ~41 s |
 | Plateau discharge rate | −3.32 mV/min | −5.01 mV/min |
 
-![Discharge voltage profiles, Outage 1 and Outage 2](../figures/fig_discharge_comparison_apr05.png)  
+![Discharge voltage profiles, Outage 1 and Outage 2](assets/fig_discharge_comparison_apr05.png)  
 *Figure 1: Raw voltage vs. UTC time for both commissioning discharge events. Phase boundaries (Settling/Plateau/Knee/Cliff) annotated. Outage 1 reaches the hardware LVD (11.77 V); Outage 2 terminates at 12.13 V recorded (BP-65 inferred).*
 
 ---
@@ -270,7 +270,7 @@ The following data covers Mar 31 – Apr 5, 2026 (6 full days) at the second-flo
 
 **Note on float voltage vs PSU setpoint:** The HDR-60-12 outputs 13.3 V. The measured 13.233 V (67 mV below setpoint) reflects the Pololu ideal diode forward voltage drop plus wiring resistance. This is consistent with the validated design (~50–80 mV total drop). This measurement will be the primary long-term battery health indicator: a meaningful upward drift would suggest increasing internal resistance; a downward drift could indicate PSU degradation.
 
-![Float voltage baseline, Mar 31 – Apr 5](../figures/fig_float_baseline_apr05.png)  
+![Float voltage baseline, Mar 31 – Apr 5](assets/fig_float_baseline_apr05.png)  
 *Figure 2: Daily mean float voltage at permanent location (Mar 31–Apr 5). Error bars = ±1σ. Reference line at 13.233 V (production baseline). Horizontal band = 13.220–13.260 V expected operating range.*
 
 ---
