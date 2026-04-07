@@ -1,11 +1,11 @@
 # DIY LiFePO4 UPS: Technical Report
 ## Inaugural Commissioning Report
 
-**Data through:** April 5, 2026  
-**Published:** April 5, 2026  
-**Version:** 2026-04-05  
-**Repository:** https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS  
-**Report series:** UPS-RPT  
+**Data through:** April 5, 2026
+**Published:** April 5, 2026
+**Version:** 2026-04-05
+**Repository:** https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS
+**Report series:** UPS-RPT
 
 ---
 
@@ -47,7 +47,7 @@ This inaugural report documents the commissioning of the DIY LiFePO4 UPS protect
 | Host | HA Green | Automation executor | ~0.8 W DC |
 | Protected load | Xfinity XB7 modem | Network continuity | ~12.2 W DC |
 
-**Measured DC load at float:** ~14.4 W typical (13.5–15 W range)  
+**Measured DC load at float:** ~14.4 W typical (13.5–15 W range)
 **Design runtime at 15 W:** 7.5 h (112.5 Wh ÷ 15 W)
 
 ### 1.2 Voltage Threshold Reference
@@ -61,7 +61,7 @@ This inaugural report documents the commissioning of the DIY LiFePO4 UPS protect
 | ~11.8 V | Hardware LVD | BP-65 disconnects load |
 | ~12.8 V | Hardware LVD reconnect | BP-65 restores load |
 
-**Software-to-hardware margin:** 400 mV (12.2 → 11.8 V); ~20.7 min at 15 W  
+**Software-to-hardware margin:** 400 mV (12.2 → 11.8 V); ~20.7 min at 15 W
 **Automation chain time budget:** 2.5 min consumed; ~18 min margin to BP-65
 
 ### 1.3 HA Integration Reference
@@ -109,7 +109,7 @@ This inaugural report documents the commissioning of the DIY LiFePO4 UPS protect
 
 ### 3.1 Outage 1 — March 26, 2026 (Short Test)
 
-**Purpose:** Initial commissioning test; verify 13.0 V early warning notification and BP-65 hardware LVD trip.  
+**Purpose:** Initial commissioning test; verify 13.0 V early warning notification and BP-65 hardware LVD trip.
 **Location:** Basement bench (ambient ~55 °F / 13 °C)
 
 #### 3.1.1 Event Timeline
@@ -154,7 +154,7 @@ This inaugural report documents the commissioning of the DIY LiFePO4 UPS protect
 
 ### 3.2 Outage 2 — March 28, 2026 (Full Commissioning Run)
 
-**Purpose:** Full commissioning run; verify all three HA notifications plus BP-65 at partially-depleted SOC.  
+**Purpose:** Full commissioning run; verify all three HA notifications plus BP-65 at partially-depleted SOC.
 **Location:** Second-floor permanent installation (ambient ~63 °F / 17 °C, post-relocation)
 
 > **Note on starting SOC:** Outage 2 occurred ~48 hours after Outage 1. The battery had not reached full float equilibrium after the 37% capacity draw of Outage 1. Starting SOC was estimated at 75–85% (not 100%), explaining the shorter runtime compared to Outage 1.
@@ -204,7 +204,7 @@ This inaugural report documents the commissioning of the DIY LiFePO4 UPS protect
 | Recovery time to float | ~84 s | ~41 s |
 | Plateau discharge rate | −3.32 mV/min | −5.01 mV/min |
 
-![Discharge voltage profiles, Outage 1 and Outage 2](../assets/fig_discharge_comparison_apr05.png)  
+![Discharge voltage profiles, Outage 1 and Outage 2](../assets/fig_discharge_comparison_apr05.png)
 *Figure 1: Raw voltage vs. UTC time for both commissioning discharge events. Phase boundaries (Settling/Plateau/Knee/Cliff) annotated. Outage 1 reaches the hardware LVD (11.77 V); Outage 2 terminates at 12.13 V recorded (BP-65 inferred).*
 
 ---
@@ -270,7 +270,7 @@ The following data covers Mar 31 – Apr 5, 2026 (6 full days) at the second-flo
 
 **Note on float voltage vs PSU setpoint:** The HDR-60-12 outputs 13.3 V. The measured 13.233 V (67 mV below setpoint) reflects the Pololu ideal diode forward voltage drop plus wiring resistance. This is consistent with the validated design (~50–80 mV total drop). This measurement will be the primary long-term battery health indicator: a meaningful upward drift would suggest increasing internal resistance; a downward drift could indicate PSU degradation.
 
-![Float voltage baseline, Mar 31 – Apr 5](../assets/fig_float_baseline_apr05.png)  
+![Float voltage baseline, Mar 31 – Apr 5](../assets/fig_float_baseline_apr05.png)
 *Figure 2: Daily mean float voltage at permanent location (Mar 31–Apr 5). Error bars = ±1σ. Reference line at 13.233 V (production baseline). Horizontal band = 13.220–13.260 V expected operating range.*
 
 ---
@@ -411,6 +411,6 @@ Based on commissioning data, the UPS battery exhibits the following LiFePO4 disc
 
 ---
 
-**Repository:** https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS  
-**Integration reference:** `docs/HA_Integration.md` (HA automation YAML, filter sensor config, engineering notes)  
+**Repository:** https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS
+**Integration reference:** `docs/HA_Integration.md` (HA automation YAML, filter sensor config, engineering notes)
 **License:** CC BY 4.0 (data) / MIT (code)

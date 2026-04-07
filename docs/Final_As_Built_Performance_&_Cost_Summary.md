@@ -2,8 +2,8 @@
 ***
 
 # Final As-Built Performance & Cost Summary
-**Project:** DIY LiFePO4 UPS  
-**Date:** March 2026  
+**Project:** DIY LiFePO4 UPS
+**Date:** March 2026
 **Status:** Validated & Deployed
 
 ## Executive Summary

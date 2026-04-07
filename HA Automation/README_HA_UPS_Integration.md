@@ -1,11 +1,11 @@
 # Home Assistant UPS Integration
 ## DIY LiFePO4 UPS — Shutdown Automation & Voltage Monitoring
 
-**Repository:** `DIY-LiFePO4-UPS`  
-**Author:** wkcollis1-eng  
-**Last Validated:** March 2026  
-**HA Version:** Home Assistant Green  
-**Design Version:** v2 Minimal  
+**Repository:** `DIY-LiFePO4-UPS`
+**Author:** wkcollis1-eng
+**Last Validated:** March 2026
+**HA Version:** Home Assistant Green
+**Design Version:** v2 Minimal
 
 ---
 
@@ -33,9 +33,9 @@ The integration provides:
 | HA Green | Automation executor | ~0.8 W DC load |
 | Xfinity XB7 modem | Protected load | ~12.2 W DC |
 
-**Measured DC load at float:** ~14.4 W typical (13.5–15 W range)  
-**AC wall draw (Kill-a-Watt, 25h 5m):** 17.90 W avg, 29.3 W peak  
-**Estimated runtime at 14.4 W:** ~7.8–8.3 h  
+**Measured DC load at float:** ~14.4 W typical (13.5–15 W range)
+**AC wall draw (Kill-a-Watt, 25h 5m):** 17.90 W avg, 29.3 W peak
+**Estimated runtime at 14.4 W:** ~7.8–8.3 h
 
 > Note on peak: Kill-a-Watt measurement chain is PSU → Kasa HS103 → Kill-a-Watt. The 29.3 W AC peak includes Kasa HS103 overhead (~0.5 W) and XB7 transient spikes. DC-side components see a lower peak (~21–22 W AC equivalent), well within HDR-60-12 ratings.
 
@@ -51,8 +51,8 @@ The integration provides:
 | < 12.2 V sustained | Low battery — shutdown imminent | Shutdown automation trigger |
 | ~11.8 V | BP-65 hardware LVD trips | Hardware protection (independent) |
 
-**Software-to-hardware margin:** 0.4 V (12.2 → 11.8 V)  
-**Time across 0.4 V margin at 15 W load:** ~20.7 min  
+**Software-to-hardware margin:** 0.4 V (12.2 → 11.8 V)
+**Time across 0.4 V margin at 15 W load:** ~20.7 min
 **Total automation chain:** 2.5 min — leaves ~5-9 min of margin
 
 ---
