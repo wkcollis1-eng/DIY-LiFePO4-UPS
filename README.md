@@ -36,7 +36,7 @@ A 12V LiFePO4-based uninterruptible power supply for keeping a Home Assistant Gr
 **Validated Runtime:** **4.25 hours** to software shutdown (12.2V) and **~4.3 hours** to hardware LVD (11.8V) under a sustained **14.5W** load.
 
 ### Key Finding
-The UPS delivers a reliable **~4.3 hours** of runtime at typical HA Green loads. This is **~55%** of the theoretical maximum capacity of the 10Ah LiFePO4 battery. 
+The UPS delivers a reliable **~4.3 hours** of runtime at typical HA Green loads. This is **~55%** of the theoretical maximum capacity of the 10Ah LiFePO4 battery.
 
 This result is **not** due to battery degradation, measurement error, or software issues. It is a direct consequence of the **single-rail 13.3V CV architecture**.
 
@@ -49,9 +49,9 @@ The system uses a single shared rail for both charging and load. To keep the vol
 - 12.4V warning provides an effective “immediate action” alert (~5–6 minutes before shutdown)
 
 ### Conclusion
-The system performs exactly as designed. The layered protection (voltage warnings → automated shutdown → BP-65 hardware LVD) is robust and safe. 
+The system performs exactly as designed. The layered protection (voltage warnings → automated shutdown → BP-65 hardware LVD) is robust and safe.
 
-**Current validated specification:** ~4.3 hours runtime at 14.5W under the existing single-rail topology.  
+**Current validated specification:** ~4.3 hours runtime at 14.5W under the existing single-rail topology.
 
 A two-stage charging architecture (dedicated 14.4V charger + DC-DC regulator) would be required to approach the full ~7.8–8.5 hour theoretical runtime.
 
@@ -77,10 +77,10 @@ Victron BP-65 tripped at **11.77V** — within 0.03V of the 11.8V design target 
 confirming protection circuit accuracy. Post-LVD OCV rebound to 12.13V confirms healthy
 cell chemistry with no permanent capacity loss from the deep discharge.
 
-Key findings: 
+Key findings:
 - Discharge plateau variance under 0.2%/hr
 - BP-65 cutoff accuracy ±0.03V
-- Internal resistance ~260mΩ at low SoC (derived from OCV recovery) 
+- Internal resistance ~260mΩ at low SoC (derived from OCV recovery)
 - Bulk recharge from 12.9V to 13.2V completed in under 12 minutes after AC restoration
 ---
 ## System Overview
@@ -188,4 +188,3 @@ AC grid powers a Mean Well HDR-60-12 PSU set to 13.3V float, which charges a 12V
 - Device input voltage tolerance (±10%) is inferred from IEC 62368-1 design practice; neither Nabu Casa nor Comcast publish explicit DC input voltage ranges for these products.
 - The PSU output trimmer is set to 13.3V and lacquered. Drift analysis shows expected aging drift of 3–5 mV/year — negligible relative to the 500mV headroom before OVP.
 - No DC-DC converter is used. The direct battery feed strategy is documented in [design-rationale.md](docs/design-rationale.md).
-
