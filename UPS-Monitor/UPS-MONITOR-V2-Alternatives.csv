@@ -1,0 +1,19 @@
+Designator,Original Part,Original Manufacturer,Alternative Part,Alt Manufacturer,LCSC Part#,Footprint Compatible,Electrical Compatible,Notes,Verified
+J1,2060-452,WAGO,KF2EDGR-5.08-2P,Ningbo Kangnex,C73760,Yes,Yes,2P 5.08mm SMD screw terminal; verify PCB pad compatibility,No
+J2,2060-452,WAGO,KF2EDGR-5.08-2P,Ningbo Kangnex,C73760,Yes,Yes,2P 5.08mm SMD screw terminal; verify PCB pad compatibility,No
+J1,2060-452,WAGO,DG128-5.08-02P,DIBO,C429946,Yes,Yes,2P 5.08mm SMD screw terminal alternative,No
+J2,2060-452,WAGO,DG128-5.08-02P,DIBO,C429946,Yes,Yes,2P 5.08mm SMD screw terminal alternative,No
+R_SHUNT,WSLT2512R0100FEA,Vishay,WSLP2512R0100FEA,Vishay,C436034,Yes,Yes,Alternative Vishay shunt 10mΩ 1% 2W 4-terminal,No
+R_SHUNT,WSLT2512R0100FEA,Vishay,LR2512-01R010F4,Milliohm,C436125,Yes,Yes,Generic 10mΩ 1% 2W 4-terminal Kelvin shunt,No
+R_SHUNT,WSLT2512R0100FEA,Vishay,WSL25120R010FEA,Vishay,C131682,Verify,Yes,Vishay 2-terminal 10mΩ; verify footprint - may need layout check,No
+L1,IHLP-5050EZ-01 4.7µH,Vishay,IHLP-5050CE-01 4.7µH,Vishay,C456873,Yes,Yes,Alternative Vishay series with similar specs,No
+L1,IHLP-5050EZ-01 4.7µH,Vishay,MWSA0518-4R7MT,Sunlord,C439979,Yes,Yes,Chinese alternative 4.7µH 3A shielded inductor,No
+L1,IHLP-5050EZ-01 4.7µH,Vishay,SLF5045T-4R7M2R6-PF,TDK,C266959,Yes,Yes,TDK 4.7µH 2.6A shielded power inductor,No
+J4,USB4135-GF-A,GCT,USB-TYPE-C-019,XKB Connection,C283540,Verify,Yes,Generic USB-C 16P edge mount; verify mechanical fit,No
+J4,USB4135-GF-A,GCT,TYPE-C-31-M-12,Korean Hroparts Elec,C165948,Verify,Yes,USB-C 16P SMT receptacle; check footprint compatibility,No
+SW1,B3S-1000,Omron,TS-1187A-B-A-B,XKB Connectivity,C318884,Verify,Yes,Generic 3x6mm tactile switch; verify footprint,No
+SW2,B3S-1000,Omron,TS-1187A-B-A-B,XKB Connectivity,C318884,Verify,Yes,Generic 3x6mm tactile switch; verify footprint,No
+SW1,B3S-1000,Omron,K2-1187SQ-A4SW-06,Korean Hroparts Elec,C393942,Verify,Yes,Tactile switch alternative,No
+SW2,B3S-1000,Omron,K2-1187SQ-A4SW-06,Korean Hroparts Elec,C393942,Verify,Yes,Tactile switch alternative,No
+C1,100µF 25V Electrolytic,Generic,100µF 25V 6.3x5.4,Lelon,C134878,Yes,Yes,Verify dimensions 6.3x5.4mm; low ESR type,No
+C1,100µF 25V Electrolytic,Generic,100µF 25V D6.3xH5.4,Nichicon,C42097,Yes,Yes,Nichicon UWT series or equivalent,No
