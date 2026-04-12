@@ -163,38 +163,73 @@ The BOM specifies WAGO 2060-452 but the PCB footprint is incompatible. Either:
 
 ---
 
-### 3. Vishay IHLP-5050EZ Buck Inductor (L1) - **MEDIUM PRIORITY**
+### 3. Vishay IHLP-5050EZ Buck Inductor (L1) - **HIGH PRIORITY**
+
+**⚠️ ELECTRICAL COMPATIBILITY VERIFIED - CRITICAL PARAMETER: DCR**
 
 **Original Specification:**
 - Manufacturer: Vishay
-- Series: IHLP-5050EZ
-- Value: 4.7µH
-- Current Rating: 2.6A (minimum required for AP63203 2A output)
-- Package: 5050 (5.0mm x 5.0mm)
+- Series: IHLP-5050EZ-01
+- Value: 4.7µH ±20%
+- **DCR:** **15mΩ max** ← **Critical for efficiency!**
+- **Saturation Current (Isat):** 27A
+- **RMS Current (Irms):** 12A (40°C rise)
+- Package: 5050 (13.2mm x 12.9mm)
 - Features: Low DCR, shielded
+- Application: AP63203 2A buck converter
 
 **Issue:**
-- Premium Vishay inductor may be costly
+- Premium Vishay inductor may be costly ($1-2)
 - Availability varies by region
+- **Critical:** DCR directly impacts efficiency - low DCR essential!
 
-**Recommended Alternatives:**
+**✅ VERIFIED Compatible Alternatives:**
 
-| Alternative | Manufacturer | LCSC Part# | Specs | Notes |
-|------------|--------------|------------|-------|-------|
-| **IHLP-5050CE-01** | Vishay | C456873 | 4.7µH, similar series | Alternative Vishay line |
-| **MWSA0518-4R7MT** | Sunlord | C439979 | 4.7µH, 3A | Chinese brand, cost-effective |
-| **SLF5045T-4R7M2R6-PF** | TDK | C266959 | 4.7µH, 2.6A | Premium Japanese brand |
+| Alternative | LCSC Part# | DCR | Current | Efficiency Loss | Status |
+|------------|------------|-----|---------|-----------------|--------|
+| **CYA0630-4.7UH** ✅ | C5189748 | **34.5mΩ** | **5A** | **-0.7%** | ✅ **RECOMMENDED** |
+| **CD54-4R7M** | C2826660 | 60mΩ | 2.8A | -1.8% | ⚠️ **MARGINAL** |
+| ~~MWSA0518-4R7MT~~ | ~~C439979~~ | ~~85mΩ~~ | ~~3.5A~~ | ~~-4.2%~~ | ❌ **REJECTED** |
+
+**SHOU HAN CYA0630-4.7UH (RECOMMENDED):**
+- DCR: 34.5mΩ (2.3x higher than Vishay, but acceptable)
+- Current Rating: 5A (2x margin for 2.5A peak)
+- Efficiency penalty: ~0.7% (60mW extra loss @ 2A)
+- Size: 7.2 x 6.6mm (slightly larger but fits standard footprint)
+- Cost: Low (Chinese brand)
+- **Best compromise: Good specs, acceptable efficiency**
+
+**DMBJ CD54-4R7M (BUDGET OPTION):**
+- DCR: 60mΩ (4x higher than Vishay)
+- Current Rating: 2.8A (marginal 1.1x margin)
+- Efficiency penalty: ~1.8% (136mW extra loss @ 2A)
+- Size: 5.8 x 5.2mm (close to 5050)
+- Cost: Very low ($0.018)
+- **Usable but marginal - will run hotter, less efficient**
+
+**~~Sunlord MWSA0518-4R7MT~~ (NOT RECOMMENDED):**
+- ❌ DCR: 85mΩ (5.7x worse - unacceptable efficiency loss)
+- ❌ Isat: 3.5A (only 1.4x margin - saturation risk)
+- ❌ Irms: 4A (marginal thermal limit)
+- ❌ Efficiency penalty: ~4.2% (280mW extra loss @ 2A)
+- **REJECTED: Poor efficiency, thermal concerns, saturation risk**
 
 **Action Required:**
-1. Verify DCR specification (lower is better for efficiency)
-2. Confirm saturation current rating ≥ 2.6A
-3. Check temperature rating for application
+1. ✅ ~~Verify DCR specification~~ **COMPLETE - See ELECTRICAL-COMPATIBILITY-REPORT.md**
+2. ✅ ~~Confirm saturation/RMS current ratings~~ **COMPLETE**
+3. ⚠️ **Remove Sunlord MWSA0518 from production consideration**
+4. ✅ **Use SHOU HAN CYA0630-4.7UH for best balance**
 
 **Trade-offs:**
-- All alternatives should work electrically
-- Vishay/TDK = premium performance, higher cost
-- Sunlord = cost-effective, proven in Chinese market
-- **Recommendation:** Sunlord for cost savings, Vishay/TDK for premium build
+- **Vishay IHLP-5050EZ:** Best performance (15mΩ DCR, 27A Isat) - Premium price
+- **SHOU HAN CYA0630:** Good performance (34.5mΩ DCR, 5A) - **Recommended alternative**
+- **DMBJ CD54:** Marginal performance (60mΩ DCR, 2.8A) - Budget option only
+- **Sunlord MWSA0518:** Poor performance (85mΩ DCR) - **Rejected due to efficiency concerns**
+
+**Why DCR Matters:**
+- DCR = inductor's DC resistance causes power loss: P = I² × DCR
+- At 2A: Vishay loses 60mW, CYA0630 loses 138mW, Sunlord loses 340mW
+- Higher DCR = lower efficiency, more heat, reduced reliability
 
 ---
 
