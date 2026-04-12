@@ -7,8 +7,9 @@ R_SHUNT,WSLT2512R0100FEA,Vishay,WSLP2512R0100FEA,Vishay,C436034,Yes,Yes,2512 foo
 R_SHUNT,WSLT2512R0100FEA,Vishay,LR2512-01R010F4,Milliohm,C436125,Yes,Yes,2512 footprint compatible; NOTE: Generic 2-terminal shunt (Kelvin via pad layout only),Footprint
 R_SHUNT,WSLT2512R0100FEA,Vishay,WSL2512R0100FEA,Vishay,C131682,Yes,Yes,VERIFIED: WSL2512 same 2512 footprint as WSLT2512 - fully compatible,Footprint
 L1,IHLP-5050EZ-01 4.7µH,Vishay,IHLP-5050CE-01 4.7µH,Vishay,C456873,Yes,Yes,Alternative Vishay series with similar specs,No
-L1,IHLP-5050EZ-01 4.7µH,Vishay,CYA0630-4.7UH,SHOU HAN,C5189748,Yes,Yes,VERIFIED: DCR 34.5mΩ (2.3x higher) 5A rated - Good alternative with acceptable efficiency penalty,Electrical
-L1,IHLP-5050EZ-01 4.7µH,Vishay,CD54-4R7M,DMBJ,C2826660,Yes,Marginal,DCR 60mΩ (4x higher) 2.8A rated - Marginal but usable; expect 1.8% efficiency loss,Electrical
+L1,IHLP-5050EZ-01 4.7µH,Vishay,IHLP5050FDER4R7M01,Vishay,C845100,Yes - Drop-in,YES - SUPERIOR,BEST CHOICE: DCR 8.7mΩ (42% better!) Isat 32A Irms 13.5A - Superior performance but currently OUT OF STOCK; 6.4mm height (vs 3.5mm),Electrical
+L1,IHLP-5050EZ-01 4.7µH,Vishay,CYA0630-4.7UH,SHOU HAN,C5189748,Yes,Yes,RECOMMENDED BACKUP: DCR 34.5mΩ (2.3x higher) 5A rated - Good alternative when Vishay unavailable; 0.7% efficiency penalty,Electrical
+L1,IHLP-5050EZ-01 4.7µH,Vishay,CD54-4R7M,DMBJ,C2826660,Yes,Marginal,BUDGET OPTION: DCR 60mΩ (4x higher) 2.8A rated - Marginal but usable; expect 1.8% efficiency loss,Electrical
 L1,IHLP-5050EZ-01 4.7µH,Vishay,MWSA0518-4R7MT,Sunlord,C439979,Yes,NO - REJECTED,NOT RECOMMENDED: DCR 85mΩ (5.7x worse) only 3.5A Isat - Major efficiency loss and saturation risk,Electrical
 J4,USB4135-GF-A,GCT,USB-TYPE-C-019,XKB Connection,C283540,Verify,Yes,Generic USB-C 16P edge mount; verify mechanical fit,No
 J4,USB4135-GF-A,GCT,TYPE-C-31-M-12,Korean Hroparts Elec,C165948,Verify,Yes,USB-C 16P SMT receptacle; check footprint compatibility,No
