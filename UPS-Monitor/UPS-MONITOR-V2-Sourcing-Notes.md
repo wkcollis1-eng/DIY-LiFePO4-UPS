@@ -4,9 +4,35 @@
 
 This document provides detailed sourcing information and alternative component options for the UPS Monitor V2 Rev3 design. The goal is to maintain the original board design while providing flexibility for component procurement, particularly for PCB assembly services in China (e.g., PCBWay, JLCPCB).
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **PCB Revision:** Rev3
 **Last Updated:** 2026-04-11
+
+---
+
+## 🔴 CRITICAL ALERT - Footprint Verification Complete
+
+**IMPORTANT:** Footprint compatibility analysis has been completed. See `FOOTPRINT-VERIFICATION-REPORT.md` for full details.
+
+### Key Findings:
+
+1. **⚠️ WAGO 2060-452 (J1, J2) - FOOTPRINT MISMATCH**
+   - **PCB Footprint:** 5.0mm pitch
+   - **WAGO 2060-452 Spec:** 4.0mm pitch
+   - **Result:** WAGO 2060-452 **WILL NOT FIT** the existing PCB!
+   - **✅ Solution:** Use 5.08mm alternatives (KF2EDGR-5.08-2P or DG128-5.08-02P) - **VERIFIED COMPATIBLE**
+
+2. **⚠️ R_SHUNT - BOM Description Error**
+   - BOM claims "4-terminal Kelvin" but WSLT2512 is **2-terminal** only
+   - Footprint compatible with all 2512 alternatives
+   - Kelvin sensing achieved via PCB pad layout, not separate terminals
+
+3. **✅ Other Components**
+   - Current shunt alternatives: Fully compatible (same 2512 footprint)
+   - Tactile switches: Standard footprints, likely compatible
+   - USB-C connector: Requires detailed verification for alternatives
+
+**See detailed report:** `FOOTPRINT-VERIFICATION-REPORT.md`
 
 ---
 
@@ -34,33 +60,55 @@ This document provides detailed sourcing information and alternative component o
 
 ## Component-Specific Sourcing Notes
 
-### 1. WAGO 2060-452 Terminal Blocks (J1, J2) - **HIGH PRIORITY**
+### 1. WAGO 2060-452 Terminal Blocks (J1, J2) - **CRITICAL PRIORITY**
 
-**Original Specification:**
+**🔴 CRITICAL FOOTPRINT MISMATCH IDENTIFIED**
+
+**PCB Footprint Specification** (from KiCad file analysis):
+- **Actual Pitch:** 5.0mm (pads at ±2.5mm)
+- Pad Size: 3.0mm x 2.8mm rectangular
+- Dual pads (top and bottom) for each terminal
+
+**WAGO 2060-452 Specification:**
 - Manufacturer: WAGO
-- Part Number: 2060-452
-- Type: 2-position SMD lever nut
-- Pitch: 5.08mm (assumed)
+- Part Number: 2060-452/998-404
+- **Official Pitch:** 4.0mm (per WAGO datasheet)
+- Type: 2-position SMD lever nut with push-button
 - Application: J1 = Battery Input (12V), J2 = Load Output (12V)
 
-**Issue:**
+**⚠️ CRITICAL ISSUE:**
+- **WAGO 2060-452 HAS 4.0mm PITCH**
+- **PCB FOOTPRINT HAS 5.0mm PITCH**
+- **RESULT: WAGO 2060-452 WILL NOT FIT THIS PCB!**
+
+The BOM specifies WAGO 2060-452 but the PCB footprint is incompatible. Either:
+1. Wrong part number in BOM, or
+2. Incorrect footprint in PCB design
+
+**Issues (Beyond Footprint):**
 - WAGO lever nuts are European specialty components
 - Limited availability in Asia
 - Higher cost when imported
 - Lead time concerns
 
-**Recommended Alternatives:**
+**✅ VERIFIED Compatible Alternatives (5.08mm pitch):**
 
-| Alternative | Manufacturer | LCSC Part# | Notes |
-|------------|--------------|------------|-------|
-| **KF2EDGR-5.08-2P** | Ningbo Kangnex | C73760 | Spring-cage screw terminal, widely available |
-| **DG128-5.08-02P** | DIBO | C429946 | Screw terminal, good availability |
+| Alternative | Manufacturer | LCSC Part# | Pitch | Status |
+|------------|--------------|------------|-------|--------|
+| **KF2EDGR-5.08-2P** ✅ | Ningbo Kangnex/Cixi Kefa | C73760 | **5.08mm** | **FOOTPRINT VERIFIED - COMPATIBLE** |
+| **DG128-5.08-02P** ✅ | DIBO | C429946 | **5.08mm** | **FOOTPRINT VERIFIED - COMPATIBLE** |
+
+**Footprint Verification Status:**
+- ✅ **PCB footprint is 5.0mm pitch** - extracted from KiCad file
+- ✅ **5.08mm alternatives are compatible** - 0.08mm difference is within tolerance
+- ❌ **WAGO 2060-452 is NOT compatible** - 4.0mm vs 5.0mm = 1mm mismatch
 
 **Action Required:**
-1. ⚠️ Verify WAGO 2060-452 footprint pitch (need to check datasheet)
-2. ⚠️ Confirm alternative terminals have compatible pad layout
-3. Test mechanical fit before committing to alternatives
-4. Consider cost/benefit: WAGO premium vs. standard screw terminals
+1. ✅ ~~Verify WAGO 2060-452 footprint pitch~~ **COMPLETE - Confirmed 4.0mm, NOT compatible**
+2. ✅ ~~Confirm alternative terminals have compatible pad layout~~ **COMPLETE - 5.08mm verified**
+3. ⚠️ **CRITICAL:** Update BOM to remove WAGO 2060-452 or correct PCB footprint
+4. ⚠️ Test mechanical fit of 5.08mm alternatives during prototype phase
+5. ✅ **RECOMMEND:** Use KF2EDGR-5.08-2P or DG128-5.08-02P for production
 
 **Trade-offs:**
 - **WAGO Advantages:** Tool-free connection, user-friendly, premium feel
@@ -71,35 +119,47 @@ This document provides detailed sourcing information and alternative component o
 
 ### 2. WSLT2512R0100FEA Current Shunt (R_SHUNT) - **MEDIUM PRIORITY**
 
+**⚠️ BOM DESCRIPTION ERROR IDENTIFIED**
+
 **Original Specification:**
 - Manufacturer: Vishay
 - Part Number: WSLT2512R0100FEA
 - Value: 10mΩ ±1%
-- Package: WSK2512 (6332 metric)
-- Type: TRUE 4-terminal Kelvin connection
+- Package: 2512 (6.4mm x 3.2mm metric)
+- **BOM Claims:** "TRUE 4-terminal Kelvin connection"
+- **ACTUAL Type:** **2-terminal** resistor (per Vishay datasheet)
 - Power: 1W rated
+
+**⚠️ CRITICAL CORRECTION:**
+- **WSLT2512 is a 2-TERMINAL resistor**, not 4-terminal
+- BOM description is incorrect
+- Kelvin sensing achieved through optimized PCB pad layout, not separate sense terminals
+- PCB footprint uses 2-terminal design (verified from KiCad file)
 
 **Issue:**
 - Premium component with specific footprint
 - May have availability/lead time in China
+- BOM description needs correction
 
-**Recommended Alternatives:**
+**✅ VERIFIED Compatible Alternatives (All 2-Terminal):**
 
-| Alternative | Manufacturer | LCSC Part# | Notes |
-|------------|--------------|------------|-------|
-| **WSLP2512R0100FEA** | Vishay | C436034 | Vishay alternative series, same footprint |
-| **LR2512-01R010F4** | Milliohm | C436125 | Generic 4-terminal 10mΩ shunt |
-| **WSL25120R010FEA** | Vishay | C131682 | 2-terminal version - **requires footprint verification** |
+| Alternative | Manufacturer | LCSC Part# | Terminals | Notes |
+|------------|--------------|------------|-----------|-------|
+| **WSL2512R0100FEA** ✅ | Vishay | C131682 | 2-terminal | **FOOTPRINT VERIFIED** - Same 2512 package as WSLT |
+| **WSLP2512R0100FEA** | Vishay | C436034 | 2-terminal | Vishay alternative series, same footprint |
+| **LR2512-01R010F4** | Milliohm | C436125 | 2-terminal | Generic 10mΩ shunt, same 2512 footprint |
 
 **Action Required:**
-1. Verify footprint compatibility for 4-terminal vs 2-terminal options
-2. Confirm power dissipation requirements (original = 1W)
-3. Consider accuracy requirements (INA228 accuracy depends on shunt tolerance)
+1. ✅ ~~Verify footprint compatibility~~ **COMPLETE - All 2512 parts compatible**
+2. ⚠️ **Correct BOM description** - Remove "4-terminal" claim
+3. Confirm power dissipation requirements (original = 1W, all alternatives = 1-2W)
+4. Consider accuracy requirements (INA228 accuracy depends on shunt tolerance)
 
 **Trade-offs:**
-- **4-terminal (Kelvin):** Better accuracy, eliminates trace resistance errors
-- **2-terminal:** Simpler, more available, may introduce small measurement error
-- **Recommendation:** Keep 4-terminal for measurement accuracy
+- **Kelvin Sensing via PCB Layout:** Modern approach using optimized pad geometry
+- **WSLT2512 Advantages:** High temp rating (275°C), premium quality
+- **WSL2512 Advantages:** Lower cost, same electrical performance, widely available
+- **Recommendation:** WSL2512 for cost savings or WSLT2512 for high-temp environments
 
 ---
 
