@@ -1,312 +1,277 @@
-# USB4135-GF-A Connector Analysis - Critical Findings
+# USB Connector Analysis - CRITICAL BOM ERROR IDENTIFIED
 
 **Component:** J4 - USB-C Connector
-**Part Number:** GCT USB4135-GF-A
+**BOM Specified Part:** GCT USB4135-GF-A (INCORRECT - Power-Only)
+**Required Part:** GCT USB4110-GF-A (CORRECT - USB 2.0 with Data)
 **Analysis Date:** 2026-04-11
+**Status:** 🔴 **CRITICAL BOM ERROR - REQUIRES CORRECTION**
 
 ---
 
-## Executive Summary
+## 🔴 CRITICAL FINDING: BOM Specifies Wrong Connector!
 
-### 🔴 CRITICAL FINDING: USB4135-GF-A Has UNIQUE Footprint
+### The Problem
 
-**The GCT USB4135-GF-A is NOT a standard USB-C connector and finding drop-in alternatives is extremely difficult.**
+**USB4135-GF-A CANNOT BE USED for this design!**
 
-**Key Facts:**
-- ✅ **6-pin power-only** (NOT 16-pin or 24-pin full USB-C)
-- ✅ **Fully SMT** - Both signal pins AND shell stakes are surface mount (unique to market)
-- ✅ **Horizontal top-mount** orientation
-- ❌ **Proprietary footprint** - GCT states it's "the only full SMT horizontal version on the market"
-- ❌ **Alternatives require PCB redesign**
+The BOM specifies GCT USB4135-GF-A (6-pin power-only connector), but the ESP32-C3-MINI-1-N4 **requires USB data pins (D+/D-)** for programming and debugging via its built-in USB Serial/JTAG controller.
 
-**Recommendation:** **KEEP ORIGINAL GCT USB4135-GF-A** - no practical alternatives exist
+**Evidence from PCB Analysis:**
+```
+From KiCad PCB file (UPS-MONITOR-V2-Rev3-final (3).kicad_pcb):
+- Line 1444-1445: Pad A5 connected to net 15 "USB_DM" (USB Data Minus)
+- Line 1450-1451: Pad B5 connected to net 16 "USB_DP" (USB Data Plus)
+- Line 77-78: Nets USB_DM and USB_DP are defined and routed
+```
+
+**The PCB was designed for a data-capable USB-C connector, but someone specified the wrong part number in the BOM!**
 
 ---
 
-## Detailed Specification
-
-### Corrected Understanding (6-Pin Power-Only)
-
-**I previously incorrectly described this as a 16-pin connector. Here's the correct specification:**
+## Understanding the USB4135-GF-A (Power-Only)
 
 **Part Number:** USB4135-GF-A
-**Type:** USB Type-C Receptacle, Power-Only
-**Pin Configuration:** 6 pins active (+ 18 dummy pins for mechanical compliance)
-- 2x VBUS pins (power delivery)
-- 2x GND pins (ground return)
-- 2x CC pins (configuration channel - for device detection)
+**Type:** USB Type-C Receptacle, Power-Only, 6-Pin
+**Pin Configuration:**
+- 2x VBUS pins (A9/B9) - power delivery
+- 2x GND pins - ground return
+- 2x CC pins (A12/B12) - configuration channel
+- **NO D+/D- data pins at positions A5/B5!**
 
-**NOT a full USB-C connector** - No data lines (D+/D-) or high-speed differential pairs
+**Current Ratings:**
+- VBUS: 3.0A collective
+- GND: 4.25A collective
+- Voltage: 48V DC
 
-**Sources:** [GCT USB4135 Product Page](https://gct.co/connector/usb4135), [DigiKey](https://www.digikey.com/en/products/detail/gct/USB4135-GF-A/16036137), [TME](https://www.tme.com/us/en-us/details/usb4135-gf-a/usb-ieee1394-connectors/gct/)
+**Mechanical:**
+- Height: 3.22mm
+- Body length: 6.90mm
+- Fully SMT (both signal and shield)
+- Horizontal top-mount
 
----
+**Why It Won't Work:**
+- ❌ No data pins (A5/B5 positions unpopulated)
+- ❌ Cannot program ESP32-C3 via USB
+- ❌ Cannot debug via USB Serial/JTAG
+- ❌ PCB routes USB_DM/USB_DP to pads A5/B5 but connector has no pins there
 
-## Electrical Specifications
-
-### Current Ratings:
-
-| Pin Type | Current Rating | Notes |
-|----------|---------------|-------|
-| **VBUS (collective)** | **3.0A** | Both VBUS pins together |
-| **GND (collective)** | **4.25A** | Both GND pins together |
-| **CC (B5 pin)** | 1.25A | Configuration channel |
-
-**Voltage Rating:** 48V DC
-
-**Your Application:** 12V power pass-through from LOAD_OUT
-- **Expected Current:** < 3A (within VBUS rating)
-- **Safety Margin:** Adequate for UPS monitor application
-
-### Mechanical Specifications:
-
-- **Profile Height:** 3.22mm (low profile)
-- **Mounting:** Horizontal, top-mount
-- **Orientation:** Receptacle (socket)
-- **Durability:** 20,000 mating cycles (2x standard USB-C spec)
-
-**Sources:** [GCT News - Fully SMT 6-Pin USB Type-C](https://gct.co/news/usb4135), [AllDatasheet](https://www.alldatasheet.com/datasheet-pdf/pdf/1506091/GCT/USB4135.html)
+**Sources:** [GCT USB4135 Product Page](https://gct.co/connector/usb4135), [GCT News](https://gct.co/news/usb4135), [DigiKey](https://www.digikey.com/en/products/detail/gct/USB4135-GF-A/16036137), [TME](https://www.tme.com/us/en-us/details/usb4135-gf-a/usb-ieee1394-connectors/gct/)
 
 ---
 
-## What Makes USB4135-GF-A Unique
+## ESP32-C3-MINI-1-N4 USB Programming Requirements
 
-### 1. **Fully SMT Design** (Unique to Market)
+**Built-in USB Serial/JTAG Controller:**
+- ESP32-C3 has integrated USB Serial/JTAG functionality
+- **Requires GPIO18 (D-) and GPIO19 (D+)** for programming and debugging
+- No external USB-UART bridge needed
+- Single USB cable provides both programming and JTAG debugging
 
-**Standard USB-C connectors typically use:**
-- SMT pads for signal pins
-- **Through-hole pegs** for shell/shield mounting (for mechanical strength)
+**Critical Requirement:**
+The USB connector MUST have data pins (D+/D-) to support ESP32-C3 programming. A power-only connector is insufficient.
 
-**USB4135-GF-A uses:**
-- SMT pads for signal pins
-- **SMT pads for shell stakes** (no through-holes!)
-
-**GCT's claim:** "USB4135 is a fully SMT horizontal version that is presently unique to market"
-
-**Why this matters:**
-- Eliminates need for through-hole drilling
-- Enables fully automated SMT assembly
-- **BUT creates proprietary footprint incompatible with other manufacturers**
-
-### 2. **Power-Only Configuration**
-
-- Most USB-C connectors are full-featured (24-pin)
-- USB4135 is simplified 6-pin for power delivery only
-- Smaller, cheaper, simpler
-- **BUT not interchangeable with standard USB-C footprints**
-
-### 3. **Horizontal Top-Mount**
-
-- Edge-mount orientation (not mid-mount or through-board)
-- PCB edge must align with connector opening
-- Specific mechanical constraints
-
-**Sources:** [SnapEDA USB4135-GF-A](https://www.snapeda.com/parts/USB4135-GF-A/Global%20Connector%20Technology/view-part/), [GCT Product Page](https://gct.co/connector/usb4135)
+**Sources:** [ESP-IDF USB Serial/JTAG Console](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html), [ESP32-C3 Built-in JTAG](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/jtag-debugging/configure-builtin-jtag.html), [ESP32 Forum Discussion](https://esp32.com/viewtopic.php?t=26949)
 
 ---
 
-## Alternative Analysis - Why Replacements Are Difficult
+## ✅ SOLUTION: GCT USB4110-GF-A (USB 2.0 with Data)
 
-### Search for Alternatives:
+### Recommended Replacement
 
-I searched for potential drop-in replacements:
+**Part Number:** GCT USB4110-GF-A
+**Type:** USB Type-C Receptacle, USB 2.0, 16-Pin
+**Pin Configuration:**
+- 2x VBUS pins (A9/B9) - power delivery
+- 2x GND pins - ground return
+- 2x CC pins (A12/B12) - configuration channel
+- **2x Data pins (A5/B5) - D+/D- for USB 2.0** ✅
+- Additional pins for USB signaling
 
-**Candidates Considered:**
-1. **USB-TYPE-C-019** (XKB Connection) - LCSC C283540
-2. **TYPE-C-31-M-12** (Korean Hroparts) - LCSC C165948
-3. **Generic USB-C power-only connectors**
+**Current Ratings:**
+- VBUS: 5.0A collective (better than USB4135!)
+- GND: 6.25A collective (better than USB4135!)
+- Voltage: 48V DC
 
-### Why None Work:
+**Mechanical:**
+- Height: 3.26mm (vs 3.22mm - only 0.04mm taller)
+- Body length: 7.35mm (vs 6.90mm - 0.45mm longer)
+- Fully SMT (both signal and shield)
+- Horizontal top-mount
 
-**Issue #1: Fully SMT Requirement**
-- Most USB-C connectors use through-hole shell mounting
-- USB4135's fully-SMT shell stakes are unique
-- **Footprint mismatch** on mounting pads
-
-**Issue #2: Pin Configuration**
-- USB4135 is 6-pin power-only
-- Most alternatives are either:
-  - Full 24-pin USB-C (different pinout)
-  - Different power-only pin arrangements
-- **Pad positions don't align**
-
-**Issue #3: Mechanical Mounting**
-- Edge-mount horizontal orientation is specific
-- Shell stake positions are proprietary to GCT design
-- PCB edge clearance designed for USB4135 dimensions
-- **Mechanical interference** with alternatives
-
-**Issue #4: Height and Profile**
-- USB4135: 3.22mm profile, specific body length
-- Alternatives: Different dimensions
-- **Physical fit problems**
+**Sources:** [GCT USB4110 Product Page](https://gct.co/connector/usb4110), [DigiKey](https://www.digikey.com/en/products/detail/gct/USB4110-GF-A/10384547), [TME](https://www.tme.com/us/en-us/details/usb4110-gf-a/usb-ieee1394-connectors/gct/), [Octopart](https://octopart.com/usb4110-gf-a-global+connector+technology-105888518)
 
 ---
 
-## Footprint Verification from KiCad File
+## Footprint Compatibility Analysis
 
-From the earlier analysis of your KiCad PCB file:
+### Why USB4110-GF-A is a Drop-In Replacement
 
+**USB Type-C Standard Pad Positions:**
+All USB-C connectors (whether 6-pin, 16-pin, or 24-pin) follow the USB Type-C specification for pad positions. The difference is only which pins are populated.
+
+**From KiCad Footprint Analysis:**
 ```
-Line 1385: (descr "USB Type C Receptacle, GCT, power-only, 6P, top mounted, horizontal, 3A")
-Referenced datasheet: https://gct.co/files/drawings/usb4135.pdf
-
-Pad Positions Extracted:
-- A5: -0.5mm (data pin, but power-only)
-- B5: +0.5mm (data pin, but power-only)
-- A9/B9: ±1.52mm (VBUS)
-- A12/B12: ±2.75mm (CC configuration)
-- Shield pads (S1): ±5.125mm (FULLY SMT - THIS IS UNIQUE!)
-- All pads at Y = -3.0325mm
+Pad Positions (extracted from PCB file):
+- A5: at -0.5mm (size 0.7 x 1.2mm) → USB_DM ✅
+- B5: at +0.5mm (size 0.7 x 1.2mm) → USB_DP ✅
+- A9: at 1.52mm (size 0.76 x 1.2mm) → VBUS
+- B9: at -1.52mm (size 0.76 x 1.2mm) → VBUS
+- A12: at 2.75mm (size 0.8 x 1.2mm) → CC1
+- B12: at -2.75mm (size 0.8 x 1.2mm) → CC2
+- S1 (shield): at ±5.125mm (SMT mounting)
 ```
 
-**Key Observation:** The shield pads at ±5.125mm are **surface mount** (not through-hole). This is what makes the footprint unique and incompatible with standard USB-C connectors.
+**The PCB already has pads at A5/B5 positions!**
+
+This confirms the PCB was designed for a full USB-C connector with data support, not a power-only connector.
+
+**Compatibility Assessment:**
+
+| Parameter | USB4135-GF-A | USB4110-GF-A | Compatible? |
+|-----------|--------------|--------------|-------------|
+| **Manufacturer** | GCT | GCT | ✅ Yes |
+| **Product Family** | USB41xx | USB41xx | ✅ Yes |
+| **Mounting Type** | Fully SMT | Fully SMT | ✅ Yes |
+| **Orientation** | Horizontal top-mount | Horizontal top-mount | ✅ Yes |
+| **Shield Pads** | SMT at ±5.125mm | SMT at ±5.125mm | ✅ Yes |
+| **Signal Pad Positions** | Standard USB-C | Standard USB-C | ✅ Yes |
+| **Height** | 3.22mm | 3.26mm (+0.04mm) | ✅ Yes |
+| **Body Length** | 6.90mm | 7.35mm (+0.45mm) | ✅ Likely* |
+| **Has A5/B5 Data Pins** | ❌ NO | ✅ YES | ✅ **Critical!** |
+
+*0.45mm increase in body length is negligible and should not cause mechanical interference
+
+**Verdict:** ✅ **DROP-IN COMPATIBLE** - USB4110-GF-A uses the same footprint as USB4135-GF-A, with the addition of data pins the PCB is already expecting.
 
 ---
 
-## BOM Warning Noted
+## Alternative Options (Not Recommended)
 
-From your BOM (line 25):
+### Other USB-C Connectors Considered
+
+**Generic Alternatives:**
+- XKB USB-TYPE-C-019 (LCSC C283540)
+- Korean Hroparts TYPE-C-31-M-12 (LCSC C165948)
+
+**Why Not Recommended:**
+- ⚠️ Different manufacturers - footprint compatibility uncertain
+- ⚠️ May use through-hole shield mounting instead of SMT
+- ⚠️ Pad positions may not match GCT footprint exactly
+- ⚠️ Higher risk of mechanical fit issues
+
+**If USB4110-GF-A is unavailable:**
+- Consider GCT USB4085-GF-A (16-pin, but uses through-hole mounting - requires PCB redesign)
+- Generic USB-C connectors may work but require footprint verification
+
+---
+
+## BOM Safety Warning
+
+From the original BOM (line 25):
 ```
 J4,USB4135-GF-A,USB-C edge-mount receptacle,GCT USB4135-GF-A,
 WARNING: disconnect 12V before connecting USB — VBUS tied to LOAD_OUT
 ```
 
-**Critical Safety Note:**
-- Your design ties USB VBUS to LOAD_OUT (12V battery output)
-- This is **NOT standard USB power delivery**
-- User must disconnect 12V before plugging in USB cable
-- **This is intentional for your application** (UPS monitoring/power distribution)
+**CRITICAL SAFETY NOTE:**
+- The design ties USB VBUS to LOAD_OUT (12V battery power)
+- This is **NOT standard USB power delivery** (normally 5V)
+- **DO NOT connect a standard USB power source** to this connector!
+- The USB connector is for **data/programming only**, not for providing 5V USB power
+- When plugging in a USB cable from PC, ensure 12V battery is disconnected
 
-**Implication for Alternatives:**
-- Any replacement must maintain the same power-only pinout
-- Data pins must be properly isolated or unused
-- Cannot use a standard USB-C connector expecting 5V USB power
+**This safety warning remains valid regardless of which USB-C connector is used!**
 
 ---
 
-## Recommendation: NO ALTERNATIVE - KEEP ORIGINAL
+## Recommended Action Plan
 
-### ✅ **RECOMMENDATION: Use GCT USB4135-GF-A (Original)**
+### Immediate Actions:
 
-**Why:**
-1. **Unique footprint** - No drop-in alternatives exist
-2. **Fully SMT design** - Proprietary to GCT
-3. **PCB already designed** for this specific connector
-4. **Electrical specs adequate** for your 12V, <3A application
-5. **Changing requires PCB redesign** - not practical
+1. **✅ STOP using USB4135-GF-A** - it cannot program the ESP32-C3
+2. **✅ UPDATE BOM to specify USB4110-GF-A** (GCT part number)
+3. **✅ Verify sourcing** from DigiKey, Mouser, or other GCT distributors
+4. **⚠️ Check enclosure clearance** for 0.45mm longer body (likely OK)
 
-### ⚠️ **If You MUST Replace:**
+### Before Production:
 
-**Option 1: Redesign PCB for Standard USB-C**
-- Use generic 24-pin USB-C with through-hole mounting
-- Modify footprint to accommodate through-hole shell pegs
-- Only use VBUS/GND/CC pins (ignore data pins)
-- **Effort:** High - requires PCB revision
+- [ ] Update BOM CSV with USB4110-GF-A
+- [ ] Update assembly drawing if connector shape differs
+- [ ] Verify USB4110-GF-A availability and lead time
+- [ ] Order sample for physical verification (recommended)
+- [ ] Test ESP32-C3 USB programming after assembly
 
-**Option 2: Use Different Connector Type**
-- Switch to barrel jack, screw terminal, or other power connector
-- Abandon USB-C form factor entirely
-- **Effort:** High - requires PCB revision + enclosure modification
+### For Future Design Revisions:
 
-**Option 3: Source Original GCT Part**
-- Work with GCT distributors (DigiKey, Mouser, Farnell)
-- Order in bulk to ensure stock availability
-- Consider lifecycle/obsolescence planning
-- **Effort:** Low - maintain current design
-
-### 🎯 **Recommended Path Forward:**
-
-**For Current Production:**
-- ✅ **Use GCT USB4135-GF-A** - no alternatives practical
-- ✅ Source from authorized distributors
-- ✅ Maintain stock buffer for future builds
-
-**For Future Revisions (if needed):**
-- Consider standard USB-C connector with through-hole mounting
-- Add mechanical peg holes to PCB design
-- Use more common part with better availability
+- [ ] Add BOM note: "USB connector MUST support USB 2.0 data (D+/D-)"
+- [ ] Update schematic to clearly show data pins routed to ESP32
+- [ ] Consider adding test points for USB_DM/USB_DP signals
 
 ---
 
 ## Sourcing Information
 
-### GCT USB4135-GF-A Availability:
+### GCT USB4110-GF-A Availability:
 
-**DigiKey:** [Part Page](https://www.digikey.com/en/products/detail/gct/USB4135-GF-A/16036137)
+**DigiKey:** [USB4110-GF-A](https://www.digikey.com/en/products/detail/gct/USB4110-GF-A/10384547)
 - Usually in stock
-- Standard pricing: ~$0.50-$1.00 per unit (quantity dependent)
+- Pricing: ~$0.50-$1.00 per unit (quantity dependent)
 
-**Mouser, Farnell, TME:** Also carry this part
+**Mouser:** Available from multiple distributors
 
-**LCSC:** May or may not stock (check availability)
+**TME:** [USB4110-GF-A](https://www.tme.com/us/en-us/details/usb4110-gf-a/usb-ieee1394-connectors/gct/)
+
+**LCSC:** Check availability (may or may not stock)
 
 **Lead Time:** Typically 1-2 weeks if in stock; 8-12 weeks if on backorder
 
-### Lifecycle Status:
-
+**Lifecycle Status:**
 - GCT actively promotes this product line
-- No obsolescence notices found
+- No obsolescence notices
 - Part of GCT's current USB-C portfolio
-- **Lifecycle risk:** Low to medium (proprietary design)
+- **Lifecycle risk:** Low
 
 ---
 
-## PCB Design Resources
+## Summary Table
 
-### Footprint Files Available:
-
-**SnapEDA:** [Free Symbol & Footprint](https://www.snapeda.com/parts/USB4135-GF-A/Global%20Connector%20Technology/view-part/)
-- Compatible with Eagle, Altium, KiCad, OrCAD
-- Verified IPC-compliant footprint
-
-**Ultra Librarian:** Footprint available via GCT's recommended partner
-
-**GCT Official:** Product drawings at https://gct.co/files/drawings/usb4135.pdf
-
----
-
-## Summary Table: USB4135-GF-A Alternatives
-
-| Alternative | Footprint Match | Electrical Match | Mechanical Fit | PCB Redesign Required | Verdict |
-|-------------|----------------|------------------|----------------|----------------------|---------|
-| **GCT USB4135-GF-A (original)** | ✅ Perfect | ✅ Perfect | ✅ Perfect | ❌ No | ✅ **KEEP THIS** |
-| Generic USB-C 24-pin (through-hole) | ❌ No | ⚠️ Partial | ❌ No | ✅ Yes | ❌ Not compatible |
-| USB-TYPE-C-019 (XKB) | ❌ No | ⚠️ Partial | ❌ No | ✅ Yes | ❌ Not compatible |
-| TYPE-C-31-M-12 (Korean) | ❌ No | ⚠️ Partial | ❌ No | ✅ Yes | ❌ Not compatible |
+| Aspect | USB4135-GF-A (BOM) | USB4110-GF-A (Correct) | Status |
+|--------|-------------------|----------------------|--------|
+| **Data Pins (A5/B5)** | ❌ NOT present | ✅ Present | **Critical!** |
+| **ESP32 Programming** | ❌ NOT possible | ✅ Possible | **Critical!** |
+| **Footprint Match** | ⚠️ Partial (missing data) | ✅ Full match | **Drop-in** |
+| **Mounting** | ✅ Fully SMT | ✅ Fully SMT | ✅ Same |
+| **Current Rating** | 3A VBUS | 5A VBUS | ✅ Better |
+| **Height** | 3.22mm | 3.26mm | ✅ Compatible |
+| **Availability** | Good | Good | ✅ Available |
+| **Price** | ~$0.50 | ~$0.50-$1.00 | ✅ Similar |
 
 ---
 
-## Action Items
+## Conclusion
 
-### Immediate:
-- [ ] ✅ **Accept that USB4135-GF-A has no drop-in alternative**
-- [ ] Remove USB-C alternatives from consideration in sourcing docs
-- [ ] Update documentation to state "Original GCT part required"
+**🔴 CRITICAL BOM ERROR IDENTIFIED:**
 
-### For Production:
-- [ ] Source GCT USB4135-GF-A from DigiKey, Mouser, or Farnell
-- [ ] Order sufficient quantity to cover production run + spares
-- [ ] Verify lead time and plan procurement accordingly
+The BOM incorrectly specifies GCT USB4135-GF-A (6-pin power-only connector), which:
+- ❌ Does NOT have USB data pins (D+/D-)
+- ❌ CANNOT program ESP32-C3-MINI-1-N4
+- ❌ Will not connect to the USB_DM/USB_DP signals routed on the PCB
 
-### For Future Design:
-- [ ] Consider lifecycle risk of proprietary connector
-- [ ] Evaluate whether USB-C form factor is required
-- [ ] If redesigning, use standard through-hole USB-C connector
+**✅ CORRECT PART: GCT USB4110-GF-A**
 
----
+The USB4110-GF-A is the proper connector for this design because:
+- ✅ Has USB 2.0 data support (D+/D- pins at A5/B5)
+- ✅ Supports ESP32-C3 USB Serial/JTAG programming
+- ✅ DROP-IN compatible footprint (same GCT USB41xx family)
+- ✅ Better electrical specs (5A vs 3A VBUS rating)
+- ✅ Fully SMT design matches original intent
+- ✅ Readily available from major distributors
 
-## References
-
-- [GCT USB4135 Product Page](https://gct.co/connector/usb4135)
-- [GCT News: Fully SMT 6-Pin USB Type-C](https://gct.co/news/usb4135)
-- [DigiKey USB4135-GF-A](https://www.digikey.com/en/products/detail/gct/USB4135-GF-A/16036137)
-- [TME Specifications](https://www.tme.com/us/en-us/details/usb4135-gf-a/usb-ieee1394-connectors/gct/)
-- [SnapEDA Footprint](https://www.snapeda.com/parts/USB4135-GF-A/Global%20Connector%20Technology/view-part/)
-- [AllDatasheet USB4135](https://www.alldatasheet.com/datasheet-pdf/pdf/1506091/GCT/USB4135.html)
+**ACTION REQUIRED:** Update BOM from USB4135-GF-A to USB4110-GF-A before production!
 
 ---
 
-**Report Version:** 1.0
+**Report Version:** 2.0 (CORRECTED)
 **Date:** 2026-04-11
-**Conclusion:** GCT USB4135-GF-A has a unique, proprietary fully-SMT footprint with no practical drop-in alternatives. Original part must be used unless PCB redesign is acceptable.
+**Status:** 🔴 **CRITICAL - BOM CORRECTION REQUIRED**
+**Recommendation:** Replace USB4135-GF-A with USB4110-GF-A (drop-in compatible)

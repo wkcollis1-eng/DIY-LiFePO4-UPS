@@ -13,7 +13,7 @@ Your summary is **100% accurate:**
 1. ✅ **WAGO terminal blocks** - Easy fix with 5.08mm alternatives
 2. ✅ **Current shunt** - Easy fix: WSL vs WSLT (identical except temp range)
 3. ✅ **Buck inductor** - **BETTER** alternative available (IHLP-5050FD)
-4. ⚠️ **USB-C connector** - **NO alternatives** - must use original GCT part
+4. 🔴 **USB-C connector** - **CRITICAL BOM ERROR** - must replace USB4135 with USB4110
 
 ---
 
@@ -24,7 +24,7 @@ Your summary is **100% accurate:**
 | **J1, J2<br>Terminal Blocks** | WAGO 2060-452<br>(4mm pitch) | Footprint mismatch<br>(PCB is 5.0mm) | **KF2EDGR-5.08-2P**<br>(LCSC C73760) | ✅ **SOLVED<br>BETTER SPECS** |
 | **R_SHUNT<br>Current Shunt** | WSLT2512R0100FEA<br>(275°C high-temp) | BOM description error<br>(claimed 4-terminal) | **WSL2512R0100FEA**<br>(LCSC C131682) | ✅ **SOLVED<br>IDENTICAL** |
 | **L1<br>Buck Inductor** | IHLP-5050EZ-01<br>(15mΩ DCR) | Cost, availability | **IHLP5050FDER4R7M01**<br>(LCSC C845100)<br>or SHOU HAN CYA0630 | ✅ **SOLVED<br>SUPERIOR** |
-| **J4<br>USB-C Connector** | USB4135-GF-A<br>(6-pin power-only) | Unique proprietary<br>fully-SMT footprint | **No alternative**<br>Use original only | ⚠️ **NO FIX<br>ORIGINAL ONLY** |
+| **J4<br>USB-C Connector** | USB4135-GF-A<br>(6-pin power-only) | **BOM ERROR**<br>No D+/D- for ESP32 | **USB4110-GF-A**<br>(GCT, 16-pin USB 2.0) | 🔴 **CRITICAL<br>MUST REPLACE** |
 
 ---
 
@@ -134,61 +134,83 @@ Your summary is **100% accurate:**
 
 ---
 
-### 4. USB-C Connector (J4) - ⚠️ NO FIX - ORIGINAL PART REQUIRED
+### 4. USB-C Connector (J4) - 🔴 CRITICAL BOM ERROR - REQUIRES REPLACEMENT
 
-**Critical Understanding (Corrected):**
+**🔴 CRITICAL BOM ERROR IDENTIFIED:**
 
-**USB4135-GF-A is NOT a standard USB-C connector!**
+**USB4135-GF-A CANNOT BE USED - ESP32-C3 requires USB data pins for programming!**
 
-**Actual Specifications:**
-- **Type:** 6-pin power-only (NOT 16-pin or 24-pin full USB-C)
-- **Pins:** 2x VBUS, 2x GND, 2x CC (no data lines)
-- **Current:** 3A on VBUS, 4.25A on GND
-- **Mounting:** **Fully SMT** - both signal pins AND shell stakes are surface mount
-- **Unique Feature:** GCT claims "the only full SMT horizontal version on the market"
+**The Problem:**
+- BOM specifies: GCT USB4135-GF-A (6-pin power-only connector)
+- ESP32-C3-MINI-1-N4 requires: USB D+/D- data pins for programming via built-in USB Serial/JTAG
+- PCB footprint has: Pads A5/B5 with USB_DM and USB_DP signals routed (verified from KiCad file)
+- USB4135-GF-A has: NO pins at A5/B5 positions (power-only, no data capability)
+- **Result:** Power-only connector CANNOT program ESP32-C3!
 
-**Why No Alternatives Exist:**
-
-1. **Proprietary Footprint:**
-   - Most USB-C connectors use through-hole shell mounting
-   - USB4135 uses SMT shell stakes (unique)
-   - Pad positions are GCT-specific
-
-2. **Power-Only Configuration:**
-   - Most USB-C connectors are full 24-pin
-   - USB4135 is simplified 6-pin
-   - Different pinouts = incompatible
-
-3. **Mechanical Design:**
-   - Edge-mount horizontal orientation
-   - 3.22mm low profile
-   - Shell stake positions proprietary to GCT
-
-**Attempted Alternatives (All Failed):**
-- ❌ USB-TYPE-C-019 (XKB) - Different footprint, through-hole mounting
-- ❌ TYPE-C-31-M-12 (Korean) - Different footprint, incompatible
-- ❌ Generic USB-C - All use different mounting schemes
-
-**From KiCad Analysis:**
+**Evidence:**
 ```
-Shield pads at ±5.125mm are SMT (not through-hole)
-This is what makes the footprint unique and incompatible
+From KiCad PCB file:
+- Pad A5 at -0.5mm → connected to net 15 "USB_DM"
+- Pad B5 at +0.5mm → connected to net 16 "USB_DP"
+
+From ESP32-C3 datasheet:
+- Built-in USB Serial/JTAG controller on GPIO18 (D-) and GPIO19 (D+)
+- Requires D+/D- for programming and debugging
 ```
 
-**Application Note:**
-- Your BOM warns: "disconnect 12V before connecting USB — VBUS tied to LOAD_OUT"
-- This is a **power distribution** connector, NOT standard USB power
-- 12V from battery passes through this connector
-- Safety-critical design choice
+**CORRECT Part: GCT USB4110-GF-A**
+
+**Why USB4110-GF-A is the Proper Replacement:**
+
+1. **Has Required Data Pins:**
+   - 16-pin USB 2.0 connector (vs 6-pin power-only)
+   - Includes D+/D- pins at A5/B5 positions
+   - Supports ESP32-C3 USB programming and JTAG debugging
+
+2. **DROP-IN Compatible:**
+   - Same GCT manufacturer, USB41xx product family
+   - Same fully SMT design (signal + shield pads)
+   - Same horizontal top-mount orientation
+   - Uses standard USB-C pad positions
+   - PCB already has pads at A5/B5 for data pins!
+
+3. **Better Electrical Specs:**
+   - VBUS: 5A (vs 3A on USB4135) - 67% higher!
+   - GND: 6.25A (vs 4.25A on USB4135) - 47% higher!
+   - Voltage: 48V DC (same)
+
+4. **Minimal Mechanical Differences:**
+   - Height: 3.26mm vs 3.22mm (+0.04mm, negligible)
+   - Body length: 7.35mm vs 6.90mm (+0.45mm, should not interfere)
+
+**Comparison Table:**
+
+| Parameter | USB4135-GF-A (BOM) | USB4110-GF-A (Correct) |
+|-----------|-------------------|----------------------|
+| **D+/D- Data Pins** | ❌ NO (A5/B5 unpopulated) | ✅ YES (full USB 2.0) |
+| **ESP32 Programming** | ❌ CANNOT program | ✅ Full support |
+| **Footprint** | Standard USB-C | Standard USB-C |
+| **VBUS Current** | 3A | 5A (+67%) |
+| **GND Current** | 4.25A | 6.25A (+47%) |
+| **Mounting** | Fully SMT | Fully SMT |
+| **Height** | 3.22mm | 3.26mm |
+| **Price** | ~$0.50 | ~$0.50-$1.00 |
+
+**Safety Warning (Still Applies):**
+- BOM warns: "disconnect 12V before connecting USB — VBUS tied to LOAD_OUT"
+- Design ties USB VBUS to 12V battery power (NOT standard 5V USB!)
+- USB connector is for data/programming ONLY
+- Do NOT connect USB power source to this connector!
 
 **Sourcing:**
 - **DigiKey:** Usually in stock (~$0.50-$1.00 each)
-- **Mouser, Farnell:** Also available
+- **Mouser, TME:** Also available
+- **LCSC:** Check availability
 - **Lead Time:** 1-2 weeks if in stock
 
-**Verdict:** ⚠️ **NO ALTERNATIVE** - Must use original GCT USB4135-GF-A. Any substitute requires complete PCB redesign.
+**Verdict:** 🔴 **CRITICAL BOM ERROR** - MUST replace USB4135-GF-A with USB4110-GF-A. Drop-in compatible, already has footprint support on PCB.
 
-**Documentation:** See `USB-CONNECTOR-ANALYSIS.md`
+**Documentation:** See `USB-CONNECTOR-ANALYSIS.md` (Version 2.0 - CORRECTED)
 
 ---
 
@@ -203,7 +225,7 @@ This is what makes the footprint unique and incompatible
 | **R_SHUNT** | WSLT2512R0100FEA | **WSL2512R0100FEA** | C131682 | ✅ In Stock |
 | **L1** | IHLP-5050EZ-01 | **IHLP5050FDER4R7M01**<br>(if available) | C845100 | ⚠️ Out of Stock |
 | **L1** | IHLP-5050EZ-01 | **SHOU HAN CYA0630-4.7UH**<br>(backup) | C5189748 | ✅ In Stock |
-| **J4** | USB4135-GF-A | **USB4135-GF-A**<br>(original only) | N/A | Source from DigiKey/Mouser |
+| **J4** | USB4135-GF-A | **USB4110-GF-A**<br>(16-pin USB 2.0) | N/A | 🔴 **MUST REPLACE** - Source from DigiKey/Mouser |
 
 ### Other Components (No Issues):
 - ✅ All resistors, capacitors: Standard values, widely available
@@ -241,23 +263,25 @@ This is what makes the footprint unique and incompatible
 ## Action Checklist for Production
 
 ### Before Ordering PCBs:
-- [ ] ✅ Accept that USB4135-GF-A has no alternative
+- [ ] 🔴 **CRITICAL:** Update BOM to replace USB4135-GF-A with USB4110-GF-A
 - [ ] ✅ Verify PCB height clearance if using IHLP-5050FD (6.4mm)
-- [ ] ✅ Update BOM with final part selections
+- [ ] ✅ Verify 0.45mm body length increase on USB4110 doesn't cause interference
+- [ ] ✅ Update BOM with all final part selections
 
 ### Component Procurement:
 - [ ] Order KF2EDGR-5.08-2P from LCSC (J1, J2)
 - [ ] Order WSL2512R0100FEA from LCSC (R_SHUNT)
 - [ ] Order IHLP5050FDER4R7M01 from DigiKey/Mouser (L1) - if available
   - [ ] OR order SHOU HAN CYA0630-4.7UH from LCSC as backup
-- [ ] Order GCT USB4135-GF-A from DigiKey/Mouser (J4)
+- [ ] 🔴 **Order GCT USB4110-GF-A from DigiKey/Mouser (J4) - NOT USB4135!**
 - [ ] Order all other standard components from LCSC
 
 ### PCB Assembly:
 - [ ] Provide assembly house with updated BOM
-- [ ] Include note about WAGO part number (use KF2EDGR instead)
-- [ ] Include note about USB connector (must be GCT original)
-- [ ] Verify inductor height clearance in assembly review
+- [ ] 🔴 **CRITICAL NOTE:** USB connector must be USB4110-GF-A (NOT USB4135-GF-A as shown in original BOM!)
+- [ ] Include note about WAGO part number (use KF2EDGR-5.08-2P instead of 2060-452)
+- [ ] Verify inductor height clearance in assembly review (6.4mm if using IHLP-5050FD)
+- [ ] Verify USB4110 body length clearance (7.35mm vs original 6.90mm)
 
 ---
 
@@ -306,8 +330,11 @@ This is what makes the footprint unique and incompatible
 3. BOM verification corrected misleading specifications
 4. Found cost-effective alternatives where appropriate
 
-### ⚠️ **What Requires Original Parts:**
-1. USB4135-GF-A connector (no alternatives exist)
+### 🔴 **Critical BOM Errors Found:**
+1. **USB4135-GF-A connector** - WRONG PART! Must replace with USB4110-GF-A (has data pins for ESP32 programming)
+
+### ⚠️ **What Requires Specific Parts:**
+1. USB4110-GF-A connector (GCT specific, drop-in compatible)
 2. ESP32-C3-MINI-1-N4 (module-specific)
 3. INA228, AP63203 (IC-specific)
 
@@ -322,14 +349,17 @@ This is what makes the footprint unique and incompatible
 
 ## Conclusion
 
-**Your summary was spot-on!** 🎯
+**Analysis Complete - Critical BOM Error Found!** 🔴
 
 1. ✅ Terminal blocks: **Easy fix** - 5.08mm alternatives better than original
 2. ✅ Current shunt: **Easy fix** - WSL vs WSLT identical (cheaper option)
 3. ✅ Inductor: **BETTER alternative** available (IHLP-5050FD or SHOU HAN backup)
-4. ⚠️ USB connector: **Original only** - GCT USB4135-GF-A has unique fully-SMT footprint
+4. 🔴 USB connector: **CRITICAL BOM ERROR** - USB4135-GF-A (power-only) CANNOT program ESP32-C3!
+   - **MUST REPLACE with USB4110-GF-A** (16-pin USB 2.0 with data pins)
+   - Drop-in compatible (same GCT family, fully SMT, same footprint)
+   - PCB already has A5/B5 pads with USB_DM/USB_DP routed
 
-**Ready for production** with these findings documented and alternatives verified!
+**⚠️ NOT ready for production** until BOM is corrected with USB4110-GF-A!
 
 ---
 
