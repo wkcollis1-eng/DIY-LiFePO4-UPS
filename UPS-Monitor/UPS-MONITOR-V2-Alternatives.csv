@@ -11,8 +11,7 @@ L1,IHLP-5050EZ-01 4.7µH,Vishay,IHLP5050FDER4R7M01,Vishay,C845100,Yes - Drop-in,
 L1,IHLP-5050EZ-01 4.7µH,Vishay,CYA0630-4.7UH,SHOU HAN,C5189748,Yes,Yes,RECOMMENDED BACKUP: DCR 34.5mΩ (2.3x higher) 5A rated - Good alternative when Vishay unavailable; 0.7% efficiency penalty,Electrical
 L1,IHLP-5050EZ-01 4.7µH,Vishay,CD54-4R7M,DMBJ,C2826660,Yes,Marginal,BUDGET OPTION: DCR 60mΩ (4x higher) 2.8A rated - Marginal but usable; expect 1.8% efficiency loss,Electrical
 L1,IHLP-5050EZ-01 4.7µH,Vishay,MWSA0518-4R7MT,Sunlord,C439979,Yes,NO - REJECTED,NOT RECOMMENDED: DCR 85mΩ (5.7x worse) only 3.5A Isat - Major efficiency loss and saturation risk,Electrical
-J4,USB4135-GF-A,GCT,USB-TYPE-C-019,XKB Connection,C283540,Verify,Yes,Generic USB-C 16P edge mount; verify mechanical fit,No
-J4,USB4135-GF-A,GCT,TYPE-C-31-M-12,Korean Hroparts Elec,C165948,Verify,Yes,USB-C 16P SMT receptacle; check footprint compatibility,No
+J4,USB4135-GF-A,GCT,N/A - No alternatives,N/A,N/A,NO,N/A,CRITICAL: USB4135-GF-A is 6-pin power-only with unique fully-SMT footprint. GCT states it is the only full SMT horizontal version on market. NO drop-in alternatives exist - PCB redesign required for any substitute. MUST use original GCT part.,Footprint+Electrical
 SW1,B3S-1000,Omron,TS-1187A-B-A-B,XKB Connectivity,C318884,Likely,Yes,Standard SMD tactile switch footprint - likely compatible; verify actuation force/feel,No
 SW2,B3S-1000,Omron,TS-1187A-B-A-B,XKB Connectivity,C318884,Likely,Yes,Standard SMD tactile switch footprint - likely compatible; verify actuation force/feel,No
 SW1,B3S-1000,Omron,K2-1187SQ-A4SW-06,Korean Hroparts Elec,C393942,Likely,Yes,Standard SMD tactile switch - likely compatible; verify actuation force/feel,No
