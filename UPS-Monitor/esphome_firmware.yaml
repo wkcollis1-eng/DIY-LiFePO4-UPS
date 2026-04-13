@@ -1,0 +1,370 @@
+esphome:
+  name: ups-monitor-v2
+  friendly_name: "UPS Monitor V2"
+  on_boot:
+    priority: -100
+    then:
+      - delay: 5s
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+    safe_mode: true
+
+web_server:
+  port: 80
+  auth:
+    username: !secret web_username
+    password: !secret web_password
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+  services:
+    - service: reset_ups_energy
+      then:
+        - lambda: |-
+            id(ups_ina228)->reset_energy_counters();
+            ESP_LOGI("main", "INA228 energy & charge counters reset");
+
+logger:
+  level: INFO
+  baud_rate: 0
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  power_save_mode: none
+  reboot_timeout: 15min
+  ap:
+    ssid: "UPS-Monitor-Fallback"
+    password: !secret fallback_password
+
+captive_portal: true
+
+time:
+  - platform: sntp
+    id: sntp_time
+
+i2c:
+  sda: GPIO8
+  scl: GPIO1
+  scan: true
+  frequency: 100kHz
+  recovery: true
+
+dallas:
+  - pin: GPIO2
+    update_interval: 30s
+    scan: false
+    address: 0x1234567890ABCDEF   # REPLACE with your DS18B20 address
+
+output:
+  - platform: gpio
+    pin:
+      number: GPIO5
+      inverted: true
+    id: status_led
+
+light:
+  - platform: monochromatic
+    id: status_light
+    output: status_led
+    name: "UPS Status LED"
+    restore_mode: ALWAYS_OFF
+
+button:
+  - platform: template
+    name: "Reset UPS Energy Counters"
+    icon: "mdi:counter"
+    on_press:
+      then:
+        - lambda: id(ups_ina228)->reset_energy_counters();
+
+sensor:
+  - platform: ina2xx_i2c
+    id: ups_ina228
+    model: INA228
+    address: 0x40
+    shunt_resistance: 0.010 ohm
+    max_current: 5.0 A
+    reset_on_boot: false
+    update_interval: 10s
+    adc_time: 4120 us
+    adc_averaging: 128
+
+    bus_voltage:
+      name: "UPS Bus Voltage"
+      id: ups_voltage
+      accuracy_decimals: 3
+      unit_of_measurement: "V"
+      device_class: "voltage"
+      state_class: "measurement"
+      filters:
+        - lambda: |-
+            return x * 1.002;   # Calibrate with DMM
+      on_value_range:
+        - below: 12.2
+          then:
+            - logger.log: "CRITICAL: UPS Voltage below 12.2 V"
+
+    current:
+      name: "UPS Current"
+      id: ups_current
+      accuracy_decimals: 3
+      unit_of_measurement: "A"
+      device_class: "current"
+      state_class: "measurement"
+      filters:
+        - lambda: |-
+            const float offset = 0.0025;   # measure with no load
+            float val = x - offset;
+            if (abs(val) < 0.002) return 0.0;
+            return val;
+
+    power:
+      name: "UPS Power"
+      id: ups_power
+      accuracy_decimals: 2
+      unit_of_measurement: "W"
+      device_class: "power"
+      state_class: "measurement"
+      filters:
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 1
+
+    energy:
+      name: "UPS Accumulated Energy"
+      id: ups_energy
+      accuracy_decimals: 3
+      unit_of_measurement: "kWh"
+      device_class: "energy"
+      state_class: "total_increasing"
+
+    charge:
+      name: "UPS Accumulated Charge"
+      id: ups_charge
+      accuracy_decimals: 3
+      unit_of_measurement: "Ah"
+      device_class: "charge"
+      state_class: "total_increasing"
+
+    temperature:
+      name: "INA228 Die Temperature"
+      id: ina_temp
+      accuracy_decimals: 1
+      unit_of_measurement: "°C"
+      device_class: "temperature"
+      state_class: "measurement"
+
+  - platform: dallas
+    name: "UPS Battery Temperature"
+    id: battery_temp
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"
+    state_class: "measurement"
+
+  - platform: wifi_signal
+    name: "UPS Monitor RSSI"
+    id: wifi_signal
+    update_interval: 60s
+    device_class: "signal_strength"
+    unit_of_measurement: "dBm"
+
+  - platform: uptime
+    name: "UPS Monitor Uptime"
+    update_interval: 60s
+    device_class: "duration"
+
+  - platform: internal_temperature
+    name: "ESP32 Internal Temperature"
+    id: esp_temp
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"
+    state_class: "measurement"
+
+  - platform: template
+    name: "UPS Load Capacity"
+    id: load_capacity
+    unit_of_measurement: "%"
+    lambda: |-
+      float current = id(ups_current).state;
+      if (!isnan(current)) {
+        float pct = (current / 5.0) * 100.0;
+        return pct > 100.0 ? 100.0 : pct;
+      }
+      return 0.0;
+    update_interval: 10s
+
+  - platform: template
+    name: "UPS Power Error"
+    id: power_error
+    unit_of_measurement: "W"
+    lambda: |-
+      float p1 = id(ups_power).state;
+      float p2 = id(ups_voltage).state * id(ups_current).state;
+      if (!isnan(p1) && !isnan(p2)) return p1 - p2;
+      return 0.0;
+    update_interval: 10s
+
+  - platform: template
+    name: "UPS Power Error %"
+    id: power_error_pct
+    unit_of_measurement: "%"
+    lambda: |-
+      float p1 = id(ups_power).state;
+      if (p1 > 1.0) {                     # raised threshold from 0.1 to 1.0W
+        float err = id(power_error).state;
+        return (err / p1) * 100.0;
+      }
+      return 0.0;
+    update_interval: 10s
+
+  - platform: derivative
+    source: ups_voltage
+    name: "UPS Voltage Rate"
+    unit_of_measurement: "V/s"
+    accuracy_decimals: 3
+    filters:
+      - sliding_window_moving_average:    # new – smooths dV/dt
+          window_size: 5
+          send_every: 1
+
+  - platform: template
+    name: "UPS Data Confidence"
+    unit_of_measurement: "%"
+    lambda: |-
+      float score = 100.0;
+      if (isnan(id(ups_voltage).state)) score -= 50;
+      if (isnan(id(ups_current).state)) score -= 50;
+      if (id(wifi_signal).state < -85) score -= 10;   # -85dBm threshold
+      float err_pct = abs(id(power_error_pct).state);
+      score -= min(20.0, err_pct * 2.0);
+      return score > 0 ? score : 0;
+    update_interval: 10s
+
+  - platform: template
+    name: "UPS Energy Monotonicity"
+    id: ups_energy_monotonicity
+    lambda: |-
+      static float last = 0;
+      float now = id(ups_energy).state;
+      bool fault = now + 0.0005 < last;   # float rounding tolerance
+      last = now;
+      return fault ? 1.0 : 0.0;
+    update_interval: 10s
+
+  - platform: template
+    name: "UPS Battery State of Health"
+    unit_of_measurement: "%"
+    lambda: |-
+      const float theoretical_kwh = 0.128;   # 10Ah * 12.8V nominal
+      float delivered_kwh = id(ups_energy).state;
+      if (delivered_kwh > 0.01) {
+        float soh = (delivered_kwh / theoretical_kwh) * 100.0;
+        return soh > 100.0 ? 100.0 : soh;
+      }
+      return 100.0;
+    update_interval: 60s
+
+binary_sensor:
+  - platform: status
+    name: "UPS Monitor Online"
+    id: ups_online
+
+  - platform: template
+    id: ups_low_voltage
+    name: "UPS Low Voltage Alert"
+    device_class: "problem"
+    lambda: |-
+      float v = id(ups_voltage).state;
+      float i = id(ups_current).state;
+      if (i > 1.0 && v < 12.0) return true;
+      if (i <= 1.0 && v < 12.2) return true;
+      return false;
+    update_interval: 5s
+    delayed_on: 5s
+    delayed_off: 5s
+
+  - platform: template
+    name: "UPS Near Max Load"
+    device_class: "safety"
+    lambda: |-
+      return id(ups_current).state > 4.0;
+
+  - platform: template
+    name: "UPS Measurement Unstable"
+    lambda: |-
+      return isnan(id(ups_voltage).state) || isnan(id(ups_current).state);
+
+  - platform: template
+    name: "UPS Brownout Event"
+    device_class: "problem"
+    lambda: |-
+      return id(ups_voltage).state < 11.6 && id(ups_current).state > 0.5;
+    delayed_on: 10s
+
+  - platform: template
+    name: "UPS Degraded Mode"
+    lambda: |-
+      float rssi = id(wifi_signal).state;
+      float temp = id(esp_temp).state;
+      return (rssi < -85) || (temp > 70);
+
+  - platform: template
+    name: "UPS Energy Rollback"
+    lambda: |-
+      return id(ups_energy_monotonicity).state > 0.5;
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "UPS Monitor IP Address"
+    ssid:
+      name: "UPS Monitor SSID"
+
+  - platform: debug
+    device:
+      name: "ESP32 Device Info"
+    reset_reason:
+      name: "ESP Reset Reason"
+
+  - platform: template
+    name: "UPS State"
+    lambda: |-
+      float v = id(ups_voltage).state;
+      if (v > 13.2) return {"FLOAT"};
+      else if (v > 12.8) return {"ABSORPTION"};
+      else if (v > 12.4) return {"NORMAL_LOAD"};
+      else if (v > 12.0) return {"HEAVY_LOAD"};
+      else return {"CRITICAL"};
+    update_interval: 10s
+
+interval:
+  - interval: 5min
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return isnan(id(ups_voltage).state) ||
+                     (abs(id(ups_voltage_rate).state) < 1e-6 &&
+                      millis() > 30000);
+          then:
+            - logger.log: "INA228 unresponsive or frozen – recovering I2C"
+            - i2c.recover:
+            - delay: 1s
+            - if:
+                condition:
+                  lambda: 'return isnan(id(ups_voltage).state);'
+                then:
+                  - logger.log: "INA228 unrecoverable – manual reboot required"
