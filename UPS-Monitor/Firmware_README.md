@@ -1,5 +1,3 @@
-This is the full Markdown document for the **UPS-Monitor-V2 ESPHome Firmware**. You can copy the code block below and save it as a file named `README.md`.
-
 ***
 
 ```markdown
