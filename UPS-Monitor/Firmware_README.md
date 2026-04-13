@@ -1,172 +1,127 @@
+
 ***
 
-```markdown
 # UPS-Monitor-V2 ESPHome Firmware
 
-![ESPHome](https://img.shields.io/badge/ESPHome-2024.5.0-blue)
-![ESP32-C3](https://img.shields.io/badge/ESP32--C3-MINI--1-green)
+![ESPHome Version](https://img.shields.io/badge/ESPHome-2024.5.0+-blue?style=flat-square)
+![Hardware](https://img.shields.io/badge/Hardware-ESP32--C3--MINI--1-green?style=flat-square)
+![Sensor](https://img.shields.io/badge/Sensor-TI--INA228-orange?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
-Production-grade firmware for the **UPS-Monitor-V2** board – a high-precision power monitor for 12V LiFePO₄ UPS systems.  
-Built around the **Texas Instruments INA228** (20-bit, hardware energy accumulation) and an **ESP32-C3** with OTA updates.
-
----
-
-## ⚠️ CRITICAL SAFETY WARNING – READ BEFORE POWERING
-
-> **VBUS is tied directly to LOAD_OUT. NEVER connect USB while 12V power is present.**  
-> This will backfeed 12V into your PC’s USB port and **permanently damage the host computer**.
-
-- **Initial firmware flash:** Only with **12V disconnected** (power via USB only).
-- **After first flash:** Use **OTA (Over-The-Air)** exclusively. Never plug USB again while the board is powered.
+Production-grade firmware for the **UPS-Monitor-V2** board—a high-precision power monitor for 12V LiFePO₄ UPS systems. Built around the **Texas Instruments INA228** (20-bit, hardware energy accumulation) and an **ESP32-C3** with OTA updates.
 
 ---
 
-## Table of Contents
-1. [Features](#-features)
-2. [Prerequisites](#-prerequisites)
-3. [Installation](#-installation)
-4. [Home Assistant Integration](#-home-assistant-integration)
-5. [Recommended Automations](#-recommended-home-assistant-automations)
-6. [Calibration & Verification](#-calibration--verification)
-7. [Troubleshooting](#-troubleshooting)
-8. [License](#-license)
+## ⚠️ CRITICAL SAFETY WARNING
+
+> [!CAUTION]
+> **PERMANENT HARDWARE DAMAGE RISK**
+> 
+> **VBUS is tied directly to LOAD_OUT. NEVER connect a USB cable while 12V power is present.** 
+> This will backfeed 12V into your PC’s USB port and **permanently destroy the host computer**.
+>
+> *   **Initial Flash:** Only with **12V disconnected** (power via USB only).
+> *   **Future Updates:** Use **OTA (Over-The-Air)** exclusively. Never plug USB again while the board is powered.
 
 ---
 
 ## ✨ Features
 
-- **High-precision monitoring**  
-  - Voltage, current, power, energy (kWh), charge (Ah).
-  - INA228: 20-bit ADC, 128× hardware averaging, 4.12 ms conversion time.
-  - Hardware energy registers preserved across reboots (`reset_on_boot: false`).
+### High-Precision Monitoring
+*   **INA228 Integration:** 20-bit ADC, 128× hardware averaging, 4.12ms conversion time.
+*   **Full Suite:** Monitors Voltage, Current, Power, Energy (kWh), and Charge (Ah).
+*   **Persistence:** Hardware energy registers are preserved across reboots (`reset_on_boot: false`).
 
-- **Self-diagnostics & Fault Detection**  
-  - Power cross-check (INA228 power vs V×I).
-  - Data confidence metric (0–100%).
-  - Energy monotonicity guard.
-  - I²C bus watchdog with auto-recovery.
-  - Alerts for brownout, degraded mode, and unstable measurements.
+### Self-Diagnostics & Resilience
+*   **I²C Watchdog:** Auto-recovery logic for bus lockups.
+*   **Data Integrity:** Power cross-check (INA power vs. calculated $V \times I$) and energy monotonicity guards.
+*   **Metric Scoring:** 0–100% Data Confidence metric.
 
-- **Environmental Monitoring**  
-  - DS18B20 battery temperature (1-Wire).
-  - INA228 die temperature.
-  - ESP32 internal temperature.
-
-- **System Observability**  
-  - WiFi RSSI, uptime, reset reason.
-  - 5-state LiFePO₄ state classification: `FLOAT`, `ABSORPTION`, `NORMAL_LOAD`, `HEAVY_LOAD`, `CRITICAL`.
-  - Load capacity percentage (based on 5A fuse).
-  - Voltage rate of change (dV/dt).
-
-- **Remote Management**  
-  - Encrypted Home Assistant API.
-  - OTA updates with safe-mode rollback.
-  - Manual energy reset via HA button or service.
-  - Optional web server for local debugging.
+### System Intelligence
+*   **State Classification:** 5-state logic: `FLOAT`, `ABSORPTION`, `NORMAL_LOAD`, `HEAVY_LOAD`, and `CRITICAL`.
+*   **Thermal Monitoring:** Triple-point sensing (Battery via DS18B20, INA228 Die, and ESP32 internal).
+*   **Advanced Metrics:** Voltage rate of change ($dV/dt$) and load capacity percentage relative to the 5A fuse.
 
 ---
 
-## 📦 Prerequisites
+## 🔧 Installation & Setup
 
-*   **Hardware:** UPS-Monitor-V2 board (Rev 3.1 or later) with ESP32-C3-MINI-1, INA228, and DS18B20 connected.
-*   **Software:**  
-    *   [ESPHome](https://esphome.io/) (2024.5.0 or newer).
-    *   Home Assistant (optional, but recommended).
-    *   USB-C cable (for initial flash only).
-
----
-
-## 🔧 Installation
-
-### 1. Clone or copy the configuration
-Create a new file `ups-monitor-v2.yaml` with your firmware configuration.
-
-### 2. Set up secrets
-Create a `secrets.yaml` file next to your main configuration to store sensitive data:
+### 1. Configuration Setup
+Create your `ups-monitor-v2.yaml` and a companion `secrets.yaml`:
 
 ```yaml
 # secrets.yaml
-wifi_ssid: "YourWiFiSSID"
-wifi_password: "YourWiFiPassword"
-fallback_password: "fallback123"
-ota_password: "your_secure_ota_password"
+wifi_ssid: "Your_SSID"
+wifi_password: "Your_Password"
+ota_password: "Your_OTA_Password"
+api_encryption_key: "Your_Generated_Key"
 web_username: "admin"
-web_password: "your_web_password"
-api_encryption_key: "your_long_encryption_key"
+web_password: "Your_Web_Password"
 ```
 
-*Note: Generate the API encryption key using `esphome config ups-monitor-v2.yaml`.*
-
-### 3. First Flash (USB – 12V DISCONNECTED)
+### 2. First Flash (USB Mode)
 1.  **Ensure no 12V power** is connected to `J1 (BATT_IN)`.
-2.  Connect the board to your PC via USB-C.
-3.  Compile and flash:
-    ```bash
-    esphome run ups-monitor-v2.yaml
-    ```
+2.  Connect to PC via USB-C.
+3.  Run: `esphome run ups-monitor-v2.yaml`.
+4.  Once connected to WiFi, **unplug USB**.
 
-### 4. Find DS18B20 Address
-Check the ESPHome logs for the following line:
-`Found sensor 0x1234567890ABCDEF`.
-Copy that address into the `dallas:` section of your YAML.
-
-### 5. OTA Updates (All future flashes)
-Once the device is on your network, **use OTA exclusively**:
-```bash
-esphome run ups-monitor-v2.yaml --device ups-monitor-v2.local
-```
-> **Never use USB again while 12V is connected.**
+### 3. OTA Updates
+From this point forward, update only via WiFi:
+`esphome run ups-monitor-v2.yaml --device ups-monitor-v2.local`
 
 ---
 
 ## 🏠 Home Assistant Integration
 
-The following entities are exposed to Home Assistant:
+The device exposes the following entities via the ESPHome API:
 
 ### 📊 Sensors
 | Entity | Unit | Description |
 | :--- | :--- | :--- |
 | `ups_bus_voltage` | V | Battery / bus voltage (post-LVD) |
-| `ups_current` | A | Load current |
+| `ups_current` | A | Load current (includes board self-consumption) |
 | `ups_power` | W | Instantaneous power |
 | `ups_accumulated_energy` | kWh | Lifetime energy (hardware accumulated) |
 | `ups_accumulated_charge` | Ah | Lifetime charge (ampere-hours) |
-| `ups_battery_temperature` | °C | DS18B20 temperature |
+| `ups_battery_temperature` | °C | DS18B20 external battery probe |
+| `ina228_die_temperature` | °C | INA228 internal temperature |
+| `esp32_internal_temp` | °C | ESP32-C3 chip temperature |
+| `ups_load_capacity` | % | Current vs. 5A fuse limit |
+| `ups_power_error` | W | Difference between INA power register and $V \times I$ |
+| `ups_voltage_rate` | V/s | Derivative of voltage ($dV/dt$) |
 | `ups_data_confidence` | % | 0–100% measurement quality indicator |
 
 ### 🔔 Binary Sensors
 | Entity | Description |
 | :--- | :--- |
+| `ups_monitor_online` | Device connectivity status |
 | `ups_low_voltage_alert` | Voltage below threshold (load-aware) |
-| `ups_near_max_load` | Current > 4A (80% of 5A fuse) |
-| `ups_brownout_event` | Voltage < 11.6V under load |
+| `ups_near_max_load` | Current > 4A (80% of fuse limit) |
+| `ups_measurement_unstable` | NaN readings or I²C errors detected |
+| `ups_brownout_event` | Voltage < 11.6V under load (debounced) |
+| `ups_degraded_mode` | High heat (>70°C) or critical WiFi signal (<-85dBm) |
+| `ups_energy_rollback` | Energy register rollback/reset detected |
 
-### 🔘 Buttons & Lights
-| Entity | Purpose |
+### 📝 Text Sensors
+| Entity | Description |
 | :--- | :--- |
-| `button.reset_ups_energy_counters` | Reset energy/charge registers |
-| `light.ups_status_led` | On-board Blue LED control |
+| `ups_monitor_ip` | Current network IP address |
+| `esp_reset_reason` | Last reset cause (Power-on, Watchdog, etc.) |
+| `ups_state` | current state (`FLOAT`, `CRITICAL`, etc.) |
+
+### 🔘 Buttons & Controls
+| Entity | Description |
+| :--- | :--- |
+| `reset_energy_counters` | Button to manually reset energy/charge (e.g., after battery swap) |
+| `ups_status_led` | Blue status LED toggle |
 
 ---
 
-## 🤖 Recommended Home Assistant Automations
+## 🤖 Recommended Automations
 
-### Notify on Low Voltage
+### Critical Shutdown
 ```yaml
-alias: "UPS Low Voltage Alert"
-trigger:
-  - platform: state
-    entity_id: binary_sensor.ups_low_voltage_alert
-    to: "on"
-action:
-  - service: notify.mobile_app_your_phone
-    data:
-      message: "UPS voltage below 12.2V – battery discharging"
-```
-
-### Graceful Shutdown
-```yaml
-alias: "UPS Critical – Shutdown Modem"
+alias: "UPS Critical - Shutdown Non-Essential Loads"
 trigger:
   - platform: numeric_state
     entity_id: sensor.ups_bus_voltage
@@ -175,16 +130,29 @@ trigger:
 action:
   - service: switch.turn_off
     target:
-      entity_id: switch.xfinity_modem
+      entity_id: group.non_essential_equipment
+```
+
+### Low Voltage Notification
+```yaml
+alias: "UPS Alert: Battery Low"
+trigger:
+  - platform: state
+    entity_id: binary_sensor.ups_low_voltage_alert
+    to: "on"
+action:
+  - service: notify.mobile_app_user
+    data:
+      message: "UPS Battery at 12.2V - Check mains power."
 ```
 
 ---
 
 ## 🧪 Calibration & Verification
 
-1.  **Zero current offset:** Disconnect all loads. Read `sensor.ups_current`. Apply that value as an `offset` in your YAML filter.
-2.  **Voltage calibration:** Measure `J1` with a DMM. Adjust the multiplier in `bus_voltage` filters until the reported value matches your DMM.
-3.  **Shunt validation:** Apply a known DC load (e.g., 2.00A) and verify the reading is within ±2%.
+1.  **Zero Current:** Disconnect all loads. If `ups_current` is not 0.000, note the value and add it as a negative `offset` in the YAML current sensor filter.
+2.  **Voltage Match:** Measure `BATT_IN` with a trusted Multimeter. Adjust the `lambda` multiplier in the `bus_voltage` filter: `return x * (DMM_Reading / Reported_Reading);`.
+3.  **One-Wire Address:** After first boot, find the DS18B20 address in the logs (e.g., `0x1234...`) and hardcode it in your YAML to improve boot speed.
 
 ---
 
@@ -192,17 +160,15 @@ action:
 
 | Issue | Likely Cause | Solution |
 | :--- | :--- | :--- |
-| **No WiFi** | Wrong credentials | Check `secrets.yaml` and signal strength. |
-| **INA228 reads NaN** | I²C bus lock | Watchdog will auto-recover; check for loose wiring. |
-| **DS18B20 not found** | Missing pull-up | Verify 4.7kΩ pull-up resistor on GPIO2. |
-| **OTA fails** | Network Firewall | Ensure port 8266 is open on your network. |
+| **No WiFi Connection** | Incorrect SSID/Pass | Verify `secrets.yaml` and 2.4GHz signal. |
+| **Sensor Reads 'NaN'** | I²C Bus Lockup | Watchdog will auto-recover; check for loose wiring. |
+| **OTA Fails** | Firewall/Network | Ensure port `8266` is open or use `esphome run --device <IP>`. |
+| **LED Stays Off** | GPIO Mismatch | Verify board uses GPIO5 for LED; update YAML if required. |
 
 ---
 
 ## ⚖️ License
-
-This firmware is provided under the **MIT License**. Use at your own risk. The author is not responsible for hardware damage caused by improper connection or ignoring the USB backfeed warning.
+Distributed under the **MIT License**. Use at your own risk. The author is not responsible for damage caused by ignoring the USB backfeed warning.
 
 ---
 *Last updated: 2026-04-13*
-```
