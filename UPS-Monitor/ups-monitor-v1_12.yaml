@@ -1,0 +1,2215 @@
+# ============================================================================
+# UPS Monitor V1 — PRODUCTION Configuration
+# ============================================================================
+# Purpose : Full UPS instrumentation for HA Green / XB7 LiFePO4 microUPS.
+#           Replaces Shelly Plus Uni.
+#
+# Hardware: XIAO ESP32-C3 + Adafruit INA260 (#4226) + DS18B20 + Pololu D24V7F3
+#           Carrier PCB: UPS-Monitor-THT Rev 1 (KiCad 10, 2-layer, 44 x 77 mm,
+#           OSH Park). Supersedes the SBB400 breadboard build. The INA breakout
+#           sits in an 8-pin socket (U2) silkscreened "Adafruit INA260"; the same
+#           socket footprint also fits an INA228 breakout (see note below).
+#           Board source: UPS-Monitor-THT.kicad_pcb
+#
+# Dashboard panels provided:
+#   ① PSU health           — float voltage snapshot on every full-charge event
+#   ② Device health        — combined AC wall power trending   (HA template)
+#   ③ Battery current      — signed real-time charge/discharge
+#   ④ Discharge phases     — settling · plateau · knee · cliff state machine
+#   ⑤ Ah / Wh delivered    — per-outage + lifetime coulomb counters
+#   ⑥ Runtime remaining    — live (capacity − Ah_used) ÷ |I_now|
+#   ⑦ Network health       — Xfinity modem online via WiFi RSSI proxy
+#
+# Sign convention (Wago Bus → INA260 VIN+, Battery+ → INA260 VIN−):
+#   Positive current (+) = CHARGING   — PSU pushing current into battery
+#   Negative current (−) = DISCHARGING — battery delivering current to load
+#
+# High-current path (external 16 AWG only — NEVER through PCB copper):
+#   Wago Bus → INA260 VIN+  (INA260 breakout screw terminal)
+#   Battery+ → INA260 VIN−  (INA260 breakout screw terminal)
+#   The PCB carries only signal + the board's own ~35 mA supply (via TB1/F1).
+#
+# GPIO assignments (UPS-Monitor-THT Rev 1 PCB):
+#   GPIO6  (D4) — I2C SDA  → INA260 socket SDA
+#   GPIO7  (D5) — I2C SCL  → INA260 socket SCL
+#   GPIO10 (D10)— 1-Wire   → DS18B20 DQ (TB2, 3-pin JST-XH: 3V3 / DQ / GND)
+#   GPIO3  (D1) — ALERT in → INA260 socket pin 5 (ALERT), via on-board R2 (10K)
+#                             pull-up to 3V3. CHANGED FROM GPIO20 on the breadboard.
+#                             GPIO3 is an RTC-domain pin (GPIO0-GPIO5), so it CAN wake
+#                             the C3 from deep sleep. V1.10 used it for event-driven
+#                             wake; V1.11 BACKED THAT OUT (see changelog). GPIO3 is now
+#                             a passive ALERT-monitor input only — NOT a wake source,
+#                             NOT shared with deep_sleep. Recovery is timer-wake (§-150)
+#                             and the run_duration watchdog, neither of which uses GPIO3.
+#   GPIO20 (D7) — now SPARE (was the breadboard ALERT pin; left unconnected on PCB)
+#
+# Power: TB1 (BATTERY +/-) → F1 (5x20 mm 1A slow-blow) → C4 47uF / C5 0.1uF →
+#        D24V7F3 VIN; VOUT (3.3 V) → 3V3 rail (XIAO 3V3, INA VCC) with C1 10uF +
+#        C2/C3 0.1uF decoupling. The INA260's own VIN+/VIN- screw terminals carry
+#        the metered load current externally (16 AWG), NOT through PCB copper.
+#
+# I2C address: depends on the populated INA260 module's A0 solder jumper, NOT the
+# PCB. This build's module has A0 bridged → 0x41. A default #4226 (no jumper)
+# responds at 0x40 — re-check `i2c_device.address` and the `ina260` sensor block
+# if a different module is socketed.
+#
+# INA228 note: the U2 socket physically accepts an Adafruit INA228 breakout, but
+# this firmware is INA260-specific (register map, 1.25 mV/1.25 mA LSBs, 0x00/0x02
+# raw access). An INA228 also remaps socket pin 5 (VBUS, not ALERT) and changes
+# R2's role — do NOT drop in an INA228 without re-validating the pinout and this
+# firmware.
+#
+# Validated system parameters — INA260 coulomb-counted, May 2026 outage test:
+#   Usable capacity : 4.18 Ah / 53.3 Wh  (at 13.3V float, 14.9W typical)
+#   Typical load    : 1.18 A  (~14.9W DC, includes monitor board ~35 mA)
+#   Phase durations : settling ~5 min / plateau ~142 min / knee ~49 min / cliff ~17 min
+#   BP-65 LVD trip  : 11.675V observed (11.77V in D3 — both within ±0.13V of 11.80V)
+#   Peak cliff slope: −58 mV/min at discharge end (vs −19.3 mV/min D3 Shelly estimate)
+#   Peak recharge   : 4.591 A / 60.4 W immediately on AC restoration (PSU CC limit)
+#
+# Changelog:
+#   V1.0 — Initial production release
+#   V1.1 — Fix Cliff Imminent false triggers on outage-start OCV settling transient
+#           (added voltage guard v < plateau_min_v + current guard + delayed_on: 60s)
+#         — Fix Knee Approaching false triggers (wrong voltage boundary: was
+#           settling_min_v 13.0V, corrected to plateau_min_v 12.85V)
+#           (added current guard + delayed_on: 120s + delayed_off: 30s)
+#         — Add EMA smoothing (α=0.35) to voltage slope to dampen INA260 LSB
+#           quantization noise and soften the initial outage transient spike
+#         — Add Xfinity Modem Online sensor via WiFi RSSI proxy (http_request
+#           removed — blocked ESPHome main loop for ~577ms per poll)
+#         — Add explicit mdns: disabled: false for LAN discoverability
+#   V1.2 — Update validated capacity to INA260 coulomb-counted May 2026 actuals
+#           (4.18 Ah / 53.3 Wh / 1.18 A — supersedes D3 Shelly-inferred values)
+#         — Add outage_min_voltage tracking (replaces manual log hunting for LVD V)
+#         — Add outage_start_voltage (confirms full float on every event)
+#         — Add recharge_peak_a tracking (PSU CC-limit health indicator)
+#         — Add last_float_voltage snapshot on battery_fully_charged (PSU drift)
+#         — Add total_outage_count persistent counter
+#         — Structured OUTAGE END log line (grep-friendly, all key metrics)
+#         — Phase transition logging: phase + V + I on every state change
+#         — Harden: reboot_timeout 15min → 30min (BP-65 LVD race condition)
+#         — Harden: boot-during-outage delay 6s (guarantees INA260 ready)
+#         — Harden: battery_fully_charged threshold via substitution (not hardcoded)
+#         — Harden: last_outage_min_v NaN guard (suppress 0.000 V before first event)
+#   V1.3 — Retune plateau_min_v 12.85 → 12.65 (data-derived from May 2026 Voltage.csv;
+#           physical LFP plateau spans 12.65–13.00 V at this discharge rate)
+#           Knee band now 12.40–12.65 V (~49 min); Plateau ~142 min
+#           Phase duration comments corrected throughout (Rev 1 figures retracted)
+#   V1.4 — Add survival sleep for extended outage protection (10-day design target)
+#           Entry : V ≤ 11.50 V sustained 3 min (post BP-65 LVD, ESP sole load)
+#           Wake  : 150 s timer — direct INA260 I2C read bypasses throttle_average,
+#                   CVRF polling guarantees fresh post-power-down conversion
+#           Exit  : dual confirmed V ≥ 11.70 V (200 mV hysteresis, R-2.4)
+#           INA260 powered down during sleep: ~330 µA → 2 µA max (SBOS656C §7.5)
+#           Power budget (corrected in design doc v3 — see note):
+#             Blended 99.98% A / 0.02% B, 83 µA sleep, 0.41 Ah:
+#             I_avg = 1.151 mA → 14.8 days — 48% margin above 10-day target.
+#             (The 95/5 split / 12.8-day figure originally cited here was an
+#              engineering placeholder superseded by the physics-based split.)
+#           — Add deep_sleep component (150 s timer, explicit entry only)
+#           — Add survival_mode_active global (NVS-persisted, survives sleep cycles)
+#           — Extend priority 600: INA260 normal mode restore + 10 ms delay (R-2.1)
+#           — Add priority -150: survival wake decision with CVRF polling (R-2.4)
+#           — Add 100 ms NVS flush delay before deep_sleep.enter (R-2.3)
+#           — Flag written before INA260 power-down while V is at entry point (R-2.2)
+#           — Boot message updated to V1.4
+#   V1.5 — Fix data-integrity issues exposed by survival-sleep deep-sleep cycles:
+#           Issue 1: ah_delivered_outage + wh_delivered_outage restore: false → true
+#             (restore: false reset counters on every 150s wake; on_release recorded
+#             near-zero Ah/Wh for any outage that entered survival sleep)
+#           Issue 2: outage_min_voltage (transient) also written to last_outage_min_v
+#             (persisted) in 5s interval tracker — survives wake cycles; on_release
+#             no longer overwrites persisted field with NAN
+#           Issue 3: on_battery on_press guarded by !survival_mode_active — prevents
+#             false outage_count increment and counter reset on recovery boot
+#           Issue 4 (CRITICAL): priority -100 guarded by !survival_mode_active —
+#             was firing on every survival wake (priority -100 runs before -150),
+#             resetting Ah/Wh counters and clobbering outage_start_uptime each cycle
+#           Also: last_outage_min_v seeded in priority -100 brown-out path (was missing)
+#                 last_outage_min_v reset to 0.0f in on_press for clean outage start
+#                 Boot message updated to V1.5
+#   V1.6 — Redesign survival sleep entry/exit to shadow the BP-65 LVD, and
+#           harden the wake fail-safe. Supersedes the 11.50 V / 11.70 V scheme.
+#
+#           ENTRY — arm at the BP-65 trip instead of 175 mV below it:
+#             Condition: I > -0.30 A (XB7 load gone) AND V < 12.5 V, sustained 30 s.
+#             Rationale: once the BP-65 opens, HA Green and the XB7 are unpowered
+#             — there is no AP, no API client, nothing to stay awake for. The ESP
+#             is the sole ~40 mA load. Arming here (vs draining to 11.50 V awake
+#             first) sets survival_mode_active within minutes of the trip, BEFORE
+#             api reboot_timeout (30 min) can fire its first reboot. That closes
+#             the LVD->arm window in which priority -100 would otherwise reset the
+#             Ah/Wh counters on a watchdog reboot — the V1.5 "Issue 1/4" counter
+#             wipe is now structurally impossible, so no outage_in_progress flag
+#             and no reboot_timeout change are needed.
+#             Current ceiling is single-sided (-0.30 A), NOT a window: it sits in
+#             the wide dead zone between ~1.2 A (XB7 connected) and the ~153 mA ESP
+#             WiFi-Tx peak (base ~40 mA + ~113 mA buck-reflected Tx burst). A -0.15 A
+#             ceiling would sit INSIDE that Tx envelope — during a dead-modem outage
+#             the C3 is in aggressive reconnect, so frequent Tx spikes would reset
+#             the 30 s delayed_on timer and survival sleep might never arm (a field-
+#             only failure: benign on the bench where the AP is present). -0.30 A
+#             The voltage gate does the float-vs-trip discrimination (13.3 V float
+#             vs ~12.1 V post-trip rebound); current confirms the load is gone,
+#             which voltage alone cannot tell you during the ~8 min cliff.
+#
+#           EXIT — V >= 12.8 V, single confirmed read (was: dual-confirmed 11.70 V):
+#             12.8 V IS the BP-65 reconnect threshold (V>12.8 for 30 s -> loads
+#             re-powered, modem boot begins). Waking before this is pointless —
+#             no AP exists below it. 12.8 V is also structurally above any
+#             depleted-pack resting OCV (a 4S LFP pack at the trip relaxes only to
+#             ~12.0-12.3 V), so the 200 mV hysteresis + 500 ms dual-read OCV-bounce
+#             machinery (R-2.4) is now redundant and removed. A single confirm
+#             re-read is retained purely as I2C single-sample-glitch insurance.
+#             May 2026 recovery data: V went 11.7 -> 13.09 V within 4 s of CC
+#             onset; there is no dwell anywhere near the 11.7-12.8 V band.
+#
+#           FAIL-SAFE — fail toward EXIT, never toward re-sleep:
+#             survival_mode_active is NVS-persisted; a sensor that always reads
+#             low would otherwise force re-sleep forever -> physical-reflash brick.
+#             Cost asymmetry: a false exit just re-arms and re-sleeps in ~30 s
+#             (~1-4 mAh); a wrong re-sleep bricks. So on an implausible wake read
+#             (I2C NACK, or V < 5.0 V or V > 16.0 V) the firmware CLEARS the flag
+#             and boots normally. Plus a max-cycle backstop (8640 cycles ~= 15
+#             days at 150 s) forces exit on the stuck-but-plausible-low case.
+#             Recovery itself needs no network and no "report": a cold boot on AC
+#             return resumes telemetry regardless of prior sleep state.
+#
+#           SNAPSHOT — Ah/Wh/min-V/start-V written at arm time and marked final
+#             so the recovery on_release does not overwrite them. Because arm now
+#             happens at the trip (counters intact), the snapshot captures the
+#             true full-outage ~4.18 Ah.
+#
+#           Also in V1.6 (independent of the sleep redesign):
+#           — Item 2: discharge-direction guard on on_battery on_press
+#             (if I > -0.05 A, return) — cannot fire a false outage while charging.
+#           — Item 4: INA260 CNVR config + CVRF poll moved from reg 0x07 to reg
+#             0x06 (Mask/Enable). 0x07 is the Alert-Limit register. The V1.5 code
+#             wrote/polled the wrong register: CNVR was never actually enabled and
+#             the CVRF poll always timed out (R-2.1 was met by the 10 ms delay
+#             alone). Verified against TI SBOS656C and Adafruit_INA260.h.
+#           — UNMEASURED THRESHOLDS (flagged for bench test, design doc §13):
+#             entry gate 12.5 V and the ~12.1 V post-trip rebound it assumes are
+#             estimates. If bench shows post-trip resting V > ~12.4 V, raise gate.
+#
+#           Review fixes (V1.6, post-design-review):
+#           — Entry current ceiling -0.15 A -> -0.30 A: the original -0.15 A sat
+#             inside the ESP WiFi-Tx peak (~153 mA), so reconnect bursts during a
+#             dead-modem outage could reset the 30 s arm timer and prevent arming.
+#             -0.30 A clears the spike with margin. (Field-only failure; benign on
+#             the bench — caught in review, not in test.)
+#           — Added 100 ms NVS flush on the RE-SLEEP path (mirroring the entry
+#             path) so the survival_cycle_count increment commits before deep
+#             sleep — otherwise the async preferences write could be lost,
+#             eroding the max-cycle backstop.
+#           — Pinned wifi reboot_timeout: 15min explicitly. On recovery the ESP
+#             wakes at 12.8 V but the XB7 AP takes ~3-4 min to boot; 15 min covers
+#             that window. WiFi retry is non-blocking; the NVS snapshot is safe.
+#           — CVRF poll and exit dual-read RETAINED (measure-don't-assume): the
+#             10 ms delay and plausibility band would make both removable, but the
+#             wake decision drives sleep/wake so explicit confirmation is kept.
+#             Boot message updated to V1.6
+#   V1.7 — SIMPLIFY for the "save battery + auto recover" requirement (no bench
+#           testing; exact Ah reserve not operationally important). Net deletion.
+#
+#           DELETED the V1.6 entry voltage gate (V < 12.5 V). Its threshold was an
+#           UNMEASURED estimate of the post-trip rebound and its failure mode was
+#           the worst possible: if the real rebound exceeded the gate, sleep would
+#           NEVER arm and the pack would drain to BMS cutoff — the only outcome
+#           that actually harms the battery. The gate only bought Ah-fidelity, so
+#           it was pure downside. Removing it eliminates the single open threshold
+#           risk and the dependence on an untested assumption.
+#
+#           ENTRY is now the load-collapse signature, fail-toward-sleep:
+#             on_battery == true  AND  -0.30 A < I < +0.20 A  sustained 30 s.
+#             No voltage threshold can block sleep. Current is a WINDOW: lower
+#             bound -0.30 A clears the ESP WiFi-Tx peak (~153 mA); upper bound
+#             +0.20 A rejects the recovery/charging case (I ~ +4.5 A) that a
+#             current-only floor would false-arm on while on_battery is still in
+#             its 60 s delayed_off. Post-trip current (~-0.04 A) sits well inside
+#             the window, so a slightly-wrong sensor still arms — fails toward
+#             sleep, never blocks it.
+#
+#           REMOVED CNVR/CVRF entirely (priority 600 config write + priority -150
+#             poll loop). The 10 ms priority-600 delay already guarantees a fresh
+#             conversion and the wake plausibility check catches a bad read, so
+#             the poll was latent state for no benefit. The register-map fix from
+#             V1.6 (0x06 Mask/Enable, 0x07 Alert Limit) is retained as a reference
+#             comment for any future hardware-alert work. ALERT (GPIO3 on the PCB,
+#             GPIO20 on the breadboard) is wired but unused by firmware.
+#
+#           SLEEP INTERVAL 150 s -> 120 s. The interval was the free variable once
+#             runtime cleared the 10-day target with margin. 300 s gives months of
+#             reserve (over-provisioned) but slows the ESP's telemetry resume; 60 s
+#             speeds it but could miss 10 days under the conservative ~83 µA sleep-
+#             floor estimate (2.5x more wake bursts). 120 s is the robust middle:
+#             clears 10 days under the pessimistic stack and keeps recovery-detection
+#             latency ~2 min. End-to-end recovery is modem-bound (~3-4 min AP boot)
+#             regardless. survival_max_cycles set to 10800 to hold the ~15-day
+#             fail-safe backstop at 120 s.
+#
+#           RETAINED: snapshot at arm + outage_was_survival finalization (cheap,
+#             keeps total_outage_count / duration meaningful); 12.8 V exit with
+#             single confirm re-read; value-plausibility fail-safe; max-cycle
+#             backstop; 100 ms NVS flush on both entry and re-sleep paths; the
+#             discharge-direction guard on on_battery on_press; priority -100
+#             counter-preservation.
+#             Boot message updated to V1.7
+#   V1.8 — Raise survival sleep EXIT threshold 12.8 V -> 13.0 V. Decouples the
+#           ESP exit from the BP-65's hardware reconnect (which remains 12.8 V +
+#           30 s); V1.7 had conflated the two. Motivation: the post-trip resting
+#           OCV is UNMEASURED (the May 6 log has a 4m44s telemetry blackout across
+#           the load-collapse window — the WiFi AP rides on the XB7, which the
+#           BP-65 cuts at the trip, so streamed logs cannot see past it). A 4S LFP
+#           at ~10% residual can rest near 12.8-13.0 V, so a 12.8 V exit risks a
+#           spurious wake-exit into a re-arm loop during a real outage. 13.0 V
+#           brackets the problem:
+#             • ABOVE the estimated resting-OCV band (~12.8-13.0 V) -> shrinks both
+#               the probability and the severity (smaller OCV walk-down) of the loop;
+#             • BELOW the first observed recovery CC sample (13.093 V @ +4.59 A) and
+#               far below 13.30 V float -> genuine recovery still caught on the first
+#               (worst case second) wake; at most one extra 120 s cycle, invisible
+#               against the modem-bound ~3-4 min AP boot, so NOT consequential to
+#               recovery timing.
+#           No logic change: the exit/dual-read read ${survival_exit_v}; only the
+#           substitution value, operator log strings, and rationale comments change.
+#           CAVEAT: still a hedge, not a verified bound. One out-of-band rest reading
+#           (DMM on the battery through a trip) is the only thing that confirms
+#           resting OCV < 13.0 V.
+#           Boot message updated to V1.8
+#   V1.9 — FIX COMPILE ERROR on ESPHome 2026.4.3 + harden the I2C register reads.
+#           Cause: ESPHome removed the `stop` argument from the bus-level I2C
+#           read/write API (PR esphome#10389 — a recent ESP-IDF change made
+#           STOP-suppressed transfers unreliable, so reads/writes now always issue
+#           STOP). The V1.8 lambdas called the 4-arg form
+#             id(bus_a).read(0x41, vd, 2, true)
+#           which no longer exists -> "no matching function for call to
+#           IDFI2CBus::read(int, uint8_t[2], int, bool)". (The bus `write` kept a
+#           deprecated 4-arg shim, which is why only the reads failed to compile.)
+#
+#           Two-part fix, verified against the 2026.4.3 i2c headers:
+#           (a) Stop hand-rolling bus transactions. Added an `i2c_device:` handle
+#               (id: ina_raw) bound to address 0x41 on bus_a. All survival-path
+#               I2C now goes through the I2CDevice register helpers, which are
+#               address-bound and issue the write-pointer -> repeated-START -> read
+#               as ONE atomic transaction (bus_->write_readv). This is the correct
+#               register-read pattern for the INA260 and avoids the STOP-START
+#               split that separate write+read calls would now produce.
+#           (b) Conversions (NO logic change — same registers, same 1.25 mV LSB,
+#               same big-endian payload, same plausibility guard):
+#                 reg 0x02 bus-voltage read  (priority -150, x2):
+#                   write(0x41,&vreg,1,false)+read(0x41,vd,2,true)
+#                   -> id(ina_raw).read_byte_16(0x02, &raw)   // MSB-first 16-bit
+#                 reg 0x00 mode writes (priority 600 restore; two power-downs):
+#                   write(0x41,{0x00,0x61,0x27},3,true)
+#                   -> id(ina_raw).write_byte_16(0x00, 0x6127) // normal mode
+#                   write(0x41,{0x00,0x61,0x20},3,true)
+#                   -> id(ina_raw).write_byte_16(0x00, 0x6120) // power-down
+#               read_byte_16/write_byte_16 handle the register pointer and the
+#               big-endian byte order natively, so the manual byte-swap and the
+#               pre-zeroed buffer are no longer needed. The VALUE-based plausibility
+#               check (raw 0x0000/0xFFFF, 5.0 V < V < 16.0 V) is RETAINED unchanged
+#               as the brick-vs-recover safety net — it catches a stale/garbled
+#               conversion that still returns ERROR_OK, which a return-code check
+#               would miss.
+#           No threshold, no state-machine, and no power-budget change. Survival
+#           entry/exit logic is byte-for-byte identical to V1.8.
+#           VERIFY AFTER FLASH: watch the first "Wake #N | V1=..." log line for a
+#           sane ~12-13 V (not 0.000 or 81.900) to confirm the read is clean before
+#           trusting it in the field. INA260 16-bit register helpers are big-endian
+#           by default (matches INA260); the logged value is the final confirmation.
+#           Boot message updated to V1.9
+#   V1.9.1 — Use EXPLICIT byte assembly instead of read_byte_16/write_byte_16, to
+#           remove ALL reliance on a helper's internal endianness. The reads now use
+#           the I2CDevice atomic transaction write_read(&reg,1,buf,2) and rebuild the
+#           value in-source as ((buf[0]<<8)|buf[1]) — byte-for-byte IDENTICAL to the
+#           V1.8 logic already validated against TI SBOS656C (reg 0x02, 1.25 mV LSB,
+#           MSB-first). The writes use write(arr,3) with the same {0x00,0x61,0x27} /
+#           {0x00,0x61,0x20} arrays as V1.8. The ONLY change from V1.8 is the call
+#           mechanics forced by ESPHome 2026.4.3: address is bound to the ina_raw
+#           device handle (no per-call 0x41) and the removed `stop` arg is gone.
+#           Net effect: the survival-path byte order is now provable by inspection,
+#           not delegated to read_byte_16/write_byte_16. No threshold, logic, or
+#           power-budget change vs V1.9 / V1.8.
+#
+#           NOTE ON BRICK RISK (addressed): a wrong byte order CANNOT brick this
+#           board. Three independent fail-safes force a normal boot:
+#             (1) At recovery voltage the pack charges to ~13.3 V; a byte-swapped
+#                 misread of 13.3 V computes to ~46 V (0x2990 -> 0x9029), which trips
+#                 the >16 V plausibility guard -> FAIL-SAFE EXIT -> normal boot. So
+#                 even a swapped build recovers on the first wake that sees charging.
+#             (2) The plausibility guard (5 V < V < 16 V; reject 0x0000/0xFFFF)
+#                 forces exit on any out-of-band read.
+#             (3) The max-cycle backstop forces exit after ~15 days regardless.
+#           Worst case of a wrong read is degraded runtime (spurious exit / re-arm
+#           loop during the sleep phase), which self-recovers — never a dead device.
+#           This V1.9.1 explicit conversion makes even that degraded case impossible
+#           by getting the read right in the first place.
+#           Boot message updated to V1.9.1
+#   V1.9.2 — RETARGET to the UPS-Monitor-THT Rev 1 carrier PCB (was SBB400
+#           breadboard). HARDWARE-BINDING change only; NO logic, threshold, timing,
+#           or power-budget change vs V1.9.1.
+#
+#           ALERT pin GPIO20 (D7) -> GPIO3 (D1). On the breadboard the INA260 ALERT
+#           landed on GPIO20 (D7); the PCB routes it to GPIO3 (D1) with an on-board
+#           10K pull-up to 3V3 (R2). Two consequences:
+#             (1) The internal INPUT_PULLUP on this pin is now REDUNDANT (R2 holds
+#                 the line high in hardware). It is kept as belt-and-suspenders;
+#                 harmless. Adafruit #4226 still has no pull-up of its own — R2
+#                 supplies it on the board.
+#             (2) GPIO3 is in the ESP32-C3 RTC power domain (GPIO0-GPIO5). Unlike
+#                 GPIO20, GPIO3 CAN wake the chip from deep sleep. This PCB is the
+#                 "future hardware" that design-doc §14 anticipated: event-driven
+#                 wake on an INA260 under-voltage ALERT is now physically possible.
+#                 *** NOT implemented here. *** The survival path remains 120 s
+#                 timer-wake (V1.8). Event-wake would be a separate, independently
+#                 validated feature (deep_sleep wakeup_pin + INA260 Mask/Enable
+#                 0x06 / Alert-Limit 0x07 config from the §2.3 reference map).
+#           GPIO20 (D7) is now unconnected on the PCB — spare.
+#
+#           Header hardware/GPIO/power notes rewritten to the PCB (TB1 BATTERY in
+#           via F1 1A slow-blow -> D24V7F3; TB2 3-pin JST DS18B20; INA in an 8-pin
+#           socket; I2C address is module-jumper-dependent, not PCB-fixed). The
+#           INA260 sensor block, ina_raw handle (0x41), and all survival logic are
+#           UNCHANGED. Boot message updated to V1.9.2.
+#
+#           PCB-side follow-ups (do NOT affect this firmware, flagged for the
+#           board, not fixed here): silkscreen still contains literal "{dblquote}"
+#           text in the board-size note ("1 3/4{dblquote} x 3{dblquote}" — literal
+#           {dblquote} tokens on the silk). The GND pours are fine (both zones are
+#           net-tied to GND; an earlier note here wrongly called them unassigned —
+#           that was a KiCad-10 net-format misread). Fix the silk before re-fab.
+#   V1.10 — IMPLEMENT EVENT-DRIVEN ALERT-WAKE on GPIO3 (the §14 enhancement the
+#           PCB enables). *** REQUIRES BENCH VALIDATION BEFORE PRODUCTION. ***
+#
+#           WHAT CHANGED:
+#             • The INA260 is now KEPT AWAKE (continuous mode, ~310 µA) during
+#               survival sleep instead of powered down (~2 µA). It monitors bus
+#               voltage and asserts its open-drain ALERT (bus-over-voltage / BOL)
+#               when V rises past the exit threshold on recovery.
+#             • ALERT (GPIO3, R2 pull-up) wakes the ESP from deep sleep via the
+#               deep_sleep wakeup_pin (inverted -> wake on LOW). Verified against the
+#               installed ESPHome source that the C3 GPIO-wake path is correct
+#               (bitmask form, sets pin INPUT first; the old #3866 pin-vs-bitmask
+#               bug is fixed). Recovery wakes the ESP near-instantly instead of
+#               waiting a full sleep interval.
+#             • The timer is demoted to a BACKSTOP: survival_sleep_interval 120 s
+#               -> 600 s (10 min); survival_max_cycles 10800 -> 4320 (30-day guard).
+#               The short backstop is chosen to surface an event-wake FAILURE within
+#               10 min rather than up to an hour.
+#             • INA260 BOL alert is ARMED on entry + re-armed each boot in
+#               priority 600 (limit = survival_exit_v / 1.25 mV); DISARMED (0x06=0)
+#               on every survival exit so ALERT does not sit asserted at float.
+#             • Boot logs the wake cause (GPIO/ALERT vs timer-backstop vs cold).
+#
+#           WHY (power): the timer-wake budget (design doc §6) is dominated by the
+#           per-wake ESP burst (~1.07 mA blended at 120 s), NOT the sleep floor.
+#           Event-wake eliminates the periodic bursts; the new floor is the INA260
+#           (~310 µA) + board (~41-81 µA). At the 10 min backstop the survival
+#           estimate is ~24-30 d at the 0.41 Ah floor (vs ~15 d for 120 s timer-wake;
+#           a longer backstop would extend it further — see design doc §6.6).
+#           Recovery LATENCY is NOT the driver (end-to-end recovery is modem-bound
+#           ~3-4 min regardless); the win is runtime + a firmer 10-day safety case
+#           (the dominant term is now the datasheet-bounded INA260 Iq, not the
+#           unmeasured burst model).
+#
+#           FAIL-SAFE / RISK (all surfaced now, before sign-off):
+#             • If GPIO3 event-wake does not fire (alert misconfig, slow V rise),
+#               the 10 min timer backstop still recovers the device — degrades to
+#               timer-wake, never bricks.
+#             • All existing exits (implausible read, max-cycle, V>=exit dual-read)
+#               are UNCHANGED and still fail toward exit.
+#             • A-4 caveat persists: if the unmeasured post-trip resting OCV ever
+#               exceeds the exit threshold, the BOL alert fires during the outage
+#               -> spurious wake -> exit/re-arm loop (self-limiting, not a brick),
+#               same residual as the exit threshold itself.
+#             • MUST bench-verify: (a) a recovery (or GPIO3-LOW pulse) wakes the C3
+#               (priority-600 log prints wake cause = GPIO); (b) no spurious
+#               immediate-wake at entry (ALERT is high there, so none expected);
+#               (c) ALERT asserts at the BOL limit; (d) the ~310 µA INA-awake sleep
+#               current (one µA-meter reading — also resolves the floor question).
+#               Until (a)-(d) pass, this is V1.10-rc, not production.
+#           Boot message updated to V1.10.
+#   V1.11 — BACK OUT V1.10 event-wake; REVERT survival logic to V1.9.2 (the last
+#           bench-validated timer-wake build, byte-for-byte the V1.8 entry/exit
+#           proven against the May 6 outage) and ADD a Tier-1 run_duration
+#           watchdog. Net: less code, fewer dependencies, HIGHER validation
+#           confidence (deletes the only un-bench-validated path in the build).
+#
+#           WHY BACK OUT EVENT-WAKE: V1.10 was explicitly -rc and never passed
+#           its own gating bench checks (a)-(d). Its only benefit — near-instant
+#           ALERT wake — is COSMETIC: recovery is modem-bound (~3-4 min XB7 AP
+#           boot) and the XB7 load is restored by the BP-65 reconnect independent
+#           of the ESP, so waking the ESP faster only resumes its LOCAL telemetry
+#           sooner. Against that cosmetic gain it added: GPIO3 as a recovery-
+#           critical SPOF, a shared-pin (allow_other_uses) registry coupling, the
+#           INA260 kept awake at ~310 µA (vs ~2 µA powered down), a BOL register
+#           dance armed/cleared in three places, and an open validation burden.
+#           At the 600 s backstop it also cost MORE energy than plain timer-wake
+#           at the same interval (event-wake = same-interval timer-wake + ~300 µA
+#           continuous INA-awake floor; it never saves energy at long intervals).
+#           Removing it is a strict win for the stated requirement (>=10 days,
+#           auto-recover): simpler, lower drain, and GPIO3 leaves the wake path.
+#
+#           REVERTED (back to V1.9.2):
+#             • deep_sleep: wakeup_pin (GPIO3) REMOVED. Timer-wake only.
+#             • INA260 POWERED DOWN on entry and on every re-sleep (0x00=0x6120,
+#               ~2 µA) instead of kept awake. Sleep floor returns to 43-83 µA.
+#             • priority 600: BOL arm/clear block REMOVED (no 0x06/0x07 writes).
+#               Kept: 0x6127 normal-mode restore + 10 ms freshness delay, and the
+#               wake-cause log (free diagnostic: timer vs cold boot).
+#             • priority -150: per-exit BOL-disarm writes REMOVED (nothing armed).
+#               Logic otherwise byte-for-byte V1.9.2 (read 0x02, plausibility
+#               fail-safe, max-cycle backstop, 13.0 V dual-read exit, snapshot).
+#             • ina260_alert binary_sensor: allow_other_uses REMOVED on the pin.
+#               GPIO3 is now single-owner — a passive ALERT-fault smoke detector.
+#             • survival_sleep_interval 600s -> 120s; survival_max_cycles 4320 ->
+#               10800 (restores the ~15-day stuck-sensor backstop at 120 s).
+#               120 s is intentional: runtime is NOT the binding constraint, so we
+#               do NOT over-provision the interval. Outages are rare, so the NVS
+#               write rate at 120 s is a non-issue over the device's life.
+#
+#           ADDED (Tier-1 hardening — NEW, beyond the V1.9.2 baseline):
+#             A run_duration WATCHDOG so NO sensor/pin/bus failure can strand the
+#             device AWAKE draining the pack. deep_sleep now has run_duration
+#             (${survival_run_duration}); after that long awake, the component
+#             auto-sleeps UNLESS sleep has been positively prevented. We prevent
+#             only on POSITIVE confirmation of normal operation, by EITHER of two
+#             INDEPENDENT signals (either alone suffices):
+#               (1) priority -160: a PLAUSIBLE raw INA read (sensor working =>
+#                   the normal arm/survival logic is in control); or
+#               (2) wifi on_connect: association to the home AP, which only exists
+#                   when AC is back (the XB7 sits behind the BP-65). INA-INDEPENDENT.
+#             Verified against ESPHome deep_sleep_component.cpp: begin_sleep(manual)
+#             runs `if (prevent_ && !manual) return;`. The run_duration auto-sleep
+#             calls it with manual=false (so prevent blocks it), while an explicit
+#             deep_sleep.enter passes manual=true and sleeps REGARDLESS of prevent.
+#             So a stray WiFi-connect can NEVER block a survival re-sleep, and the
+#             watchdog can never strand the device awake.
+#
+#           WHAT THE WATCHDOG DOES / DOES NOT COVER (honest scope):
+#             • Survival path (survival_mode_active true): pure backstop. -150
+#               explicit-enters sleep in ~50 ms-3 s, so run_duration almost never
+#               fires; it only catches a hung -150 lambda. Guaranteed bound.
+#             • Mid-sleep INA hang -> fail-safe EXIT (flag cleared): previously this
+#               booted normal and then STAYED AWAKE (couldn't re-arm) -> drained.
+#               Now neither confirmation fires (INA hung + AP down) -> run_duration
+#               re-sleeps it; it rides out the outage in timer cycles. IMPROVEMENT.
+#             • Entry-side INA hang (never arms): if the device is ALREADY booted
+#               in normal op (prevent set), the watchdog only reasserts after the
+#               next reboot (api reboot_timeout 30 min) -> up to ~30 min / ~20 mAh
+#               of drain before it bounds. And in any dead-sensor RIDE-OUT the
+#               device waits the full run_duration awake each cycle, so it bounds
+#               the drain *rate* (~run_duration duty) but does NOT achieve multi-day
+#               survival on a dead sensor — it extends drain-to-cutoff from ~5 h to
+#               ~1 day, buying time for the human to notice (device offline / INA
+#               unhealthy in HA). True survival with a dead INA needs the Tier-4
+#               independent ADC battery sense (a board change) — OUT OF SCOPE here
+#               and NOT claimed closed by this firmware.
+#           Boot message updated to V1.11.
+#
+#           HOUSEKEEPING (dead/impractical-code sweep):
+#             • Removed survival_mode_sensor (template binary_sensor): its 'on'
+#               state is unobservable by HA — it only exists during survival deep
+#               sleep, when the XB7/AP is unpowered. Nothing read the global through
+#               it. Survival history still reaches HA via outage_was_survival +
+#               last_outage_* on the next normal boot.
+#             • survival_sleep_armed → internal: true. Its on_press IS the entry
+#               trigger (kept), but its 'on' likewise can't reach HA (asserts only
+#               after the trip sheds the load and kills the AP), so the always-off
+#               HA entity is hidden.
+#             • Removed orphan substitutions never expanded anywhere:
+#               validated_capacity_wh, typical_load_amps, and modem_host (a fossil
+#               of the removed http_request modem ping — now an RSSI proxy).
+#             • Static sweep (globals read/write, NVS persistence, update_interval,
+#               unreachable branches) otherwise clean; ina260_alert retained as a
+#               cheap INA/I2C fault smoke-detector (fires ~never, observable as OK).
+#   V1.12 — TWO PRE-SIGN-OFF FIXES from the V1.11 engineering review (both surfaced
+#           BEFORE production sign-off, per the code-review standard). No threshold,
+#           timing, or power-budget change; survival entry/exit logic is byte-for-byte
+#           V1.9.2/V1.11. Verified: config valid + full codegen clean on ESPHome
+#           2026.5.3 (final on-host esphome compile + flash remains the §13 gate).
+#
+#           FIX 1 (CRITICAL — deep_sleep brick): add `sleep_duration` to the
+#             deep_sleep COMPONENT (was only set inside the two deep_sleep.enter
+#             actions). The run_duration WATCHDOG auto-sleep calls begin_sleep(
+#             manual=false); on the C3, deep_sleep_() enables the timer wake only
+#             `if (sleep_duration_.has_value())` and there is no wakeup_pin. The
+#             watchdog fires on the boots where NO deep_sleep.enter has run (dead-INA
+#             entry; fail-safe-exit mid-outage) — exactly its target cases. In V1.11
+#             the component had no sleep_duration, so that auto-sleep enabled NO wake
+#             source -> permanent wakeup-less deep sleep = a SILENT BRICK that does
+#             NOT auto-recover on AC return. This INVERTED the watchdog's purpose
+#             (it bricked the very cases it was added to bound). With sleep_duration
+#             set, the auto-sleep wakes on the 120 s timer -> the intended ~60 s-awake
+#             / 120 s-asleep dead-sensor ride-out (design doc §6.7). Confirmed in the
+#             generated main.cpp: the component now emits set_sleep_duration(120000).
+#             Normal operation is UNCHANGED (sleep is entered only via begin_sleep;
+#             prevent still blocks the watchdog auto-sleep at boot).
+#
+#           FIX 2 (snapshot integrity): guard the on_battery on_release snapshot
+#             recompute with `if (outage_start_uptime > 0)`. The arm-time snapshot
+#             is meant to be authoritative on a survival recovery, protected by
+#             outage_was_survival — but priority -150 CLEARS that flag at boot, and
+#             the recovery CC sample (~13.093 V) is BELOW on_battery_threshold
+#             (13.15 V), so on_battery can latch ON then release and fire on_release
+#             ~minutes later, by which time the flag is already cleared. on_release
+#             then took the normal path and overwrote last_outage_ah/wh from live
+#             counters, defeating the snapshot (the `if (outage_was_survival)` branch
+#             that was supposed to protect it is unreachable once -150 has cleared
+#             the flag). On a survival recovery outage_start_uptime==0 (transient;
+#             -100 skipped while armed), so gating the recompute on start>0 makes a
+#             stray survival-recovery on_release a no-op for the snapshot fields while
+#             a genuine awake-tracked outage (start>0) recomputes exactly as before.
+#             Recharge-peak capture stays unconditional (the CC peak only develops
+#             during the recovery the snapshot couldn't see).
+#
+#           REFACTOR (item-5, single-guard, behavior-preserving): the `on_battery`
+#             on_press Ah/Wh integrator resets were a SECOND action guarded by a
+#             condition that mirrored the lambda's two early-return guards. That was
+#             correct, but only because a lambda `return` does NOT short-circuit the
+#             enclosing action sequence — correctness that lived in a comment, not in
+#             structure, and an edit-hazard (deleting the "redundant"-looking guard
+#             would fire the resets unconditionally). The resets now live inside the
+#             single guarded lambda via id(...).reset() (== sensor.integration.reset
+#             == IntegrationSensor::reset(); verified callable on 2026.5.3). One guard
+#             path, self-evidently correct, identical behavior. Surfaced by a
+#             comments-stripped robustness review.
+#           Boot message updated to V1.12.
+# ============================================================================
+
+substitutions:
+  device_name: ups-monitor
+  friendly_name: "UPS Monitor"
+  device_description: "12V LiFePO4 UPS Monitor — INA260 + DS18B20"
+
+  # --- Battery & system parameters (INA260 coulomb-counted, May 2026) -------
+  validated_capacity_ah:    "4.18"   # Ah usable at 13.3V float, 14.9W load
+
+  # --- Voltage thresholds ---------------------------------------------------
+  float_voltage:            "13.30"  # Mean Well HDR-60-12 setpoint (lacquered)
+  on_battery_threshold_v:   "13.15"  # Below this for >10s → on battery
+  warning_voltage:          "12.40"  # HA first-warning notification
+  critical_voltage:         "12.20"  # Software-controlled HA Green shutdown
+  lvd_voltage:              "11.80"  # BP-65 hardware disconnect (Setting 7)
+
+  # --- Discharge phase boundary voltages (May 2026 characterisation) --------
+  settling_min_v:           "13.00"  # Above → settling  (OCV relaxation, ~5 min)
+  plateau_min_v:            "12.65"  # 12.65–13.00 V → plateau (~142 min at 1.18A)
+  knee_min_v:               "12.40"  # 12.40–12.65 V → knee    (~49 min at 1.18A)
+                                     # Below 12.40 V → cliff   (~17 min, rapid fall)
+
+  # --- Voltage slope thresholds (mV/min, after EMA smoothing) ---------------
+  knee_slope_threshold:     "-3.0"   # EMA slope < −3 mV/min → knee approaching
+  cliff_slope_threshold:    "-10.0"  # EMA slope < −10 mV/min → cliff imminent
+
+  # --- Survival sleep (extended outage protection) — V1.7 -------------------
+  # Shadows the BP-65 LVD: sleep when it cuts the load, wake when it reconnects.
+  #
+  # V1.7 SIMPLIFICATION (no bench testing; goal = save battery + auto recover):
+  # The V1.6 entry used a voltage gate (V < 12.5 V) whose threshold was an
+  # UNMEASURED estimate of the post-trip rebound. Its failure mode was the worst
+  # possible: if the real rebound were higher than ~12.5 V, the gate would never
+  # pass, sleep would never arm, and the ESP would drain the pack to BMS cutoff —
+  # the one outcome that actually damages the battery. Since the only thing the
+  # voltage gate bought was Ah-fidelity (not operationally important here), it was
+  # pure downside and is REMOVED.
+  #
+  # ENTRY is now the physical load-collapse signature, fail-toward-sleep:
+  #   on_battery == true  (we are in an outage)
+  #   AND -0.30 A < I < +0.20 A  (heavy XB7 load gone; NOT charging)
+  #   sustained 30 s.
+  # No voltage threshold can block sleep. The current is a WINDOW, not a floor:
+  #   • lower bound -0.30 A: clears the ESP WiFi-Tx peak (~153 mA) so reconnect
+  #     bursts cannot reset the 30 s timer (see current comment below);
+  #   • upper bound +0.20 A: rejects the recovery/charging case (I goes strongly
+  #     positive, ~+4.5 A) which would otherwise satisfy a current-only floor while
+  #     on_battery is still within its 60 s delayed_off — a false-arm into recovery.
+  #   Post-trip current (~-0.04 A) sits comfortably inside the window, so a slightly
+  #   wrong sensor still arms: the condition fails TOWARD sleep, never blocks it.
+  #
+  # EXIT at 13.0 V (V1.8; was 12.8 V). Set ABOVE the estimated post-trip resting
+  # OCV band (~12.8-13.0 V, UNMEASURED) and BELOW the first observed recovery CC
+  # sample (13.093 V) -> clears any plausible rest while still catching a genuine
+  # recovery on the first/second wake. The BP-65's own 12.8 V + 30 s reconnect is
+  # independent; the ESP now exits at/after the load is already restored (benign).
+  # A single confirmed re-read is kept only as I2C-glitch insurance.
+  survival_entry_current_lo: "-0.30"  # Arm when I > this (XB7 load gone). Above the
+                                       # ESP WiFi-Tx peak: C3 Tx ~350 mA @3.3V /0.85
+                                       # buck /12V ~= 113 mA + ~40 mA base ~= 153 mA
+                                       # (-0.153 A). -0.30 A clears it by ~150 mA and
+                                       # sits ~900 mA below the ~1.2 A XB7 load.
+  survival_entry_current_hi: "0.20"   # AND I < this — rejects recovery (I goes +4.5 A).
+                                       # Wide one-sided safety: post-trip ~-0.04 A is
+                                       # far below +0.20, so this can never block sleep.
+  survival_exit_v:          "13.0"    # V1.8: raised 12.8 -> 13.0 (decoupled from the
+                                       # BP-65 reconnect, which stays 12.8 V + 30 s).
+                                       #  • ABOVE the estimated post-trip resting OCV
+                                       #    band (4S LFP at ~10% residual rests ~12.8-
+                                       #    13.0 V; UNMEASURED) -> shrinks probability
+                                       #    AND severity of a spurious-exit re-arm loop.
+                                       #  • BELOW the first observed recovery CC sample
+                                       #    (13.093 V @ +4.59 A, May 6 log) and 13.30 V
+                                       #    float -> recovery still caught on first/2nd
+                                       #    wake; modem-bound (~3-4 min) so not
+                                       #    consequential to recovery timing.
+                                       #  NOTE: hedge, not a verified bound — one DMM
+                                       #  rest reading through a trip confirms OCV<13.0.
+  survival_sleep_interval:  "120s"    # V1.11: TIMER-WAKE interval (reverted from the
+                                       # 600 s V1.10 event-wake backstop). This is the
+                                       # PRIMARY and only wake source now — GPIO3
+                                       # event-wake is removed. 120 s gives ~2 min
+                                       # recovery-detection latency (cosmetic vs the
+                                       # modem-bound ~3-4 min AP boot) and clears the
+                                       # 10-day target with margin under the pessimistic
+                                       # ~83 µA sleep floor (~15 days). Runtime is NOT
+                                       # the binding constraint, so we deliberately do
+                                       # NOT over-provision the interval; outages are
+                                       # rare so the NVS write rate at 120 s is a
+                                       # non-issue. (Byte-for-byte the V1.8/V1.9.2 value.)
+  survival_max_cycles:      "10800"   # Fail-safe backstop: force a normal boot after
+                                       # this many sleep cycles, guarding indefinite
+                                       # re-sleep on a plausible-but-stuck low V read.
+                                       # 10800 x 120 s = 15.0 days (restored from the
+                                       # 4320 x 600 s = 30-day V1.10 value).
+  survival_run_duration:    "60s"     # V1.11 Tier-1 WATCHDOG: max time the device may
+                                       # stay AWAKE after any boot before deep_sleep
+                                       # auto-sleeps it — UNLESS normal operation is
+                                       # confirmed (priority -160: a PLAUSIBLE INA read
+                                       # => normal/survival logic is in control; OR wifi
+                                       # on_connect) which calls deep_sleep.prevent.
+                                       # A healthy boot confirms via INA in ~50 ms, so
+                                       # this never interrupts normal operation; it only
+                                       # governs the dead-sensor / no-AP case.
+                                       # MUST be > the 30 s survival arm window
+                                       # (survival_sleep_armed delayed_on): on a post-trip
+                                       # reboot with a HEALTHY INA, -160 prevents (stay
+                                       # awake) and the arm condition then fires at 30 s
+                                       # and explicit-enters survival sleep. 60 s leaves
+                                       # margin so the watchdog never pre-empts that arm.
+                                       # In the dead-sensor ride-out, ~60 s awake / 120 s
+                                       # asleep bounds the drain RATE (~1 day to cutoff,
+                                       # not 10) — an intervention window, not survival.
+                                       # An explicit deep_sleep.enter (survival re-sleep/
+                                       # entry) is manual=true and sleeps regardless of
+                                       # prevent, so this never blocks a survival sleep.
+
+# ============================================================================
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  comment: ${device_description}
+  build_path: C:\\esphome_build\\ups-monitor
+  on_boot:
+    # ── Priority 600: restore INA260 normal mode ───────────────────────────
+    # Step 1 — Restore INA260 continuous mode (register 0x00 = 0x6127).
+    # In V1.11 the INA260 is POWERED DOWN (0x6120) on survival entry/re-sleep, so
+    # on a survival wake this is a genuine restore from power-down; on a cold boot
+    # it is effectively a no-op (POR default is already 0x6127). It retains register
+    # values across ESP32-C3 deep sleep (remains powered via D24V7F3).
+    # 0x6127 = POR default: mode 111 (continuous shunt + bus), 1-sample avg,
+    # 1.1 ms conversion time.
+    #
+    # Step 2 — 10 ms delay (R-2.1).
+    # Guarantees at least one full conversion completes (1.1 ms min) before any
+    # subsequent I2C reads. Without this, a direct register read at priority -150
+    # could return the stale pre-sleep voltage. This delay alone satisfies R-2.1.
+    #
+    # V1.9.1: writes use id(ina_raw).write(arr,3) with the same byte arrays as V1.8
+    # ({0x00,0x61,0x27} restore / {0x00,0x61,0x20} power-down). Address is bound to
+    # the ina_raw device handle, so no per-call 0x41 and no deprecated stop arg.
+    #
+    # V1.7: the conversion-ready (CNVR) polling was removed — the 10 ms delay here
+    # already guarantees a fresh conversion and the wake plausibility check catches
+    # a bad read. V1.10 added a BOL ALERT config here for event-wake; V1.11 BACKED
+    # THAT OUT — no 0x06/0x07 writes occur anywhere in the firmware now.
+    #
+    # REFERENCE — if an INA260 hardware alert is ever wanted later, the V1.6 audit
+    # established the correct register map (TI SBOS656C §8.6, Adafruit_INA260.h):
+    #   0x06 = Mask/Enable (alert-function select; CNVR bit 10; CVRF bit 3)
+    #   0x07 = Alert Limit (threshold value)
+    #   e.g. 11.9 V under-voltage alert: write 0x07 = 0x2530 (9520 = 11.9/1.25mV),
+    #        then 0x06 = 0x1400 (BUL bit 12 + CNVR bit 10).
+    #   The V1.4/V1.5 code had these two registers swapped (wrote CNVR to 0x07),
+    #   which is why CNVR never actually engaged in those versions.
+    - priority: 600.0
+      then:
+        - lambda: |-
+            // Restore normal mode (safe after survival sleep or normal boot).
+            // V1.9.1: explicit register write via I2CDevice (reg 0x00 = 0x6127).
+            // Byte array identical to V1.8 {0x00,0x61,0x27}; only the call mechanics
+            // changed (address bound to ina_raw; stop arg removed from the API).
+            uint8_t normal_mode[3] = {0x00, 0x61, 0x27};
+            id(ina_raw).write(normal_mode, 3);
+            // Guarantee first conversion completes before any read (R-2.1)
+            delay(10);
+            ESP_LOGI("ups", "INA260 normal mode restored (0x6127)");
+
+            // V1.11 — wake-cause log (free diagnostic). With event-wake removed
+            // this is _TIMER (survival re-sleep), or cold/reset (normal boot).
+            // ESP_SLEEP_WAKEUP_GPIO is no longer expected (no wakeup_pin).
+            esp_sleep_wakeup_cause_t wc = esp_sleep_get_wakeup_cause();
+            ESP_LOGI("ups.survival", "Boot wake cause = %d (%s)", (int)wc,
+                     wc == ESP_SLEEP_WAKEUP_TIMER ? "timer-wake" : "cold/reset");
+
+            // V1.11 — INA260 BOL alert config REMOVED (event-wake backed out).
+            // No 0x06/0x07 writes here. The INA260 is powered down on entry/re-sleep
+            // (0x00=0x6120) and restored to continuous mode (0x6127) above on each
+            // wake. The 0x06/0x07 register map is retained in the REFERENCE comment
+            // above only, for any future hardware-alert work — it is not used.
+
+    # ── Priority -100: reboot-during-outage recovery (V1.6) ───────────────
+    # If the device reboots while already on battery (brown-out, or the 30-min
+    # api reboot_timeout firing during the pre-trip on-battery window), the
+    # on_battery on_press transition never fires, so the per-outage counters are
+    # not re-anchored. This check re-establishes outage tracking after a reboot.
+    #
+    # 6s delay guarantees one full INA260 throttle_average cycle (5s) has
+    # completed before the voltage check.
+    #
+    # V1.6 CHANGE — do NOT zero the Ah/Wh counters here. They are restore: true
+    # and come back from NVS holding the outage-to-date charge. Zeroing them on a
+    # mid-outage reboot was the relocated V1.5 Issue-1 wipe (it could fire in the
+    # ~3.5 h pre-trip window, before survival_mode_active is set). Instead we keep
+    # the restored counters and only (re)seed the timing/min-V anchors if they are
+    # missing. Guarded by:
+    #   • !survival_mode_active  — never run on a survival wake (priority -100
+    #     fires before -150; the flag is already set in NVS by then).
+    #   • discharging (I < -0.05 A) — confirm a real on-battery condition, not a
+    #     charging/float transient.
+    - priority: -100
+      then:
+        - delay: 6s
+        - if:
+            condition:
+              lambda: |-
+                float v = id(ina260_voltage).state;
+                float i = id(ina260_current).state;
+                return !id(survival_mode_active) &&
+                       !isnan(v) && !isnan(i) &&
+                       v < ${on_battery_threshold_v} && i < -0.05f;
+            then:
+              - lambda: |-
+                  // Re-anchor timing only if not already set this outage.
+                  if (id(outage_start_uptime) == 0)
+                    id(outage_start_uptime) = (uint32_t)id(device_uptime).state;
+                  if (isnan(id(outage_min_voltage)))
+                    id(outage_min_voltage) = id(ina260_voltage).state;
+                  if (id(last_outage_min_v) <= 0.0f)
+                    id(last_outage_min_v) = id(ina260_voltage).state;
+                  ESP_LOGW("ups",
+                    "Booted during outage -- counters PRESERVED from NVS (%.4f Ah), tracking re-anchored",
+                    id(ah_delivered_outage).state);
+
+    # ── Priority -150: survival sleep wake decision (V1.7) ────────────────
+    # Runs only when survival_mode_active is set (survival wake path).
+    # Skipped entirely on normal boots — zero overhead in normal operation.
+    #
+    # Decision logic (fail toward EXIT, never toward re-sleep):
+    #   1. Settle delay (priority 600 already did the mode-restore + 10 ms; add a
+    #      few ms more margin here), then register 0x02 read (1.25 mV LSB,
+    #      bypasses throttle_average). V1.7 removed CVRF polling — the 10 ms delay
+    #      guarantees a fresh conversion and the plausibility check below catches
+    #      any bad read, so the poll was latent complexity for no benefit.
+    #      V1.9.1: read via id(ina_raw).write_read — one atomic write-pointer ->
+    #      repeated-START -> read, with EXPLICIT ((hi<<8)|lo) assembly (V1.8 logic).
+    #   2. FAIL-SAFE: if the read is implausible (raw 0x0000/0xFFFF, or V < 5.0 V
+    #      or V > 16.0 V) treat it as a sensor fault and EXIT to a normal boot.
+    #      survival_mode_active is NVS-persisted; trusting a bad low read and
+    #      re-sleeping would brick the device (re-sleep forever, needing a physical
+    #      reflash). A false exit merely re-arms and re-sleeps in ~30 s — safe.
+    #   3. BACKSTOP: if survival_cycle_count has exceeded survival_max_cycles
+    #      (~15 days at 120 s), force EXIT regardless of voltage. Covers a stuck-
+    #      but-plausible-low sensor that never reaches 13.0 V.
+    #   4. If V >= survival_exit_v (13.0 V; V1.8, was 12.8 V): genuine recovery
+    #      — clear flag, continue boot. A single confirm re-read guards only
+    #      against a one-sample I2C glitch (NOT OCV bounce — 13.0 V is set above
+    #      the estimated depleted-pack resting OCV, so the dual-read/hysteresis
+    #      machinery remains unnecessary).
+    #   5. Otherwise: increment cycle count, set survival_should_sleep, return.
+    #
+    # The survival_should_sleep flag is acted on in the step below.
+    - priority: -150.0
+      then:
+        - lambda: |-
+            id(survival_should_sleep) = false;
+            if (!id(survival_mode_active)) return;
+
+            // Settle margin on top of the priority-600 mode-restore + 10 ms delay.
+            // V1.7: no CVRF poll — the conversion is already fresh by now.
+            delay(10);
+
+            // V1.9: register 0x02 (Bus Voltage) read via the I2CDevice helper.
+            // write_read issues write-pointer -> repeated-START -> read as ONE
+            // atomic transaction (write-pointer -> repeated-START -> read). The
+            // byte assembly is EXPLICIT and identical to V1.8 (validated against TI
+            // SBOS656C: reg 0x02, 1.25 mV LSB, MSB-first) — vd[0] is the high byte,
+            // vd[1] the low byte. We do NOT rely on any helper's internal endianness:
+            // the big-endian order is right here in the source. Buffer pre-zeroed, so
+            // a failed/NACKed read leaves raw=0, caught by the plausibility check
+            // below — we rely on the VALUE, not the I2C return code, as the safety net.
+            uint8_t vreg = 0x02;
+            uint8_t vd[2] = {0, 0};
+            id(ina_raw).write_read(&vreg, 1, vd, 2);
+            uint16_t raw = ((uint16_t)vd[0] << 8) | vd[1];
+            float v1 = raw * 0.00125f;
+
+            // R-2.x / Item 5 FAIL-SAFE: implausible read -> EXIT (never re-sleep).
+            bool plausible = (raw != 0x0000 && raw != 0xFFFF && v1 > 5.0f && v1 < 16.0f);
+            if (!plausible) {
+                id(survival_mode_active) = false;
+                id(outage_was_survival)  = false;   // don't strand the marker for next outage
+                ESP_LOGW("ups.survival",
+                  "SURVIVAL EXIT (FAIL-SAFE) | raw=0x%04X V=%.3f — booting normally",
+                  raw, v1);
+                return;
+            }
+
+            // BACKSTOP: too many cycles -> force exit (stuck-low sensor guard).
+            if (id(survival_cycle_count) >= ${survival_max_cycles}) {
+                id(survival_mode_active) = false;
+                id(outage_was_survival)  = false;   // don't strand the marker for next outage
+                ESP_LOGW("ups.survival",
+                  "SURVIVAL EXIT (MAX CYCLES %d) | V=%.3f — booting normally",
+                  id(survival_cycle_count), v1);
+                return;
+            }
+
+            ESP_LOGI("ups.survival",
+              "Wake #%d | V1=%.3fV", id(survival_cycle_count), v1);
+
+            if (v1 >= ${survival_exit_v}f) {
+                // Single confirm re-read — I2C glitch insurance only (not OCV bounce).
+                delay(50);
+                uint8_t vd2[2] = {0, 0};
+                id(ina_raw).write_read(&vreg, 1, vd2, 2);   // vreg still in scope
+                uint16_t raw2 = ((uint16_t)vd2[0] << 8) | vd2[1];
+                float v2 = raw2 * 0.00125f;
+                if (v2 >= ${survival_exit_v}f) {
+                    id(survival_mode_active) = false;
+                    // Finalize the survival outage record HERE, at the deterministic
+                    // recovery instant. on_battery on_release is NOT reliable on a
+                    // survival recovery: the battery is charging hard (V>13.15 V), so
+                    // the on_battery template initialises OFF and on_release never
+                    // fires — which would leave outage_was_survival stuck true and
+                    // corrupt the NEXT outage's on_release. The arm-time snapshot
+                    // (last_outage_ah/wh/min_v/start_v/duration) already holds the
+                    // authoritative values; we just log and clear the marker.
+                    // Recharge-peak for this recovery is captured by the 5s interval
+                    // tracker into recharge_peak_a and surfaced via its own sensor.
+                    if (id(outage_was_survival)) {
+                      id(outage_was_survival) = false;
+                      // NOTE: total_outage_count was already incremented by
+                      // on_battery on_press at the original grid-failure instant
+                      // (hours before the trip / arm). Do NOT increment again here.
+                      ESP_LOGI("ups",
+                        "OUTAGE END #%d (survival) | %.1f min to arm | %.4f Ah | %.3f Wh | Start V: %.3f V | Min V: %.3f V",
+                        id(total_outage_count), id(last_outage_duration_min),
+                        id(last_outage_ah), id(last_outage_wh),
+                        id(last_outage_start_v), id(last_outage_min_v));
+                    }
+                    ESP_LOGI("ups.survival",
+                      "SURVIVAL EXIT | V1=%.3fV V2=%.3fV >= 13.0V | recovery — normal boot",
+                      v1, v2);
+                    return;
+                }
+                ESP_LOGW("ups.survival",
+                  "Exit re-read failed: V1=%.3f V2=%.3f — re-sleeping", v1, v2);
+            }
+
+            // Below exit threshold (or glitch re-read) — re-enter sleep.
+            id(survival_cycle_count) = id(survival_cycle_count) + 1;
+            id(survival_should_sleep) = true;
+            ESP_LOGI("ups.survival",
+              "V=%.3fV < 13.0V — scheduling re-sleep (cycle %d)", v1, id(survival_cycle_count));
+
+        - if:
+            condition:
+              lambda: 'return id(survival_should_sleep);'
+            then:
+              # V1.11 — POWER DOWN the INA260 before re-sleep (reverts V1.10's
+              # keep-awake). Event-wake is removed, so there is no reason to keep the
+              # INA260 burning ~310 µA; powering it down (0x00=0x6120, ~2 µA) returns
+              # the sleep floor to 43-83 µA. The register write persists across the
+              # ESP's deep sleep (INA260 stays powered via D24V7F3); priority 600
+              # restores continuous mode (0x6127) on the next wake before any read.
+              - lambda: |-
+                  uint8_t power_down[3] = {0x00, 0x61, 0x20};   // mode 000 = power-down
+                  id(ina_raw).write(power_down, 3);
+                  ESP_LOGI("ups.survival",
+                    "Re-entering survival sleep | INA260 powered down (~2 µA) | timer-wake %s",
+                    "${survival_sleep_interval}");
+              # V1.6 fix: flush NVS before deep sleep. The re-sleep path just
+              # incremented survival_cycle_count (restore_value: yes); ESPHome
+              # commits preferences asynchronously, so without this delay the
+              # increment can be lost when deep sleep cuts power — eroding the
+              # max-cycle backstop. 100 ms mirrors the entry-path flush (R-2.3).
+              - delay: 100ms
+              # Explicit deep_sleep.enter = begin_sleep(manual=true): sleeps
+              # REGARDLESS of any deep_sleep.prevent the watchdog may have called.
+              - deep_sleep.enter:
+                  sleep_duration: ${survival_sleep_interval}
+
+    # ── Priority -160: Tier-1 run_duration WATCHDOG confirmation (V1.11) ───
+    # run_duration (${survival_run_duration}) schedules an auto-sleep on every boot.
+    # This block DISARMS it (deep_sleep.prevent) when normal operation is positively
+    # confirmed by the INA — one of two INDEPENDENT confirmations (the other is wifi
+    # on_connect). If NEITHER confirms (e.g. INA hung AND no AP), run_duration fires
+    # and the device sleeps instead of staying awake to drain the pack.
+    #
+    # Runs AFTER -150: on a survival RE-SLEEP, -150 has already explicit-entered deep
+    # sleep (manual=true) and this never executes. On a survival EXIT (recovery or
+    # fail-safe), -150 cleared survival_mode_active, so this runs and either confirms
+    # recovery (V high -> prevent) or, on a still-in-outage fail-safe exit, does NOT
+    # confirm -> run_duration re-sleeps it (the V1.9.2 "exit then drain" bug, fixed).
+    # On a normal/cold boot, a plausible INA read confirms here in ~50 ms (sensor OK).
+    - priority: -160.0
+      then:
+        - lambda: |-
+            if (id(survival_mode_active)) return;   // survival path owns the decision
+
+            // Fresh raw read (the platform ina260_voltage may not have sampled yet
+            // this early in boot). Same atomic write_read + explicit assembly as -150.
+            uint8_t vreg = 0x02; uint8_t vd[2] = {0, 0};
+            id(ina_raw).write_read(&vreg, 1, vd, 2);
+            uint16_t raw = ((uint16_t)vd[0] << 8) | vd[1];
+            float v = raw * 0.00125f;
+            bool plausible = (raw != 0x0000 && raw != 0xFFFF && v > 5.0f && v < 16.0f);
+
+            // Gate on PLAUSIBILITY, not a voltage value: a working INA means the
+            // normal arm/survival logic is in control (it decides sleep via the
+            // load-collapse current), so the watchdog stands down. We prevent the
+            // run_duration auto-sleep — but NOT the arm's explicit deep_sleep.enter,
+            // which is manual=true and still sleeps. So "prevent here, then arm 30 s
+            // later" works: the watchdog only ever fires when the INA is UNUSABLE.
+            if (plausible) {
+                id(survival_sleep).prevent_deep_sleep();
+                ESP_LOGI("ups.watchdog",
+                  "INA usable (%.2f V) — normal/survival logic in control; run_duration watchdog disarmed", v);
+            } else {
+                ESP_LOGW("ups.watchdog",
+                  "INA UNUSABLE (raw=0x%04X V=%.2f) — awaiting WiFi; run_duration will sleep the "
+                  "device if no AP confirms (prevents an awake drain on a dead sensor)",
+                  raw, v);
+                // Do NOT prevent: wifi on_connect may still confirm (AC present);
+                // otherwise run_duration sleeps the device (bounded awake drain).
+            }
+
+    # ── Priority -200: boot confirmation message ──────────────────────────
+    - priority: -200
+      then:
+        - logger.log:
+            level: INFO
+            format: "UPS Monitor V1.12 boot complete -- INA260 @ 0x41, DS18B20 on GPIO10, timer-wake + run_duration watchdog (sleep_duration set)"
+
+esp32:
+  board: seeed_xiao_esp32c3
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+  baud_rate: 0               # Disable serial — USB must NOT be connected in production
+
+api:
+  encryption:
+    key: "/FjsOnl/zFyzNBWqistG8e79VXRKA+w4JuulXoLgh7c="
+  reboot_timeout: 30min      # 30 min: gives BP-65 LVD time to act before reboot
+                             # races post-HA-shutdown. 15 min was too short at
+                             # −58 mV/min cliff rate (would reboot ~11.33V, below LVD).
+
+ota:
+  - platform: esphome
+    password: "Wkc#120259"
+
+wifi:
+  ssid: "Lake Poco"
+  password: "silentfire590"
+  fast_connect: true
+  power_save_mode: none      # Always-on UPS — reliability > power savings
+  # V1.6: pin the WiFi-component reboot_timeout explicitly (default is 15 min).
+  # On survival recovery the ESP exits at 13.0 V (V1.8) — at/after the BP-65's
+  # 12.8 V + 30 s reconnect — then the XB7 takes ~3-4 min to boot its AP. So the ESP
+  # is networkless for ~4-5 min after wake. WiFi connection is non-blocking
+  # (background retry; the main loop and the snapshot in NVS are unaffected), and
+  # 15 min comfortably covers the modem-boot window without a spurious reboot.
+  # Do NOT lower this below ~10 min or recovery could reboot-loop.
+  reboot_timeout: 15min
+  # V1.11 — Tier-1 WATCHDOG, INA-INDEPENDENT confirmation. The home AP (the XB7)
+  # only exists when AC is present (it sits behind the BP-65), so a successful
+  # association proves we are NOT in a post-trip outage. Disarm the run_duration
+  # auto-sleep. This is the second of two independent confirmations (the first is
+  # the priority -160 INA-plausible read); EITHER alone suffices, so a dead INA on
+  # AC still keeps the device awake and VISIBLE in HA (so the fault is noticed),
+  # and a WiFi blip in normal operation is harmless because the INA already
+  # confirmed at boot. Guarded by !survival_mode_active so it cannot interfere with
+  # an in-progress survival decision (on recovery the flag is already cleared).
+  on_connect:
+    - lambda: |-
+        if (!id(survival_mode_active)) {
+          id(survival_sleep).prevent_deep_sleep();
+          ESP_LOGI("ups.watchdog",
+            "Normal operation confirmed by WiFi association — run_duration watchdog disarmed");
+        }
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: "Wkc#120259"
+
+captive_portal:
+
+# ----------------------------------------------------------------------------
+# mDNS — allows the device to be found by name on the LAN.
+# With disabled: false (the ESPHome default), the device announces itself as
+# "ups-monitor.local" via multicast DNS. Home Assistant uses this for auto-
+# discovery and OTA. Setting disabled: true would hide it from LAN browsers
+# and break HA discovery — leave this false.
+# ----------------------------------------------------------------------------
+mdns:
+  disabled: false
+
+# ----------------------------------------------------------------------------
+# Deep Sleep — survival sleep for extended outage protection
+#
+# V1.11 — TIMER-WAKE + run_duration WATCHDOG (event-wake on GPIO3 BACKED OUT).
+#
+# WAKE SOURCE: sleep_duration timer ONLY (${survival_sleep_interval}). On wake,
+# priority -150 reads V via direct I2C and decides re-sleep / exit / fail-safe.
+# There is NO wakeup_pin — GPIO3 is no longer a wake source (see changelog V1.11).
+# This removes GPIO3 (and the shared-pin allow_other_uses coupling) from the
+# recovery-critical path entirely.
+#
+# run_duration WATCHDOG (NEW): with run_duration set, the component schedules an
+# auto-sleep ${survival_run_duration} after EVERY boot. That auto-sleep is blocked
+# only if normal operation has been positively confirmed via deep_sleep.prevent
+# (priority -160 INA-plausible, OR wifi on_connect). If neither confirms — e.g. the
+# INA260 has hung AND no AP is present (a real post-trip outage the device somehow
+# failed to arm for) — the device sleeps instead of staying awake to drain.
+#
+# VERIFIED against ESPHome deep_sleep_component.cpp (begin_sleep):
+#   if (this->prevent_ && !manual) { next_enter_deep_sleep_ = true; return; }
+#   • run_duration auto-sleep calls begin_sleep(manual=false) -> prevent BLOCKS it.
+#   • explicit deep_sleep.enter calls begin_sleep(manual=true)  -> sleeps ANYWAY.
+# So deep_sleep.prevent disarms ONLY the watchdog auto-sleep; it can never block a
+# survival re-sleep/entry (those use deep_sleep.enter). The watchdog therefore
+# cannot strand the device awake, and cannot block a legitimate survival sleep.
+#
+# SCOPE (honest): the watchdog GUARANTEES the survival path can't hang awake, and
+# converts the V1.9.2 "fail-safe-exit then drain" into a bounded re-sleep. It does
+# NOT make the device survive multi-day on a fully dead INA — in that ride-out it
+# bounds the drain RATE (~run_duration awake duty), extending drain-to-cutoff from
+# ~5 h to ~1 day (intervention window), not to 10 days. True dead-sensor survival
+# needs the Tier-4 independent ADC battery sense (a board change), not firmware.
+# ----------------------------------------------------------------------------
+deep_sleep:
+  id: survival_sleep
+  # Watchdog: max awake time per boot before auto-sleep, UNLESS normal operation
+  # is confirmed (deep_sleep.prevent in priority -160 / wifi on_connect). A healthy
+  # boot confirms via INA in ~50 ms, so this never interrupts normal operation.
+  run_duration: ${survival_run_duration}
+  # V1.12 (CRITICAL FIX) — sleep_duration MUST be set here, not only inside the two
+  # deep_sleep.enter actions. The run_duration WATCHDOG auto-sleep calls
+  # begin_sleep(manual=false), which on the ESP32-C3 enables a wake source ONLY for
+  # whatever is configured on the COMPONENT: esp_sleep_enable_timer_wakeup() runs
+  # only `if (sleep_duration_.has_value())`, and there is no wakeup_pin. The
+  # deep_sleep.enter actions set sleep_duration at call time, so they are fine — but
+  # the watchdog auto-sleep fires on boots where NO enter action has run (dead-INA
+  # entry; fail-safe-exit mid-outage). In V1.11 the component had no sleep_duration,
+  # so that auto-sleep enabled NO wake source at all -> permanent wakeup-less deep
+  # sleep = a SILENT BRICK (no auto-recovery on AC return) in exactly the dead-sensor
+  # cases the watchdog exists to bound. Setting it here gives the auto-sleep the
+  # 120 s timer wake, delivering the intended ~60 s-awake / 120 s-asleep ride-out
+  # (design doc §6.7). It does NOT cause sleep in normal operation: sleep is entered
+  # only via begin_sleep (run_duration timeout, blocked by prevent; or explicit
+  # enter); sleep_duration only sets HOW LONG, never WHEN.
+  # Verified in deep_sleep_esp32.cpp (ESPHome 2026.5.3): deep_sleep_() enables the
+  # timer wake iff sleep_duration_.has_value(), then calls esp_deep_sleep_start().
+  sleep_duration: ${survival_sleep_interval}
+  # NO wakeup_pin (V1.11+): timer-wake only; GPIO3 is not a wake source.
+
+# ----------------------------------------------------------------------------
+# I2C bus
+# SDA = GPIO6 (XIAO D4) → INA260 socket SDA
+# SCL = GPIO7 (XIAO D5) → INA260 socket SCL
+# INA260 breakout has on-board 10K pull-ups on SDA and SCL — no external pull-ups.
+# I2C address is set by the module's A0 jumper, not the PCB: this build = 0x41.
+# scan: false suppresses the boot-time bus scan (validated on bench).
+# ----------------------------------------------------------------------------
+i2c:
+  sda: GPIO6
+  scl: GPIO7
+  scan: false
+  id: bus_a
+  frequency: 400kHz
+
+# ----------------------------------------------------------------------------
+# I2C device handle for raw INA260 register access (V1.9)
+# ----------------------------------------------------------------------------
+# The `sensor: - platform: ina260` block reads V/I/P for HA but does not expose a
+# lambda-callable handle for the direct register access the survival path needs
+# (mode power-down/restore at 0x00, bus-voltage read at 0x02 bypassing the 5 s
+# throttle_average). This generic i2c_device is that handle: address-bound to 0x41
+# on bus_a, it provides write_read/write, which issue the write-pointer ->
+# repeated-START -> read as ONE atomic transaction — the correct INA260 register
+# pattern, and the replacement for the V1.8 hand-rolled bus->write/read pairs that
+# stopped compiling on ESPHome 2026.4.3 (stop arg removed; see header changelog).
+# Same physical chip as the ina260 platform below — no bus contention: all access
+# is sequential within single lambdas.
+# ----------------------------------------------------------------------------
+i2c_device:
+  id: ina_raw
+  i2c_id: bus_a
+  address: 0x41
+
+# ----------------------------------------------------------------------------
+# 1-Wire bus
+# DQ = GPIO10 (XIAO D10) → DS18B20 DQ on TB2 (3-pin JST-XH: 3V3 / DQ / GND)
+# DS18B20 module has built-in 4.7 kΩ pull-up — no external resistor required.
+# ----------------------------------------------------------------------------
+one_wire:
+  - platform: gpio
+    pin: GPIO10
+
+# ============================================================================
+# GLOBALS — persistent state for slope, outage capture, and health tracking
+# ============================================================================
+globals:
+  # --- Slope calculation (transient, not persisted) -------------------------
+  - id: voltage_1min_ago
+    type: float
+    initial_value: 'NAN'
+    restore_value: no
+
+  # EMA accumulator for voltage slope smoothing (α = 0.35).
+  # Seeded with NAN so the first sample initialises it rather than averaging
+  # against a stale zero, which would bias the first reading negative.
+  - id: slope_ema
+    type: float
+    initial_value: 'NAN'
+    restore_value: no
+
+  # --- Outage timing (transient) --------------------------------------------
+  - id: outage_start_uptime
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+
+  # --- Per-outage extreme trackers (transient, reset on outage start) -------
+  - id: outage_min_voltage
+    type: float
+    initial_value: 'NAN'
+    restore_value: no         # Reset each outage — not meaningful across reboots
+
+  - id: recharge_peak_a
+    type: float
+    initial_value: '0.0'
+    restore_value: no         # Reset each outage — tracks current recharge ramp
+
+  # --- Flash-persisted last-outage summary (survive reboot) -----------------
+  - id: last_outage_ah
+    type: float
+    initial_value: '0.0'
+    restore_value: yes
+
+  - id: last_outage_wh
+    type: float
+    initial_value: '0.0'
+    restore_value: yes
+
+  - id: last_outage_duration_min
+    type: float
+    initial_value: '0.0'
+    restore_value: yes
+
+  - id: last_outage_min_v
+    type: float
+    initial_value: '0.0'
+    restore_value: yes        # Replaces manual log hunting for LVD voltage
+
+  - id: last_outage_start_v
+    type: float
+    initial_value: '0.0'
+    restore_value: yes        # Confirms full float at outage start
+
+  - id: last_recharge_peak_a
+    type: float
+    initial_value: '0.0'
+    restore_value: yes        # PSU CC-limit health indicator over time
+
+  # --- Flash-persisted system health (survive reboot) -----------------------
+  - id: total_outage_count
+    type: int
+    initial_value: '0'
+    restore_value: yes        # Persistent event counter
+
+  - id: last_float_voltage
+    type: float
+    initial_value: '0.0'
+    restore_value: yes        # PSU trimmer drift tracking — updated on full charge
+
+  # --- Survival sleep state (V1.4) ------------------------------------------
+  # survival_mode_active: NVS-persisted. Set on sleep entry, cleared on exit.
+  # Survives deep sleep cycles — the on_boot priority -150 check uses it to
+  # distinguish a survival wake from a normal boot.
+  - id: survival_mode_active
+    type: bool
+    initial_value: 'false'
+    restore_value: yes
+
+  # Transient flag: set by priority -150 lambda to signal re-entry to sleep.
+  # Used to pass the wake decision to the ESPHome action block without a raw
+  # esp_deep_sleep_start() call, keeping the deep_sleep component in control.
+  - id: survival_should_sleep
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+
+  # V1.6: survival sleep cycle counter (NVS-persisted, survives deep sleep).
+  # Incremented on each re-sleep decision. Drives the max-cycle fail-safe
+  # backstop in priority -150 (force exit after ~15 days). Reset to 0 at sleep
+  # entry (survival_sleep_armed on_press) so each outage starts a fresh count.
+  - id: survival_cycle_count
+    type: int
+    initial_value: '0'
+    restore_value: yes
+
+  # V1.6: marks that the current/last outage entered survival sleep. Set at arm
+  # time (BP-65 trip), checked-and-cleared in on_battery on_release so recovery
+  # does NOT overwrite the arm-time snapshot with post-cold-boot values.
+  - id: outage_was_survival
+    type: bool
+    initial_value: 'false'
+    restore_value: yes
+
+
+# ============================================================================
+# INTERVALS
+# ============================================================================
+interval:
+  # --------------------------------------------------------------------------
+  # Voltage slope — sampled every 60 s, EMA-smoothed (α = 0.35).
+  #
+  # Raw delta: (V_now − V_60s_ago) × 1000  →  mV/min
+  # EMA:       slope_ema = 0.35 × raw + 0.65 × slope_ema_prev
+  #
+  # Why EMA instead of raw delta:
+  #   • INA260 voltage LSB = 1.25 mV. A single-LSB step between two 1-min
+  #     samples produces ±1.25 mV/min raw noise — more than the knee threshold.
+  #   • At outage start the voltage collapses from ~13.3 V float to ~12.97 V
+  #     in the first minute (OCV settling), giving a raw spike of ≈ −150 mV/min.
+  #     α = 0.35 attenuates this to ≈ −53 mV/min at t+1 min and below −3 mV/min
+  #     by t+10 min when the battery has settled into plateau — roughly
+  #     coincident with the voltage falling through 12.65 V (plateau_min_v),
+  #     which is the voltage guard that gates the slope alarms anyway.
+  #   • For a sustained cliff (−15 mV/min over many minutes) the EMA converges
+  #     to −15 mV/min within 3–4 intervals, well inside the 17-min cliff window.
+  #
+  # Drives Knee Approaching and Cliff Imminent binary sensors.
+  # Negative = falling voltage. Typical float/plateau: −0.5 to +0.5 mV/min.
+  # --------------------------------------------------------------------------
+  - interval: 60s
+    then:
+      - lambda: |-
+          float v_now  = id(ina260_voltage).state;
+          float v_then = id(voltage_1min_ago);
+          if (!isnan(v_then) && !isnan(v_now)) {
+            float raw = (v_now - v_then) * 1000.0f;
+            float ema = id(slope_ema);
+            if (isnan(ema)) {
+              ema = raw;                          // cold-start: seed from first sample
+            } else {
+              ema = 0.35f * raw + 0.65f * ema;   // α=0.35 ≈ 1.5-sample time constant
+            }
+            id(slope_ema) = ema;
+            id(voltage_slope).publish_state(ema);
+          }
+          id(voltage_1min_ago) = v_now;
+
+  # --------------------------------------------------------------------------
+  # 5-second trackers — two conditions in one interval block.
+  #
+  # Discharge tracker (I < −100 mA):
+  #   Captures the lowest voltage seen during an outage → outage_min_voltage.
+  #   Replaces manual log hunting that was required on May 2026 outage.
+  #   NAN initial value means the first discharging sample always seeds it.
+  #
+  #   V1.5 fix (Issue 2): also writes directly to last_outage_min_v (persisted,
+  #   restore_value: yes). outage_min_voltage is transient (restore_value: no)
+  #   and resets to NAN on every survival-sleep wake cycle. Without this dual
+  #   write, on_release captures NAN → corrupts the persisted min-voltage record.
+  #   last_outage_min_v is the authoritative value; outage_min_voltage retained
+  #   for use in on_release log line (consistent with existing code).
+  #
+  # Recharge tracker (I > +100 mA):
+  #   Captures peak charging current after AC restoration → recharge_peak_a.
+  #   The PSU CC phase (4.5A rated limit) happens in the first ~2 min after
+  #   AC restores — well within the 60s delayed_off window before on_release.
+  #   Declining peak over outages = PSU aging leading indicator.
+  # --------------------------------------------------------------------------
+  - interval: 5s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(ina260_current).state < -0.10f;'
+          then:
+            - lambda: |-
+                float v = id(ina260_voltage).state;
+                if (!isnan(v)) {
+                  // Transient tracker (used in on_release log line)
+                  if (isnan(id(outage_min_voltage)) || v < id(outage_min_voltage))
+                    id(outage_min_voltage) = v;
+                  // V1.5: persisted tracker — survives survival-sleep wake cycles
+                  if (id(last_outage_min_v) <= 0.0f || v < id(last_outage_min_v))
+                    id(last_outage_min_v) = v;
+                }
+      - if:
+          condition:
+            lambda: 'return id(ina260_current).state > 0.10f;'
+          then:
+            - lambda: |-
+                float i = id(ina260_current).state;
+                if (i > id(recharge_peak_a))
+                  id(recharge_peak_a) = i;
+
+
+# ============================================================================
+# SENSORS
+# ============================================================================
+sensor:
+
+  # --------------------------------------------------------------------------
+  # INA260 — Battery V / I / P
+  # Updated at 1 Hz internally; 5 s rolling average published to HA.
+  # Accuracy at 1.18 A typical: ±2.75 mA (±0.23%) current, ±14 mV (±0.11%) voltage
+  # A0 jumper bridged on this build → I2C address 0x41.
+  # --------------------------------------------------------------------------
+  - platform: ina260
+    address: 0x41
+    update_interval: 1s
+    current:
+      name: "Battery Current"
+      id: ina260_current
+      unit_of_measurement: "A"
+      accuracy_decimals: 4
+      device_class: current
+      state_class: measurement
+      filters:
+        - throttle_average: 5s
+    bus_voltage:
+      name: "Battery Voltage"
+      id: ina260_voltage
+      unit_of_measurement: "V"
+      accuracy_decimals: 3
+      device_class: voltage
+      state_class: measurement
+      filters:
+        - throttle_average: 5s
+    power:
+      name: "Battery Power"
+      id: ina260_power
+      unit_of_measurement: "W"
+      accuracy_decimals: 3
+      device_class: power
+      state_class: measurement
+      filters:
+        - throttle_average: 5s
+
+  # --------------------------------------------------------------------------
+  # DS18B20 — Battery enclosure temperature (reported in °F)
+  # Module has built-in 4.7 kΩ pull-up. Native ±0.5°C accuracy ≈ ±0.9°F.
+  # filter_out runs BEFORE the °F conversion lambda, so the 85.0°C power-on
+  # reset glitch is rejected at its native value (not 185.0°F).
+  # accuracy_decimals: 1 matches the native 0.0625°C step (≈0.1125°F).
+  # --------------------------------------------------------------------------
+  - platform: dallas_temp
+    name: "Battery Temperature"
+    id: battery_temp
+    update_interval: 30s
+    accuracy_decimals: 1
+    unit_of_measurement: "°F"
+    device_class: temperature
+    state_class: measurement
+    filters:
+      - filter_out: 85.0          # Reject DS18B20 power-on reset artefact (Celsius)
+      - lambda: return x * 1.8 + 32.0;
+
+  # --------------------------------------------------------------------------
+  # Discharge current (rectified, internal)
+  # Returns |I| when discharging (I < −50 mA), 0 otherwise.
+  # Feeds Ah and Wh integration sensors below.
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Discharge Current"
+    id: discharge_current
+    internal: true
+    unit_of_measurement: "A"
+    accuracy_decimals: 4
+    lambda: |-
+      float i = id(ina260_current).state;
+      if (isnan(i) || i > -0.05f) return 0.0f;
+      return -i;
+    update_interval: 5s
+
+  # Discharge power (rectified, internal) — feeds Wh integration
+  - platform: template
+    name: "Discharge Power"
+    id: discharge_power
+    internal: true
+    unit_of_measurement: "W"
+    accuracy_decimals: 3
+    lambda: |-
+      float i = id(ina260_current).state;
+      float v = id(ina260_voltage).state;
+      if (isnan(i) || isnan(v) || i > -0.05f) return 0.0f;
+      return -i * v;
+    update_interval: 5s
+
+  # --------------------------------------------------------------------------
+  # Coulomb counter — Ah delivered THIS outage
+  # Resets automatically on_press of 'On Battery' binary sensor (grid failure).
+  # --------------------------------------------------------------------------
+  - platform: integration
+    name: "Ah Delivered (This Outage)"
+    id: ah_delivered_outage
+    sensor: discharge_current
+    time_unit: h
+    unit_of_measurement: "Ah"
+    accuracy_decimals: 4
+    state_class: total_increasing
+    restore: true   # V1.5: must survive survival-sleep deep-sleep cycles; outage
+                    # is still active when sleep arms. restore: false wiped value
+                    # on every 150s wake, corrupting the on_release Ah record.
+                    # Undercount during sleep windows: 35mA × 150s ÷ 3600 ≈ 0.0015 Ah/cycle.
+
+  # Coulomb counter — Ah delivered LIFETIME (survives reboot, never auto-resets)
+  # Reset manually via "Reset Lifetime Counters" button after battery swap.
+  - platform: integration
+    name: "Ah Delivered (Lifetime)"
+    id: ah_delivered_lifetime
+    sensor: discharge_current
+    time_unit: h
+    unit_of_measurement: "Ah"
+    accuracy_decimals: 2
+    state_class: total_increasing
+    restore: true
+
+  # Energy counter — Wh delivered THIS outage
+  - platform: integration
+    name: "Wh Delivered (This Outage)"
+    id: wh_delivered_outage
+    sensor: discharge_power
+    time_unit: h
+    unit_of_measurement: "Wh"
+    accuracy_decimals: 3
+    state_class: total_increasing
+    restore: true   # V1.5: matches ah_delivered_outage — same reasoning applies.
+
+  # Energy counter — Wh delivered LIFETIME
+  - platform: integration
+    name: "Wh Delivered (Lifetime)"
+    id: wh_delivered_lifetime
+    sensor: discharge_power
+    time_unit: h
+    unit_of_measurement: "Wh"
+    accuracy_decimals: 1
+    state_class: total_increasing
+    restore: true
+
+  # --------------------------------------------------------------------------
+  # Estimated runtime remaining (Dashboard panel ⑥)
+  # Formula: (validated_capacity_ah − Ah_used_this_outage) ÷ |I_now|
+  # Returns NaN when not discharging, so HA card shows unavailable at rest.
+  # Note: cliff slope accelerates to −58 mV/min near LVD; the linear model
+  # becomes optimistic below 12.40 V — treat any Cliff reading as ≤17 min.
+  # (May 2026 measured cliff duration: ~17 min from 12.40 V to BP-65 LVD.)
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Runtime Remaining"
+    id: runtime_hours
+    unit_of_measurement: "h"
+    accuracy_decimals: 2
+    icon: "mdi:battery-clock"
+    lambda: |-
+      float ah_used    = id(ah_delivered_outage).state;
+      float i          = id(ina260_current).state;
+      float capacity   = ${validated_capacity_ah};
+      if (isnan(ah_used) || isnan(i)) return NAN;
+      if (i > -0.10f) return NAN;          // Not discharging > 100 mA
+      float remaining = capacity - ah_used;
+      if (remaining <= 0.0f) return 0.0f;
+      return remaining / fabs(i);
+    update_interval: 30s
+
+  # Same in minutes — easier to read on HA dashboard cards
+  - platform: template
+    name: "Runtime Remaining Minutes"
+    id: runtime_minutes
+    unit_of_measurement: "min"
+    accuracy_decimals: 0
+    icon: "mdi:battery-clock"
+    lambda: |-
+      float h = id(runtime_hours).state;
+      if (isnan(h)) return NAN;
+      return h * 60.0f;
+    update_interval: 30s
+
+  # --------------------------------------------------------------------------
+  # Voltage slope (mV/min) — EMA-smoothed, computed by 60 s interval above.
+  # Drives Knee Approaching and Cliff Imminent binary sensors.
+  # Negative = falling voltage. Typical float/plateau: −0.5 to +0.5 mV/min.
+  # Observed cliff: −30 mV/min at entry, −58 mV/min at LVD (May 2026).
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Voltage Slope"
+    id: voltage_slope
+    unit_of_measurement: "mV/min"
+    accuracy_decimals: 2
+    icon: "mdi:trending-down"
+    state_class: measurement
+
+  # --------------------------------------------------------------------------
+  # Last-outage capture sensors — persisted in globals, survive reboot.
+  # Dashboard panel ⑤ compares these to validated_capacity_ah to track aging.
+  # NaN guards on min/start voltage suppress 0.000 V display before first event.
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Last Outage Ah"
+    id: last_outage_ah_sensor
+    unit_of_measurement: "Ah"
+    accuracy_decimals: 4
+    icon: "mdi:battery-arrow-down"
+    lambda: 'return id(last_outage_ah);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Last Outage Wh"
+    id: last_outage_wh_sensor
+    unit_of_measurement: "Wh"
+    accuracy_decimals: 3
+    icon: "mdi:lightning-bolt"
+    lambda: 'return id(last_outage_wh);'
+    update_interval: 60s
+
+  - platform: template
+    name: "Last Outage Duration"
+    id: last_outage_duration_sensor
+    unit_of_measurement: "min"
+    accuracy_decimals: 1
+    icon: "mdi:timer-outline"
+    lambda: 'return id(last_outage_duration_min);'
+    update_interval: 60s
+
+  # Capacity utilisation — last outage Ah as % of validated capacity.
+  # Trend downward over years = battery aging.
+  - platform: template
+    name: "Last Outage Capacity Used"
+    id: last_outage_pct
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    icon: "mdi:battery-check"
+    lambda: |-
+      float used = id(last_outage_ah);
+      if (used <= 0.0f) return NAN;
+      return (used / ${validated_capacity_ah}) * 100.0f;
+    update_interval: 60s
+
+  # Minimum voltage reached during last outage (LVD depth indicator).
+  # NaN guard: shows unavailable until first outage completes.
+  - platform: template
+    name: "Last Outage Min Voltage"
+    id: last_outage_min_v_sensor
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    icon: "mdi:battery-arrow-down-outline"
+    device_class: voltage
+    entity_category: diagnostic
+    lambda: |-
+      float v = id(last_outage_min_v);
+      if (v <= 0.0f) return NAN;
+      return v;
+    update_interval: 60s
+
+  # Starting voltage at outage onset — confirms full float vs partial charge.
+  # NaN guard: shows unavailable until first outage completes.
+  - platform: template
+    name: "Last Outage Start Voltage"
+    id: last_outage_start_v_sensor
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    icon: "mdi:battery-high"
+    device_class: voltage
+    entity_category: diagnostic
+    lambda: |-
+      float v = id(last_outage_start_v);
+      if (v <= 0.0f) return NAN;
+      return v;
+    update_interval: 60s
+
+  # Peak recharge current after last outage — PSU CC-limit health indicator.
+  # Trend: ~4.5A healthy; declining over years = PSU aging or connection resistance.
+  # NaN guard: shows unavailable until first outage + recharge completes.
+  - platform: template
+    name: "Last Recharge Peak Current"
+    id: last_recharge_peak_a_sensor
+    unit_of_measurement: "A"
+    accuracy_decimals: 3
+    icon: "mdi:battery-charging-high"
+    device_class: current
+    entity_category: diagnostic
+    lambda: |-
+      float a = id(last_recharge_peak_a);
+      if (a <= 0.0f) return NAN;
+      return a;
+    update_interval: 60s
+
+  # Float voltage captured at each confirmed full-charge event.
+  # Tracks PSU trimmer drift over time (expected 3–5 mV/year aging).
+  # NaN guard: shows unavailable until battery_fully_charged fires once.
+  - platform: template
+    name: "Last Float Voltage"
+    id: last_float_voltage_sensor
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    icon: "mdi:sine-wave"
+    device_class: voltage
+    entity_category: diagnostic
+    lambda: |-
+      float v = id(last_float_voltage);
+      if (v <= 0.0f) return NAN;
+      return v;
+    update_interval: 60s
+
+  # Persistent outage event counter — useful for HA history and aging baseline.
+  - platform: template
+    name: "Total Outages"
+    id: total_outages_sensor
+    accuracy_decimals: 0
+    icon: "mdi:counter"
+    entity_category: diagnostic
+    lambda: 'return id(total_outage_count);'
+    update_interval: 60s
+
+  # --------------------------------------------------------------------------
+  # ESP diagnostics
+  # --------------------------------------------------------------------------
+  - platform: uptime
+    name: "Uptime"
+    id: device_uptime
+    update_interval: 60s
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_rssi
+    update_interval: 60s
+
+  - platform: internal_temperature
+    name: "ESP32 Internal Temperature"
+    update_interval: 60s
+
+
+# ============================================================================
+# TEXT SENSORS
+# ============================================================================
+text_sensor:
+
+  # --------------------------------------------------------------------------
+  # Discharge Phase — 6-state machine (Dashboard panel ④)
+  # States driven by voltage AND current:
+  #   Charging  : I > +50 mA
+  #   Float     : |I| ≤ 50 mA  (AC present, battery at equilibrium)
+  #   Settling  : discharging, V > 13.00 V   (OCV relaxation, ~5 min)
+  #   Plateau   : discharging, 12.65–13.00 V (bulk capacity, ~142 min at 1.18A)
+  #   Knee      : discharging, 12.40–12.65 V (~49 min, accelerating drop)
+  #   Cliff     : discharging, V ≤ 12.40 V   (~17 min, rapid fall; −30 to −58 mV/min)
+  #
+  # on_value logs every phase transition with V and I at the crossing instant.
+  # This reconstructs the outage timeline without needing an open web session.
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Discharge Phase"
+    id: discharge_phase
+    icon: "mdi:state-machine"
+    lambda: |-
+      float i = id(ina260_current).state;
+      float v = id(ina260_voltage).state;
+      if (isnan(i) || isnan(v))        return std::string("Unknown");
+      if (i >  0.05f)                  return std::string("Charging");
+      if (fabs(i) <= 0.05f)            return std::string("Float");
+      if (v > ${settling_min_v})       return std::string("Settling");
+      if (v > ${plateau_min_v})        return std::string("Plateau");
+      if (v > ${knee_min_v})           return std::string("Knee");
+      return                                  std::string("Cliff");
+    update_interval: 15s    # 15s debounces phase bouncing near voltage boundaries
+    on_value:
+      - lambda: |-
+          ESP_LOGI("ups.phase", "Phase -> %s | V=%.3f V | I=%.4f A",
+                   x.c_str(),
+                   id(ina260_voltage).state,
+                   id(ina260_current).state);
+
+  - platform: version
+    name: "ESPHome Version"
+
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    ssid:
+      name: "WiFi SSID"
+    mac_address:
+      name: "MAC Address"
+
+
+# ============================================================================
+# BINARY SENSORS
+# ============================================================================
+binary_sensor:
+
+  # --------------------------------------------------------------------------
+  # On Battery — primary outage indicator (Dashboard panel ③)
+  # Transitions LOW→HIGH on grid failure; HIGH→LOW on grid restoration.
+  #
+  # on_press  : records outage start (voltage + uptime), resets per-outage
+  #             counters, seeds min-voltage tracker, increments event count.
+  # on_release: saves all outage metrics to flash globals, captures recharge
+  #             peak, logs structured OUTAGE END line (grep-friendly).
+  #
+  # Recharge peak timing: the PSU CC phase starts immediately on AC restoration.
+  # The 60s delayed_off window captures the peak before on_release fires —
+  # so last_recharge_peak_a always reflects the actual CC-limit current.
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "On Battery"
+    id: on_battery
+    device_class: power
+    lambda: |-
+      return id(ina260_voltage).state < ${on_battery_threshold_v};
+    filters:
+      - delayed_on:  10s     # Ignore transient dips < 10 s
+      - delayed_off: 60s     # Wait for recharge inrush to stabilise
+    on_press:
+      then:
+        - lambda: |-
+            // V1.5 guard (Issue 3): suppress on_press during survival-sleep exit.
+            // During recovery boot, on_battery may see V < 13.15 V transiently
+            // while the battery charges. A false on_press would increment
+            // total_outage_count and reset the restored Ah/Wh counters.
+            if (id(survival_mode_active)) {
+              ESP_LOGD("ups", "on_press suppressed — survival_mode_active");
+              return;
+            }
+            // V1.6 (Item 2): discharge-direction guard. A genuine outage start is
+            // always a discharge event. If current is not negative (battery is
+            // charging or at float), this press is a recovery/charging artifact —
+            // do NOT count it as an outage. Belt to the survival_mode_active guard
+            // above, which does not cover the case where the flag was already
+            // cleared at priority -150 before this evaluates.
+            if (id(ina260_current).state > -0.05f) {
+              ESP_LOGD("ups", "on_press suppressed — not discharging (I=%.4f A)",
+                       id(ina260_current).state);
+              return;
+            }
+            id(outage_start_uptime)  = (uint32_t)id(device_uptime).state;
+            id(last_outage_start_v)  = id(ina260_voltage).state;   // captured at trip instant
+            id(outage_min_voltage)   = NAN;    // reset — 5s tracker will seed from first sample
+            id(last_outage_min_v)    = 0.0f;   // V1.5: reset persisted min-v for new outage
+            id(recharge_peak_a)      = 0.0f;   // reset — 5s tracker will seed from CC onset
+            id(total_outage_count)++;
+            // V1.12 (single-guard refactor) — the Ah/Wh counter resets now live HERE,
+            // behind the SAME two early-return guards above, rather than in a second
+            // action carrying a mirrored condition. Both returns above already prevent
+            // these resets on a survival-exit or charging artifact, so the prior
+            // separately-guarded `if` block is removed. Its necessity depended on the
+            // non-obvious fact that a lambda `return` does NOT short-circuit the
+            // enclosing action sequence — i.e. correctness lived in a comment, not in
+            // structure. Collapsing to one guard path makes it self-evidently correct.
+            // `sensor.integration.reset` == IntegrationSensor::reset() (publishes and
+            // saves 0.0), so this is behaviorally identical; verified callable from a
+            // lambda on ESPHome 2026.5.3.
+            id(ah_delivered_outage).reset();
+            id(wh_delivered_outage).reset();
+    on_release:
+      then:
+        - lambda: |-
+            // V1.6: a survival-sleep outage is finalized deterministically at
+            // priority -150 on the recovery cold-boot (outage_was_survival is
+            // cleared there). If the flag is somehow still set when on_release
+            // runs, the arm-time snapshot is authoritative — skip recompute,
+            // clear the marker, and capture any higher recharge peak seen here.
+            if (id(outage_was_survival)) {
+              id(outage_was_survival) = false;
+              if (id(recharge_peak_a) > id(last_recharge_peak_a))
+                id(last_recharge_peak_a) = id(recharge_peak_a);
+              ESP_LOGI("ups",
+                "OUTAGE END (survival, late) | %.4f Ah | %.3f Wh | Min V: %.3f V",
+                id(last_outage_ah), id(last_outage_wh), id(last_outage_min_v));
+              return;
+            }
+            // Normal (non-survival) outage: compute snapshot at recovery as before.
+            uint32_t now   = (uint32_t)id(device_uptime).state;
+            uint32_t start = id(outage_start_uptime);
+            // V1.12 (FIX) — only (re)compute the snapshot for an outage THIS boot
+            // tracked from its start (start>0, set in on_press). On a SURVIVAL
+            // recovery the device cold-booted out of deep sleep, so
+            // outage_start_uptime==0 (transient; priority -100 is skipped while the
+            // arm flag is set) and the arm-time snapshot is authoritative — it must
+            // NOT be overwritten here. This matters because the recovery CC sample
+            // (~13.093 V, May 6) is BELOW on_battery_threshold (13.15 V), so
+            // on_battery CAN latch ON then release on a survival recovery and fire
+            // this on_release — at which point priority -150 has already cleared
+            // outage_was_survival, so the branch above is bypassed. Without this
+            // start>0 guard, on_release would clobber the arm-time last_outage_ah/wh
+            // with live counter values, defeating the snapshot's purpose. The
+            // guard makes a stray survival-recovery on_release a no-op for the
+            // snapshot fields (start==0), while a genuine awake-tracked outage
+            // (start>0) recomputes exactly as before.
+            if (start > 0 && now > start) {
+              id(last_outage_duration_min) = (now - start) / 60.0f;
+              id(last_outage_ah)        = id(ah_delivered_outage).state;
+              id(last_outage_wh)        = id(wh_delivered_outage).state;
+            }
+            // Recharge peak is captured regardless of start: on a survival recovery
+            // the arm-time snapshot set last_recharge_peak_a from the pre-trip value
+            // (~0 A); the real CC peak only develops during THIS recovery, so record
+            // it here. (On a normal outage this is identical to the prior behaviour.)
+            id(last_recharge_peak_a)  = id(recharge_peak_a);
+            // V1.5: last_outage_min_v is the authoritative persisted field,
+            // continuously updated by the 5s interval tracker throughout the outage.
+            // last_outage_start_v already written in on_press at trip instant.
+            ESP_LOGI("ups",
+              "OUTAGE END #%d | %.1f min | %.4f Ah | %.3f Wh | Start V: %.3f V | Min V: %.3f V | Peak chrg: %.3f A",
+              id(total_outage_count),
+              id(last_outage_duration_min),
+              id(last_outage_ah),
+              id(last_outage_wh),
+              id(last_outage_start_v),
+              id(last_outage_min_v),
+              id(last_recharge_peak_a));
+
+  # --------------------------------------------------------------------------
+  # Voltage threshold alarms — drive HA notifications and shutdown automation
+  # All require confirmed discharge (I < −100 mA) to avoid false trips during
+  # transient PSU dips.
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Voltage Warning"
+    id: voltage_warning
+    device_class: problem
+    lambda: |-
+      return id(ina260_voltage).state < ${warning_voltage} &&
+             id(ina260_current).state < -0.10f;
+    filters:
+      - delayed_on: 30s      # 12.40 V must hold for 30 s — avoids noise trigger
+
+  - platform: template
+    name: "Voltage Critical"
+    id: voltage_critical
+    device_class: problem
+    lambda: |-
+      return id(ina260_voltage).state < ${critical_voltage} &&
+             id(ina260_current).state < -0.10f;
+    filters:
+      - delayed_on: 10s      # 12.20 V → initiate HA Green graceful shutdown
+
+  - platform: template
+    name: "LVD Imminent"
+    id: lvd_imminent
+    device_class: problem
+    lambda: |-
+      // Within 100 mV of BP-65 hardware disconnect (11.80 V, Setting 7)
+      return id(ina260_voltage).state < (${lvd_voltage} + 0.10f) &&
+             id(ina260_current).state < -0.10f;
+
+  # --------------------------------------------------------------------------
+  # Slope-based alarms — fire BEFORE voltage thresholds cross.
+  #
+  # Both sensors require THREE simultaneous conditions to fire:
+  #   1. Confirmed discharge: I < −100 mA
+  #   2. Voltage in the correct phase territory (plateau_min_v gate)
+  #   3. EMA slope below threshold
+  #
+  # The voltage guard (condition 2) is the primary fix for false alarms:
+  # During OCV settling (first ~5 min of every outage) the voltage drops from
+  # ~13.3 V float to ~12.97 V plateau, producing slopes of −150 to −10 mV/min
+  # while the battery is still well ABOVE 12.65 V. The voltage guard blocks
+  # both sensors throughout settling/plateau, where they should be silent.
+  #
+  # May 2026 validation: cliff_imminent fired at V=12.431 V, ~17 min before
+  # BP-65 LVD. Cliff entry slope was −30 mV/min; peak was −58 mV/min.
+  # The −10 mV/min cliff threshold fired at V=12.431 V with ~17 min of margin.
+  # --------------------------------------------------------------------------
+
+  - platform: template
+    name: "Knee Approaching"
+    id: knee_approaching
+    device_class: problem
+    lambda: |-
+      float slope = id(voltage_slope).state;
+      float v     = id(ina260_voltage).state;
+      float i     = id(ina260_current).state;
+      if (isnan(slope) || isnan(v) || isnan(i)) return false;
+      // Guard 1: confirmed discharging (> 100 mA out of battery)
+      if (i > -0.10f) return false;
+      // Guard 2: voltage must be in actual knee territory (12.40–12.65 V).
+      if (v >= ${plateau_min_v}) return false;
+      return slope < ${knee_slope_threshold};
+    filters:
+      - delayed_on:  120s    # Slope must hold < −3 mV/min for 2 min (backstop)
+      - delayed_off:  30s    # Prevent chatter if slope briefly recovers
+
+  - platform: template
+    name: "Cliff Imminent"
+    id: cliff_imminent
+    device_class: problem
+    lambda: |-
+      float slope = id(voltage_slope).state;
+      float v     = id(ina260_voltage).state;
+      float i     = id(ina260_current).state;
+      if (isnan(slope) || isnan(v) || isnan(i)) return false;
+      // Guard 1: confirmed discharging
+      if (i > -0.10f) return false;
+      // Guard 2: voltage must be below plateau (< 12.65 V).
+      // OCV settling always stays above 12.65 V — no genuine cliff slope possible.
+      if (v >= ${plateau_min_v}) return false;
+      return slope < ${cliff_slope_threshold};
+    filters:
+      - delayed_on:  60s     # 1 min sustained slope — prevents 1-sample spikes
+      - delayed_off: 30s
+
+  # --------------------------------------------------------------------------
+  # INA260 ALERT pin — GPIO3 (XIAO D1) on the UPS-Monitor-THT Rev 1 PCB.
+  # Open-drain active-low. The PCB has an on-board 10K pull-up to 3V3 (R2), so the
+  # line is held high in hardware; the internal INPUT_PULLUP below is redundant
+  # (kept as belt-and-suspenders, harmless). Adafruit #4226 has no pull-up of its
+  # own — R2 supplies it.
+  #
+  # V1.11 — GPIO3 is now a SINGLE-OWNER passive input. Event-wake is backed out, so
+  # this pin is no longer the deep_sleep wakeup_pin and allow_other_uses is REMOVED
+  # (no shared-pin registry coupling). No INA260 alert (BOL/BUL) is ever configured
+  # by the firmware, so in normal operation and during survival sleep this line
+  # idles HIGH and the sensor stays inactive.
+  #
+  # Its only role now is a passive "monitor-the-monitor" smoke detector: if ALERT
+  # is ever pulled LOW for >200 ms, it indicates an UNEXPECTED INA260 alert or an
+  # I2C/hardware fault (nothing in V1.11 should ever assert it), and it is logged.
+  # --------------------------------------------------------------------------
+  - platform: gpio
+    name: "INA260 Alert"
+    id: ina260_alert
+    pin:
+      number: GPIO3
+      mode: INPUT_PULLUP
+      inverted: true
+    device_class: problem
+    filters:
+      - delayed_on: 200ms    # Only log if ALERT held LOW >200ms (always unexpected in V1.11)
+    on_press:
+      then:
+        - logger.log:
+            level: WARN
+            format: "INA260 ALERT held LOW >200ms on GPIO3 -- unexpected (no alert configured); possible INA260/I2C fault"
+
+  # --------------------------------------------------------------------------
+  # Subsystem health — monitor the monitor
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "INA260 Healthy"
+    device_class: connectivity
+    lambda: 'return !isnan(id(ina260_voltage).state);'
+
+  - platform: template
+    name: "DS18B20 Healthy"
+    device_class: connectivity
+    lambda: 'return !isnan(id(battery_temp).state);'
+
+  # --------------------------------------------------------------------------
+  # Battery Fully Charged
+  # True when voltage is within 50 mV of float setpoint AND current near zero.
+  # Uses (float_voltage − 0.05) instead of hardcoded 13.25 V so the threshold
+  # tracks PSU trimmer adjustments automatically.
+  # 10-minute delayed_on allows LiFePO4 absorption tail to settle.
+  # on_press captures the settled float voltage for PSU drift trending.
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Battery Fully Charged"
+    id: battery_fully_charged
+    device_class: battery_charging
+    lambda: |-
+      return id(ina260_voltage).state > (${float_voltage} - 0.05f) &&
+             fabs(id(ina260_current).state) < 0.10f;
+    filters:
+      - delayed_on: 600s     # 10 min stable float — confirmed full charge
+    on_press:
+      - lambda: |-
+          id(last_float_voltage) = id(ina260_voltage).state;
+          ESP_LOGI("ups", "Float confirmed: %.3f V (PSU drift ref)", id(last_float_voltage));
+
+  # --------------------------------------------------------------------------
+  # Xfinity Modem Online — derived from WiFi RSSI (non-blocking).
+  #
+  # http_request polling was removed: it blocked the ESPHome main loop for
+  # ~577 ms per poll, triggering [W][component:522] warnings and starving
+  # I2C/sensor loops.
+  #
+  # WiFi RSSI is already sampled every 60 s with zero overhead. If the
+  # ESP32-C3 loses its WiFi association (RSSI → NaN) or signal drops below
+  # −90 dBm (link failing), the modem is effectively unreachable.
+  #
+  # Correlate with "On Battery" in HA:
+  #   On Battery ON + Modem Online ON  → UPS protecting load; network up
+  #   On Battery ON + Modem Online OFF → outage has taken down the modem
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Xfinity Modem Online"
+    id: modem_online
+    device_class: connectivity
+    icon: "mdi:router-network"
+    lambda: |-
+      float rssi = id(wifi_rssi).state;
+      return !isnan(rssi) && rssi > -90.0f;
+    filters:
+      - delayed_on:  30s
+      - delayed_off: 60s
+
+
+  # --------------------------------------------------------------------------
+  # Survival Sleep Armed — V1.7 (shadows the BP-65 trip; fail-toward-sleep)
+  # --------------------------------------------------------------------------
+  # Arms AT the BP-65 LVD trip, detected by the physical load-collapse signature:
+  #   on_battery == true             (we are in an outage)
+  #   AND -0.30 A < I < +0.20 A      (heavy XB7 load gone; NOT charging)
+  #   sustained 30 s.
+  #
+  # V1.7 removed the V1.6 voltage gate (V < 12.5 V). That gate's threshold was an
+  # UNMEASURED estimate of the post-trip rebound, and its failure mode was the
+  # worst possible: if the real rebound were above the gate, sleep would NEVER arm
+  # and the ESP would drain the pack to BMS cutoff — the only outcome that actually
+  # harms the battery. The gate only bought Ah-fidelity (not important here), so it
+  # was pure downside. Entry now uses no voltage threshold that can block sleep.
+  #
+  # Why the current WINDOW (not a floor):
+  #   • Lower bound -0.30 A: must clear the ESP's own WiFi-Tx transient, not just
+  #     its ~40 mA base. A C3 Tx burst (~350 mA @3.3V, /0.85 buck, /12V) reflects
+  #     ~113 mA → ~153 mA peak (-0.153 A). A -0.15 A floor sits INSIDE that; with
+  #     the modem dead the C3 reconnects aggressively, so frequent Tx spikes would
+  #     reset the 30 s delayed_on timer and arming might never complete. -0.30 A
+  #     clears the spike by ~150 mA and sits ~900 mA below the ~1.2 A XB7 load.
+  #   • Upper bound +0.20 A: rejects the recovery/charging case. On AC return I goes
+  #     strongly positive (~+4.5 A); without an upper bound, a current-only floor
+  #     would be satisfied during early recovery while on_battery is still within
+  #     its 60 s delayed_off — a false-arm into recovery. Post-trip current is
+  #     ~-0.04 A, far below +0.20, so the upper bound can NEVER block legitimate
+  #     sleep — it only excludes charging.
+  #   • on_battery gate: belt — confirms we are actually in an outage, so the
+  #     window can't arm during a normal-operation current excursion at float.
+  #
+  # Fail-toward-sleep: if the sensor reads slightly wrong, post-trip current is
+  # nowhere near either bound, so the condition still passes. Arming a little early
+  # or late around the trip is harmless; NOT arming would drain to cutoff.
+  #
+  # on_press sequence (order matters):
+  #   1. Reset survival_cycle_count = 0, then write the FINAL outage snapshot from
+  #      live counters and set the NVS arm flags (single merged lambda). Snapshot
+  #      while counters are intact → last_outage_* hold true full-outage values.
+  #   2. 100 ms delay — NVS preferences flush (R-2.3)
+  #   3. V1.11 — POWER DOWN the INA260 (0x00=0x6120, ~2 µA) for the lowest sleep
+  #      floor. (V1.10 kept it awake at ~310 µA for event-wake; that is backed out.)
+  #      priority 600 restores continuous mode on the next wake before any read.
+  #   4. Enter deep sleep — timer-wake (${survival_sleep_interval}); run_duration
+  #      watchdog also armed by the deep_sleep component config.
+  #
+  # On wake (timer): priority -150 reads V via direct I2C and either re-sleeps
+  # (V<13.0), exits on recovery (V>=13.0), or exits fail-safe (bad read / max
+  # cycles). Recovery needs no network — a cold boot resumes telemetry.
+  # --------------------------------------------------------------------------
+  - platform: template
+    name: "Survival Sleep Armed"
+    id: survival_sleep_armed
+    # V1.11 — internal: the on_press automation below is this sensor's purpose
+    # (it triggers survival entry). Its 'on' state can NEVER reach HA: it asserts
+    # only after the BP-65 trip sheds the load, which also kills the XB7/AP, so HA
+    # is offline whenever it is armed. Hidden from HA to avoid a permanently-off
+    # "problem" entity. Remove this line to expose it again (e.g. for bench debug).
+    internal: true
+    device_class: problem
+    icon: "mdi:sleep"
+    entity_category: diagnostic
+    lambda: |-
+      float i = id(ina260_current).state;
+      if (isnan(i)) return false;
+      // In an outage AND load collapsed (XB7 gone) AND not charging.
+      // No voltage gate — nothing here can block sleep (fail toward sleep).
+      return id(on_battery).state &&
+             i > ${survival_entry_current_lo}f &&
+             i < ${survival_entry_current_hi}f;
+    filters:
+      - delayed_on: 30s     # 30 s sustained — confirms the trip, not a transient
+    on_press:
+      then:
+        # 1+2 (merged): fresh cycle count, then FINAL snapshot from the live
+        # counters (intact at the trip), then set the NVS flags. on_release on
+        # recovery will NOT overwrite these (see on_release / priority -150 guard).
+        - lambda: |-
+            id(survival_cycle_count) = 0;
+            id(last_outage_ah)       = id(ah_delivered_outage).state;
+            id(last_outage_wh)       = id(wh_delivered_outage).state;
+            id(last_recharge_peak_a) = id(recharge_peak_a);
+            // last_outage_min_v / last_outage_start_v already maintained live.
+            uint32_t now   = (uint32_t)id(device_uptime).state;
+            uint32_t start = id(outage_start_uptime);
+            if (start > 0 && now > start)
+              id(last_outage_duration_min) = (now - start) / 60.0f;  // duration-to-arm
+            id(survival_mode_active) = true;
+            id(outage_was_survival)  = true;   // recovery must not overwrite snapshot
+            ESP_LOGW("ups.survival",
+              "SURVIVAL SLEEP ENTRY (BP-65 trip) | V=%.3fV I=%.4fA | snapshot: %.4f Ah / %.3f Wh / min %.3f V | timer-wake",
+              id(ina260_voltage).state, id(ina260_current).state,
+              id(last_outage_ah), id(last_outage_wh), id(last_outage_min_v));
+        # 3. NVS preferences flush before deep sleep (R-2.3)
+        - delay: 100ms
+        # 4. V1.11 — POWER DOWN the INA260 (0x00=0x6120, mode 000 = ~2 µA) for the
+        #    lowest sleep floor. (V1.10 kept it awake for event-wake; reverted.)
+        - lambda: |-
+            uint8_t power_down[3] = {0x00, 0x61, 0x20};   // mode 000 = power-down
+            id(ina_raw).write(power_down, 3);
+            ESP_LOGI("ups.survival", "INA260 powered down (~2 µA) for survival sleep");
+        # 5. Enter survival sleep (timer-wake). Explicit deep_sleep.enter is
+        #    manual=true, so it sleeps regardless of any watchdog prevent.
+        - deep_sleep.enter:
+            sleep_duration: ${survival_sleep_interval}
+
+# ============================================================================
+# CONTROLS
+# ============================================================================
+button:
+  - platform: restart
+    name: "Restart"
+
+  # Resets per-outage Ah/Wh counters — use during maintenance / bench testing
+  - platform: template
+    name: "Reset Outage Counters"
+    on_press:
+      - sensor.integration.reset: ah_delivered_outage
+      - sensor.integration.reset: wh_delivered_outage
+
+  # Resets lifetime Ah/Wh counters — use ONLY after battery replacement
+  - platform: template
+    name: "Reset Lifetime Counters"
+    entity_category: diagnostic
+    on_press:
+      - sensor.integration.reset: ah_delivered_lifetime
+      - sensor.integration.reset: wh_delivered_lifetime
+
+  # Resets all last-outage globals — use after a test discharge or battery swap
+  # to clear stale data before the next real outage event.
+  - platform: template
+    name: "Reset Last Outage Data"
+    entity_category: diagnostic
+    on_press:
+      - lambda: |-
+          id(last_outage_ah)           = 0.0f;
+          id(last_outage_wh)           = 0.0f;
+          id(last_outage_duration_min) = 0.0f;
+          id(last_outage_min_v)        = 0.0f;
+          id(last_outage_start_v)      = 0.0f;
+          id(last_recharge_peak_a)     = 0.0f;
+          ESP_LOGI("ups", "Last outage data cleared manually");
