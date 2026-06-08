@@ -576,6 +576,21 @@
 #             == IntegrationSensor::reset(); verified callable on 2026.5.3). One guard
 #             path, self-evidently correct, identical behavior. Surfaced by a
 #             comments-stripped robustness review.
+#
+#           HARDENING (item-7, mid-outage-reboot data integrity): on_battery on_press
+#             now early-returns if outage_start_uptime != 0 (already in an outage this
+#             boot-session), and on_release clears outage_start_uptime when an outage
+#             cleanly ends. Closes a latent gap where a brownout/crash/wifi-timeout
+#             reboot during the AWAKE pre-trip outage would let on_press (~+10 s) reset
+#             the restore:true Ah/Wh and double-increment total_outage_count, undoing
+#             priority -100's preservation (~+6 s). Best-effort R-6 data only — no
+#             safety impact — but it contradicted the doc's "counters PRESERVED" claim.
+#             Mirrors -100's own `outage_start_uptime == 0` re-anchor guard; relies on
+#             the delayed_on(10 s) > -100 delay(6 s) ordering.
+#           HARDENING (item-10, NaN-safe discharge guard): on_press discharge guard
+#             now fails CLOSED on a NaN current (isnan(i) || i > -0.05f) instead of
+#             proceeding to count an outage on a bad read. Matches the isnan guards
+#             already used at priority -100.
 #           Boot message updated to V1.12.
 # ============================================================================
 
@@ -1803,9 +1818,29 @@ binary_sensor:
             // do NOT count it as an outage. Belt to the survival_mode_active guard
             // above, which does not cover the case where the flag was already
             // cleared at priority -150 before this evaluates.
-            if (id(ina260_current).state > -0.05f) {
-              ESP_LOGD("ups", "on_press suppressed — not discharging (I=%.4f A)",
-                       id(ina260_current).state);
+            // V1.12 (item 10): fail CLOSED on a NaN current. `NaN > -0.05f` is false,
+            // so the old form would PROCEED to count an outage on a bad/absent read.
+            // Require a valid, discharging reading. (Mirrors priority -100, which
+            // already guards on !isnan(v) && !isnan(i).)
+            float i = id(ina260_current).state;
+            if (isnan(i) || i > -0.05f) {
+              ESP_LOGD("ups", "on_press suppressed — not discharging / NaN (I=%.4f A)", i);
+              return;
+            }
+            // V1.12 (item 7): already inside an outage this boot-session? Then this
+            // press is a duplicate, NOT a new outage — preserve the counters and the
+            // count. outage_start_uptime is non-zero when a still-open outage's
+            // on_press set it, OR when priority -100 re-anchored it on a mid-outage
+            // reboot; it is cleared by on_release when an outage cleanly ends. Without
+            // this guard, a brownout/crash/wifi-timeout reboot during the (awake)
+            // pre-trip outage would let this press reset the restore:true Ah/Wh and
+            // double-increment total_outage_count, undoing the -100 preservation.
+            // TIMING COUPLING: relies on -100 (delay 6 s) running before this on_press
+            // (on_battery delayed_on 10 s) on a reboot — keep delayed_on > the -100 delay.
+            if (id(outage_start_uptime) != 0) {
+              ESP_LOGW("ups",
+                "on_press suppressed — already in an outage (start=%u); counters preserved",
+                id(outage_start_uptime));
               return;
             }
             id(outage_start_uptime)  = (uint32_t)id(device_uptime).state;
@@ -1884,6 +1919,12 @@ binary_sensor:
               id(last_outage_start_v),
               id(last_outage_min_v),
               id(last_recharge_peak_a));
+            // V1.12 (item 7): outage cleanly ended — clear the in-outage marker so
+            // the NEXT outage's on_press (which now requires start==0) records
+            // normally. Paired with the `outage_start_uptime != 0` guard in on_press.
+            // (Survival recoveries finalize at priority -150 and reach on_release with
+            // start already 0 from the deep-sleep cold boot, so this is a no-op there.)
+            id(outage_start_uptime) = 0;
 
   # --------------------------------------------------------------------------
   # Voltage threshold alarms — drive HA notifications and shutdown automation
