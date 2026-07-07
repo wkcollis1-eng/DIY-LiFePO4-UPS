@@ -1,0 +1,112 @@
+---
+
+# Test Specification – UPS Monitor Board (T-5P2W969574A)
+**For JLCPCB Flying Probe Test & Function Test**
+**Quantity:** 2 prototype boards
+**Date:** April 14, 2026
+
+---
+
+## Part 1 – Flying Probe Test Information
+
+Flying probe testing verifies no shorts or opens on the bare PCB *before* assembly. JLCPCB will run this automatically using the Gerber netlist. No custom test points are required – the standard PCB layout has sufficient vias and pads.
+
+**Instructions to JLCPCB:**
+- Use the original Gerber files to generate the flying probe program.
+- Test all nets for continuity (opens) and isolation (shorts).
+- Minimum test pad size: 0.5mm diameter (present on all nets).
+- If any failure is detected, stop and notify me before proceeding.
+
+**No additional test point file is needed** – the Gerber netlist is sufficient.
+
+---
+
+## Part 2 – Function Test Procedure (After Assembly)
+
+Perform this test on **each assembled board** after soldering and visual inspection.
+
+### Required Equipment
+- 12V DC power supply (current limited to 1A)
+- USB-C cable (data capable)
+- Computer with serial terminal (e.g., PuTTY, screen, or Arduino IDE Serial Monitor)
+- Multimeter
+
+### Test Steps
+
+#### Step 1 – Visual Inspection
+- Check for correct orientation of U1 (ESP32-C3 module), U2 (INA228), U3 (buck converter), LED1, and all polarized capacitors.
+- Verify no solder bridges on U2 (MSOP-10) or U3 (SOT-23-6).
+- Ensure J1, J2, J3, J4 are correctly placed and not lifted.
+
+#### Step 2 – Power-On (No Load)
+- **Do not connect USB yet.**
+- Apply 12V DC to J1 (input) – observe current draw.
+  - Expected: < 50mA quiescent.
+- Measure voltage at:
+  - C3 (3.3V output) → **3.3V ±5%**
+  - LED1 (blue LED) → should blink once on power-up (if ESP32 boots).
+- If current > 100mA or no 3.3V, stop – power section fault.
+
+#### Step 3 – USB-C Power (Optional)
+- Disconnect 12V. Connect USB-C to J4.
+- Measure 3.3V again – should be present.
+- Current draw on USB should be < 100mA.
+
+#### Step 4 – ESP32 Boot & Serial Output
+- Keep 12V or USB power connected.
+- Connect USB-C to computer (if not already).
+- Open serial monitor at 115200 baud.
+- Press RESET switch (SW2).
+- Expected serial output: boot log, then "UPS Monitor started" or similar message from your firmware.
+- If no serial output, check BOOT (SW1) and RESET.
+
+#### Step 5 – INA228 Communication
+- In serial monitor, send command `status` or `measure` (or whatever your firmware implements).
+- Expected response: voltage, current, power readings.
+- If no response, I2C communication failed – check pullups R1, R2 (4.7kΩ) and U2 soldering.
+
+#### Step 6 – Load Output (J2)
+- With 12V input, measure voltage on J2 pins.
+  - Expected: same as input voltage (pass-through).
+- Connect a small resistive load (e.g., 100Ω 2W) to J2 – current should be ~120mA.
+- Verify INA228 reports increased current within ±5%.
+
+#### Step 7 – Temperature Sensor Header (J3)
+- Connect a DS18B20 sensor to J3 (pinout: VCC, DATA, GND).
+- In serial monitor, read temperature – should return a valid value.
+- If not, check pullup R9 (4.7kΩ).
+
+### Pass/Fail Criteria
+- **Pass:** All steps successful on first attempt (or after minor rework like reflowing a joint).
+- **Fail:** Any step fails and cannot be fixed by simple rework (e.g., dead IC, shorted power rail). Notify me.
+
+### Rework Allowed
+- Minor rework (reflowing solder bridges, adding missing solder) is permitted.
+- Replacing components is **not** permitted without my approval.
+
+---
+
+## Contact for Issues
+
+If any test fails, please email me with:
+- Board number (1 or 2)
+- Step that failed
+- Photo of the board (top and bottom)
+- Multimeter readings
+
+**Do not discard failing boards** – I may want them shipped as-is for debugging.
+
+---
+
+## Sign-off
+
+Once testing is complete, please indicate for each board:
+
+| Board # | Flying Probe Pass | Function Test Pass | Notes |
+|---------|------------------|--------------------|-------|
+| 1       | ☐ Yes / ☐ No     | ☐ Yes / ☐ No       |       |
+| 2       | ☐ Yes / ☐ No     | ☐ Yes / ☐ No       |       |
+
+Thank you.
+
+---

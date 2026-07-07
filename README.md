@@ -8,6 +8,7 @@
 [![Status](https://img.shields.io/badge/Status-Complete-green.svg)](#status)
 [![Runtime](https://img.shields.io/badge/Runtime-3.6%20hours-green.svg)](#measured-performance)
 [![Switchover](https://img.shields.io/badge/Switchover-%3C1ms-brightgreen.svg)](#key-specifications)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA.svg?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/wkcollis1-eng)
 
 </div>
 
@@ -71,7 +72,7 @@ The system performs exactly as designed. The layered protection (voltage warning
 
 A two-stage charging architecture (dedicated 14.4V charger + DC-DC regulator) would be required to approach the full ~7.1–8.5 hour theoretical runtime.
 
-Reports and data can be found in [docs/](docs/).  
+Reports and data can be found in [docs/](docs/).
 Last validated: **May 2026 (INA260 coulomb counting)**
 
 ---
@@ -235,3 +236,11 @@ All four tiers are now fully live-validated. The graceful shutdown automation wa
 - No DC-DC converter is used. The direct battery feed strategy is documented in [design-rationale.md](docs/design-rationale.md).
 - The INA260 monitor board (XIAO ESP32-C3 + Adafruit INA260 + DS18B20 on SBB400 breadboard) replaced the Shelly Plus Uni in April 2026, adding coulomb counting, phase detection, and runtime estimation. Monitor draws ~30–40 mA from the 12V battery bus via Pololu D24V7F3 3.3V regulator.
 - The Shelly Plus Uni ADC-based capacity estimates (D3, March 2026: 4.85 Ah / 62.5 Wh) are superseded by the INA260 coulomb-counted measurement of 4.18 Ah / 53.3 Wh from May 2026. The D3 figure was computed from voltage profile timing × assumed constant load and should no longer be used as the capacity baseline.
+
+---
+
+## 💝 Support This Project
+
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/wkcollis1-eng)
+
+If this build log or the design rationale saved you time or money on your own UPS project, consider sponsoring continued measurement and documentation work.

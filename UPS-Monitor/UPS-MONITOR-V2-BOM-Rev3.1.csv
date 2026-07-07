@@ -1,0 +1,27 @@
+Qty,Designator,Value,Description,Package,Notes
+1,U1,ESP32-C3-MINI-1-N4,WiFi/BLE MCU module,Module,Integrated PCB antenna; no external antenna required
+1,U2,INA228AIDGST,85V 20-bit power monitor,MSOP-10,I2C addr 0x40; reset_on_boot: false to preserve energy accumulator
+1,U3,AP63203WU-7,2A synchronous buck converter,SOT-23-6,13.3V→3.3V; Vout set by R6/R7
+1,R_SHUNT,WSLT2512R0100FEA,10mΩ 1% Kelvin shunt,WSK2512 (6332),Vishay TRUE 4-terminal; 1W rated
+2,"R1, R2",4.7k 1% 0402,I2C SDA/SCL pullups,0402,
+1,R3,10k 5% 0402,INA228 A0/A1 address pulldown,0402,Both address pins to GND → I2C addr 0x40
+1,R4,100R 5% 0402,LED current limit,0402,
+1,R5,10R 5% 0402,INA228 VBUS series filter,0402,LOAD_OUT → R5 → U2 pin9 VBUS. RC pole with C9 at 160kHz
+1,R6,210k 1% 0402,Buck FB divider top,0402,Sets 3.3V output with R7
+1,R7,68k 1% 0402,Buck FB divider bottom,0402,
+1,R8,10k 5% 0402,ESP32 EN pullup,0402,
+1,R9,4.7k 5% 0402,DS18B20 data pullup,0402,Required for OneWire
+2,"R10, R11",5.1k 5% 0402,USB-C CC1/CC2,0402,Device identification resistors
+1,C1,100uF 25V,Input bulk cap,Electrolytic 6.3x5.4mm,Low ESR preferred
+1,C2,10uF 25V X5R,LOAD_OUT filter,0805 MLCC,
+1,C3,22uF 10V X5R,3.3V output cap,0805 MLCC,
+5,"C4, C5, C6, C7, C9",100nF 10V+ X7R,Bypass / filter caps,0402 MLCC,C4=3.3V; C5/C6=ESP32; C7=buck HF; C9=INA228 VBUS filter (with R5)
+1,C8,1uF 10V X5R,ESP32 EN RC cap,0402 MLCC,τ=10ms with R8 10kΩ. MUST be 1µF — not 100nF
+1,L1,4.7uH 2.6A IHLP-5050FD,Buck inductor — superior DCR vs EZ variant,Vishay IHLP5050FDER4R7M01,Low DCR 8.7mΩ; same footprint as EZ. Backup: SHOU HAN CYA0630 C5189748 (verify land pattern before ordering)
+1,TVS1,SMAJ15CA,15V bidirectional TVS,SMA,Input transient protection
+1,J1,"Phoenix Contact SPT-SMD 1,5/2-V-5,0 R24",2P SMD push-in terminal — 5.0mm pitch,Phoenix Contact 1824307,12V battery input | HAND PLACEMENT - PCBWay
+1,J2,"Phoenix Contact SPT-SMD 1,5/2-V-5,0 R24",2P SMD push-in terminal — 5.0mm pitch,Phoenix Contact 1824307,12V load output | HAND PLACEMENT - PCBWay
+1,J3,PinHeader 1x03 2.54mm,DS18B20 header,Through-hole 2.54mm,VCC / DATA / GND | HAND PLACEMENT - PCBWay
+1,J4,USB4110-GF-A,USB-C edge-mount receptacle (16-pin USB 2.0),GCT USB4110-GF-A,WARNING: disconnect 12V before connecting USB — VBUS tied to LOAD_OUT | HAND PLACEMENT - PCBWay
+1,LED1,Blue 0402,Status LED,0402,
+2,"SW1, SW2",Omron B3S-1000,BOOT / RESET tactile switch,SMD B3S-1000,SW1=BOOT (GPIO9); SW2=RESET (EN) | HAND PLACEMENT - PCBWay
