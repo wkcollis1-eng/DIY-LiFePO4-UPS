@@ -1,7 +1,8 @@
 # DIY LiFePO4 UPS: Technical Report
 ## 18 V Boost Subsystem — Post-Installation Review, August 31, 2026
 
-**Data through:** 2026-08-31 09:40 UTC · **Version:** 2026-08-31-r1 · **Report series:** UPS-RPT
+**Data through:** 2026-09-01 01:05 UTC · **Version:** 2026-08-31-r2 · **Report series:** UPS-RPT
+**Revision r2:** V1.17 flashed 19:26 EDT and validated against a 54-minute outage test the same night. That test **falsified the phase-duration projection in r1** (§2) and exposed a further defect in the Apparent Ri capture (§5.3). Both are recorded rather than replaced.
 **Repository:** https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS
 **Subsystem under review:** `UPS-Monitor/boost-subsystem-design.md` (BOOST-DS-r1), as built — **EN/FET not installed**
 
@@ -59,7 +60,7 @@ Steady figures over 23:46:30–23:59:30, n = 156 five-second samples, sd 1.58 W 
 
 ---
 
-## 2. The Shutdown Ladder: 213 min → 128 min
+## 2. The Shutdown Ladder — projected, then measured
 
 Every phase duration in the firmware comments, the automation headers and the dashboard was measured at 1.18 A. Scaling by the measured energy rate:
 
@@ -72,6 +73,32 @@ Every phase duration in the firmware comments, the automation headers and the da
 | **Total to BP-65 LVD** | 13.23 → 11.80 V | **213 min** | **128 min** |
 
 [D: 53.3 Wh ÷ 25.01 W outage mean = 128 min; phases scaled ×0.601].
+
+### 2.1 That table was wrong, and the 2026-09-01 test says by how much
+
+**FALSIFIED the same night.** A 54-minute outage test (00:05:47 → 00:58:07 UTC,
+12.97 → 12.565 V, 1.833 Ah / 23.369 Wh = 43.85 % of capacity) measured the
+plateau at **~43 min against the ~85 projected — 2.0× out.**
+
+| Phase | Band | @ 14.9 W May [M] | @ 25.0 W projected [D] | @ 26.9 W measured |
+| :--- | :---: | ---: | ---: | ---: |
+| Settling | > 13.00 V | 5 min | 3 min | **none** — starts loaded at 12.97 V [M] |
+| Plateau | 12.65 – 13.00 V | 142 min | 85 min | **~43 min [M]** |
+| Knee | 12.40 – 12.65 V | 49 min | 29 min | ~20 min [D] |
+| Cliff | 11.80 – 12.40 V | 17 min | 10 min | **not measured** |
+| Graceful shutdown fires | ~12.45 V | ~155 min | ~117 min | **~60–70 min [D]** |
+
+**Why the scaling failed, which is the part worth keeping.** r1 flagged that the
+linear energy scaling "does not model the extra IR sag at 2.089 A" and published
+the numbers anyway. On the flat LFP plateau that sag is not a correction, it is
+the dominant term: the terminal voltage reaches 12.65 V at **~35 % depth now
+against ~69 % in May** [M]. Energy scales with load; voltage thresholds do not.
+
+The energy figure survived — 53.3 Wh ÷ 25.97 W measured = **123 min** against
+the 128 projected — and is irrelevant to the ladder, which trips on volts.
+
+Knee is 11 minutes measured then extrapolated at −8.5 mV/min; everything below
+**12.565 V is unmeasured at this load**.
 
 **Two limits, stated rather than buried.** This is a linear energy scaling. It does not model the extra IR sag at 2.089 A, which makes the terminal voltage cross each threshold at a *higher* state of charge than before — conservative for the thresholds, unfavourable for the cliff. Delivered Ah at 2.089 A is expected lower by [D: 0.23 V extra IR sag ÷ ~1.8 V/Ah cliff slope = ~0.13 Ah, 3 % of 4.18 Ah], which is **not measured**. Second, the 08-29 test reached 11.4 % depth; **nothing below 12.79 V has been measured at the new load at all.**
 
@@ -98,7 +125,19 @@ Three facts, all now established:
 | Runs to LVD | Rail dies. AC returns, BP-65 reconnects at 12.8 V / 30 s, boost soft-starts, board sees fresh DC, boots. **Works.** |
 | **AC returns after the graceful shutdown but before LVD** | Rail never dropped. Host sits in S5. **HA is down until someone presses the button.** |
 
-**Window width:** after shutdown the bus load falls to ~15 W (XB7 12.2 W + monitor 0.5 W + N100 in S5 through the boost), so the remaining cliff span stretches back to **~17 minutes** [D], sitting at the tail of a ~2 hour outage. How often the grid returns inside that window is not something 17 logged outages — mostly deliberate tests — can answer.
+**Window width — revised upward by the 2026-09-01 test, and this makes the gap
+worse.** r1 put it at ~17 minutes, reasoning that shutdown fires near the end of
+the discharge. §2.1 shows it does not: the ladder trips at ~60–70 min, when only
+**[D: 43.85 % measured at 54 min, so ~45–50 % at 60–70 min] of the pack has been used**. After shutdown the load falls to ~15 W and
+the terminal voltage recovers (less IR drop), so the pack re-enters territory that
+took ~46 min to cross at 1.18 A in May. The window is therefore on the order of
+**45+ minutes** [D], not 17.
+
+That is the opposite of reassuring: the interval in which AC can return and leave
+the host in S5 is roughly three times wider than r1 claimed, and it sits in the
+part of an outage where grid restoration is most likely. How often that happens is
+not something 17 logged outages — mostly deliberate tests — can answer, but the
+exposure is larger than stated. Only the deep test settles the number.
 
 **Fitting the EN/FET closes it.** A latched EN-low shed *is* the power-cycle edge the BIOS is waiting for, and re-enable on confirmed AC return produces exactly one clean boot. This is a second, independent argument for the EN work; `boost-subsystem-design.md` argues for it on BMS grounds (DR-1) only. Until it is fitted, the honest statement is: **unattended recovery is guaranteed only for outages deep enough to reach LVD.**
 
@@ -174,6 +213,46 @@ The one number that says something about the cells is the **recharge step: 102.9
 Apparent Ri **fell** from 140.5 to 122.0 mΩ when the load nearly doubled. That is expected and is not a battery improvement: the method uses the PSU-held float voltage as the rest reference, and that fixed float-above-OCV offset divides by a larger current. **Comparing either figure to the 96.6 mΩ baseline taken at 1.18 A is comparing two different instruments.**
 
 One genuine upside: the bigger step improves the onset instrument once §4.3 is fixed. Step-resistance resolution from the INA260's ±14 mV goes from ±16.8 mΩ at 1.18 A to **±9.5 mΩ** at 2.089 A [D] — a 1.8× sharper reading of the same quantity.
+
+---
+
+### 5.3 Apparent Ri has a publish-timing race, and r1 vouched for it
+
+r1 called `apparent_ri` "the good instrument… correctly latched". The latching is
+correct — confirmed 2026-09-01, one sample per rest→load event. **Its reference is
+not.**
+
+The settled-step lambda reads `ina260_voltage.state` and `ina260_current.state` —
+two **independently published** 5 s averages. At an AC cut the voltage state
+updates first, so the `|I| ≤ 0.20 A` "at rest" branch stays true for up to one
+publish interval while the bus is already collapsing, and that sample becomes the
+rest reference.
+
+Measured on the 2026-09-01 switchover:
+
+| | Value |
+| :--- | ---: |
+| Last clean float sample, 00:05:45 | 13.1970 V |
+| Sample published 00:05:50, straddling the cut | **13.0510 V** |
+| Current state at that tick (published 00:05:46) | −0.0075 A — still "at rest" |
+| `rest_v` actually latched | 13.0510 V |
+| Apparent Ri published | **67.31 mΩ** |
+| Same sample with the true float | 141.94 mΩ |
+
+Replaying the raw published series through the lambda reproduces **67.31 mΩ**
+against the firmware's 67.3143692 — to 0.005 mΩ. The mechanism is proven, not
+inferred. The same race explains the 08-29 sample of 122.0 mΩ, which implies a
+`rest_v` of 13.133, also below float.
+
+**So the published series 140.5 → 122.0 → 67.3 mΩ is not pack behaviour. It is
+where the 5 s boundaries happened to fall.** The onset capture never had this bug,
+because it reads both registers raw inside one 100 ms poll — which is exactly why
+its 97.59 mΩ agrees with the recharge step (100.35) and the May baseline (96.6)
+while `apparent_ri` disagreed with all three. Fixed in V1.18 (§6.6).
+
+With the fix, the same event gives onset 97.59 mΩ and settled-step 141.91 mΩ — a
+ratio of 1.45, which is the polarization growth over 45 s that the two-method
+bracket exists to measure. The two instruments finally say something together.
 
 ---
 
@@ -273,6 +352,24 @@ Unlike the HA dashboard, this file **is** loaded — it is provisioned from
 ### 6.5 The ordering dependency this creates
 
 Fixing `battery_fully_charged` makes it fire for the first time in the system's life, which writes `last_float_voltage` — the availability guard holding the orphaned Ri template dead. Left in place, it would have **come alive publishing 198.1 mΩ where the truth is 119.5** [D: (13.197 − 12.9633) ÷ 1.18 vs ÷ 1.956], against a 96.6 mΩ dashboard baseline. Retiring it (§6.3) is therefore a **prerequisite to the flash**, not housekeeping. A dead wrong number is harmless; a live one that looks like battery degradation is not.
+
+---
+
+### 6.6 Firmware — `ups-monitor-v1-18.yaml` (written and gated, **not flashed**)
+
+73 diff lines, 3 of them code.
+
+| Change | Closes |
+| :--- | :--- |
+| `apparent_ri` rest baseline rejects a candidate more than 20 mV from the held value (~8σ of float noise), self-healing after 5 consecutive rejections | §5.3 |
+| Header phase durations replaced with the 2026-09-01 measurement, and the reason the scaling failed | §2.1 |
+
+Validated: `riscv32-esp-elf-g++ -Wall -Wextra -Wfloat-conversion` → 0 errors,
+0 warnings. R2 replay of the real switchover → V1.17 latches 13.0510 V and
+publishes 67.31 mΩ (matching the firmware), V1.18 latches 13.1970 V and publishes
+141.91 mΩ. Direction 2: across 25 min of ordinary float, 1,491 samples adopted,
+**0 rejected** — the gate does not interfere at rest. `src/main.cpp.o` remains
+open.
 
 ---
 
