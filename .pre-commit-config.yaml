@@ -5,7 +5,14 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+      # --unsafe parses YAML for syntax but does not resolve custom tags.
+      # Required for Home Assistant and ESPHome configs, which use !secret,
+      # !include and !lambda - a plain safe_load fails on all of them with
+      # "could not determine a constructor for the tag". Syntax errors are
+      # still caught; only tag construction is skipped.
       - id: check-yaml
+        args: [--unsafe]
+        exclude: "^(configuration\\.yaml|AC Cooling Buildout/.*\\.yaml)$"
       - id: check-added-large-files
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
