@@ -1,0 +1,31 @@
+# Gitleaks configuration for the wkcollis1-eng repositories.
+#
+# WHY THIS FILE EXISTS. Stock gitleaks catches high-entropy strings such as an
+# ESPHome API encryption key, but it does NOT catch a Wi-Fi PSK or an OTA
+# password - they are short, low-entropy and look like ordinary words. Both were
+# published for three months in 2026 and the default rule set was measured
+# against them here: it found the API key and missed the other two. The rule
+# below closes that gap.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "esphome-inline-credential"
+description = "ESPHome/Home Assistant credential written inline instead of via !secret"
+# A quoted literal after password/psk/ssid. Values written as `!secret name`
+# are unquoted, so they can never match this pattern in the first place.
+regex = '''(?im)^[ \t]*(?:password|psk|ssid)[ \t]*:[ \t]*["']([^"'\n]{4,})["']'''
+secretGroup = 1
+tags = ["esphome", "home-assistant", "credential"]
+
+  [rules.allowlist]
+  regexTarget = "match"
+  regexes = [
+    '''\$\{''',              # ssid: "${friendly_name} Fallback"
+    '''(?i)fallback''',      # literal fallback-AP names are not secrets
+    '''(?i)replace_with''',  # placeholders
+    '''(?i)your[_ ]''',
+    '''(?i)changeme''',
+    '''(?i)example''',
+  ]

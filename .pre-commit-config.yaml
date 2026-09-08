@@ -21,3 +21,12 @@ repos:
       - id: ruff
         args: [ --fix ]
       - id: ruff-format
+
+  # Secret scanning. Reads .gitleaks.toml from the repo root, which extends
+  # the default rules - the defaults alone were measured against the 2026
+  # credential leak and missed the Wi-Fi PSK and OTA password.
+  # install-precommit-all.ps1 distributes that file alongside this one.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
