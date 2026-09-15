@@ -1,0 +1,61 @@
+[09:34:14] HEARTBEAT: poller (re)starting — poll #0, manual_ah_so_far=0.0000
+[09:34:14] HEARTBEAT: baseline captured — V=12.692 I=-2.066A P=-26.6510009765625 phase=Plateau fw_ah=0.578883051872253 fw_wh=7.4223256111145 fw_rt=112.559967041016min ri_fw=67.3143692016602
+[09:35:14] FLAG: raw slope -44.9 mV/min already past cliff threshold (-10) at V=12.647, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:35:14] FLAG: runtime ETA disagreement — slope-extrapolated=18.9min vs firmware runtime_remaining=104.6min (raw_slope=-44.9mV/min, fw_slope=-8.14275646209717)
+[09:35:14] FLAG: current step -1.974->-2.489A, computed R=97.5mOhm vs firmware apparent_ri=67.3mOhm (45% diff)
+[09:35:34] FLAG: runtime ETA disagreement — slope-extrapolated=241.6min vs firmware runtime_remaining=109.2min (raw_slope=-3.7mV/min, fw_slope=-8.14275646209717)
+[09:35:34] FLAG: current step -2.489->-1.913A, computed R=99.3mOhm vs firmware apparent_ri=67.3mOhm (47% diff)
+[09:36:43] HEARTBEAT: poller (re)starting — poll #0, manual_ah_so_far=0.0000
+[09:36:43] HEARTBEAT: baseline captured — V=12.691 I=-2.012A P=-25.1577224731445 phase=Plateau fw_ah=0.664557874202728 fw_wh=8.50949287414551 fw_rt=107.455978393555min ri_fw=67.3143692016602
+[09:37:23] FLAG: raw slope -70.3 mV/min already past cliff threshold (-10) at V=12.644, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:37:23] FLAG: runtime ETA disagreement — slope-extrapolated=12.0min vs firmware runtime_remaining=104.8min (raw_slope=-70.3mV/min, fw_slope=-4.20183038711548)
+[09:37:43] FLAG: runtime ETA disagreement — slope-extrapolated=273.6min vs firmware runtime_remaining=104.8min (raw_slope=-3.2mV/min, fw_slope=-4.20183038711548)
+[09:39:03] FLAG: runtime ETA disagreement — slope-extrapolated=34.2min vs firmware runtime_remaining=91.7min (raw_slope=-25.0mV/min, fw_slope=-1.24991035461426)
+[09:39:23] FLAG: raw slope -28.4 mV/min already past cliff threshold (-10) at V=12.641, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:39:23] FLAG: runtime ETA disagreement — slope-extrapolated=29.6min vs firmware runtime_remaining=107.3min (raw_slope=-28.4mV/min, fw_slope=-1.24991035461426)
+[09:39:43] FLAG: runtime ETA disagreement — slope-extrapolated=701.5min vs firmware runtime_remaining=107.3min (raw_slope=-1.2mV/min, fw_slope=-1.24991035461426)
+[09:40:44] FLAG: runtime ETA disagreement — slope-extrapolated=59.5min vs firmware runtime_remaining=105.8min (raw_slope=-14.5mV/min, fw_slope=-1.86253249645233)
+[09:41:07] HEARTBEAT: poller (re)starting — poll #0, manual_ah_so_far=0.0000
+[09:41:08] HEARTBEAT: baseline captured — V=12.659 I=-1.941A P=-25.0620441436768 phase=Plateau fw_ah=0.815481126308441 fw_wh=10.4210519790649 fw_rt=94.8658447265625min ri_fw=67.3143692016602
+[09:41:48] EVENT: phase Plateau -> Knee at V=12.649, dwell in prior phase=0.7min
+[09:42:28] EVENT: current step -1.944->-2.278A, instantaneous R=104.9mOhm (informational — not comparable to apparent_ri, a settled-step sample, currently 67.3143692016602)
+[09:43:08] FLAG: IR-compensated slope -11.6 mV/min (OCV-trend, 120s window) already past cliff threshold (-10) at V=12.637, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:43:48] FLAG: IR-compensated slope -15.8 mV/min (OCV-trend, 160s window) already past cliff threshold (-10) at V=12.602, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:43:48] FLAG: runtime ETA disagreement — slope-extrapolated=50.9min vs firmware runtime_remaining=101.7min (ocv_slope=-15.8mV/min over 160s, fw_slope=-6.12475252151489) — NOTE: this proxy holds Ri fixed at the last settled value, so it will UNDERSTATE the true cliff if Ri is actually rising
+[09:44:08] FLAG: runtime ETA disagreement — slope-extrapolated=172.7min vs firmware runtime_remaining=101.7min (ocv_slope=-4.8mV/min over 160s, fw_slope=-17.3685779571533) — NOTE: this proxy holds Ri fixed at the last settled value, so it will UNDERSTATE the true cliff if Ri is actually rising
+[09:44:28] EVENT: binary_sensor.ups_monitor_knee_approaching off -> on at V=12.623 I=-2.002A phase=Knee
+[09:44:28] FLAG: IR-compensated slope -10.6 mV/min (OCV-trend, 160s window) already past cliff threshold (-10) at V=12.623, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:45:08] EVENT: binary_sensor.ups_monitor_cliff_imminent off -> on at V=12.610 I=-2.048A phase=Knee
+[09:45:28] EVENT: binary_sensor.ups_monitor_cliff_imminent on -> off at V=12.609 I=-2.073A phase=Knee
+[09:45:28] FLAG: IR-compensated slope -10.5 mV/min (OCV-trend, 160s window) already past cliff threshold (-10) at V=12.609, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:45:48] HEARTBEAT: V=12.601 I=-2.115A P=-25.9317035675049 phase=Knee raw_slope=-8.7mV/min fw_slope=-5.42729187011719 fw_rt=91.1482696533203min manual_ah=0.1603 fw_delta_ah=0.16045188903808594 batt_temp=79.25F esp_temp=108.139998626709F ri_fw=67.3143692016602
+[09:46:08] FLAG: IR-compensated slope -10.6 mV/min (OCV-trend, 160s window) already past cliff threshold (-10) at V=12.608, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:46:28] FLAG: runtime ETA disagreement — slope-extrapolated=302.2min vs firmware runtime_remaining=93.5min (ocv_slope=-2.7mV/min over 160s, fw_slope=-9.65271282196045) — NOTE: this proxy holds Ri fixed at the last settled value, so it will UNDERSTATE the true cliff if Ri is actually rising
+[09:46:48] FLAG: IR-compensated slope -14.2 mV/min (OCV-trend, 160s window) already past cliff threshold (-10) at V=12.599, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:46:48] FLAG: runtime ETA disagreement — slope-extrapolated=56.2min vs firmware runtime_remaining=96.8min (ocv_slope=-14.2mV/min over 160s, fw_slope=-9.65271282196045) — NOTE: this proxy holds Ri fixed at the last settled value, so it will UNDERSTATE the true cliff if Ri is actually rising
+[09:47:28] EVENT: current step -2.332->-1.984A, instantaneous R=57.5mOhm (informational — not comparable to apparent_ri, a settled-step sample, currently 67.3143692016602)
+[09:48:08] FLAG: IR-compensated slope -13.1 mV/min (OCV-trend, 160s window) already past cliff threshold (-10) at V=12.579, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:48:08] FLAG: runtime ETA disagreement — slope-extrapolated=59.4min vs firmware runtime_remaining=91.9min (ocv_slope=-13.1mV/min over 160s, fw_slope=-7.15813112258911) — NOTE: this proxy holds Ri fixed at the last settled value, so it will UNDERSTATE the true cliff if Ri is actually rising
+[09:48:28] FLAG: IR-compensated slope -11.9 mV/min (OCV-trend, 160s window) already past cliff threshold (-10) at V=12.562, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet
+[09:48:28] FLAG: runtime ETA disagreement — slope-extrapolated=63.9min vs firmware runtime_remaining=94.8min (ocv_slope=-11.9mV/min over 160s, fw_slope=-7.15813112258911) — NOTE: this proxy holds Ri fixed at the last settled value, so it will UNDERSTATE the true cliff if Ri is actually rising
+[09:49:10] HEARTBEAT: poller (re)starting — poll #24, manual_ah_so_far=0.2638
+[09:49:50] FLAG: IR-compensated slope -11.2 mV/min (OCV-trend, 162s window) already past cliff threshold (-10) at V=12.579, but cliff_imminent binary_sensor still 'off' — EMA lag or automation not armed yet (debounced 300s)
+[09:50:10] EVENT: current step -1.943->-2.275A, instantaneous R=118.7mOhm (informational — not comparable to apparent_ri, a settled-step sample, currently 67.3143692016602)
+[09:50:50] HEARTBEAT: V=12.569 I=-1.964A P=-24.5482349395752 phase=Knee raw_slope=-4.6mV/min fw_slope=-8.20692443847656 fw_rt=82.8544921875min manual_ah=0.3336 fw_delta_ah=0.333621323108669 batt_temp=79.0250015258789F esp_temp=108.139998626709F ri_fw=67.3143692016602
+[09:53:51] EVENT: binary_sensor.ups_monitor_cliff_imminent off -> on at V=12.532 I=-2.026A phase=Knee
+[09:54:53] FLAG: API fetch failed (<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>); consecutive failures=1
+[09:55:15] FLAG: API fetch failed (<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>); consecutive failures=2
+[09:55:45] FLAG: API fetch failed (<urlopen error timed out>); consecutive failures=3
+[09:56:15] FLAG: API fetch failed (<urlopen error timed out>); consecutive failures=4
+[09:56:45] FLAG: API fetch failed (<urlopen error timed out>); consecutive failures=5
+[09:56:45] FLAG: 5 consecutive API failures — WiFi/HA host may be struggling under load. Stopping poller.
+[11:02:47] HEARTBEAT: poller (re)starting — poll #0, manual_ah_so_far=0.0000
+[11:02:47] HEARTBEAT: baseline captured — V=13.115 I=2.702A P=35.8712921142578 phase=Charging fw_ah=2.53314113616943 fw_wh=31.8207702636719 fw_rt=Nonemin ri_fw=67.3143692016602
+[11:07:28] HEARTBEAT: V=13.141 I=1.893A P=24.8768291473389 phase=Charging raw_slope=8.3mV/min fw_slope=8.20377349853516 fw_rt=Nonemin manual_ah=0.1687 fw_delta_ah=0.0 batt_temp=78.5749969482422F esp_temp=106.339998626709F ri_fw=67.3143692016602
+[11:12:28] HEARTBEAT: V=13.141 I=1.776A P=23.3379726409912 phase=Charging raw_slope=1.9mV/min fw_slope=-1.90686285495758 fw_rt=Nonemin manual_ah=0.3216 fw_delta_ah=0.0 batt_temp=79.0250015258789F esp_temp=108.139998626709F ri_fw=67.3143692016602
+[11:17:29] HEARTBEAT: V=13.136 I=1.682A P=20.77707862854 phase=Charging raw_slope=-1.2mV/min fw_slope=0.284750580787659 fw_rt=Nonemin manual_ah=0.4638 fw_delta_ah=0.0 batt_temp=80.0374984741211F esp_temp=108.139998626709F ri_fw=67.3143692016602
+[11:22:29] HEARTBEAT: V=13.141 I=1.539A P=20.226900100708 phase=Charging raw_slope=1.5mV/min fw_slope=0.808903515338898 fw_rt=Nonemin manual_ah=0.5969 fw_delta_ah=0.0 batt_temp=81.1624984741211F esp_temp=108.139998626709F ri_fw=67.3143692016602
+[11:27:30] HEARTBEAT: V=13.143 I=1.423A P=18.6452140808105 phase=Charging raw_slope=2.8mV/min fw_slope=-0.295547962188721 fw_rt=Nonemin manual_ah=0.7199 fw_delta_ah=0.0 batt_temp=82.0625F esp_temp=108.139998626709F ri_fw=67.3143692016602
+[11:32:30] HEARTBEAT: V=13.146 I=1.293A P=16.991527557373 phase=Charging raw_slope=1.4mV/min fw_slope=0.443392753601074 fw_rt=Nonemin manual_ah=0.8323 fw_delta_ah=0.0 batt_temp=82.7375030517578F esp_temp=108.139998626709F ri_fw=67.3143692016602
+[11:37:31] HEARTBEAT: V=13.150 I=1.122A P=14.7556228637695 phase=Charging raw_slope=4.1mV/min fw_slope=2.06019473075867 fw_rt=Nonemin manual_ah=0.9343 fw_delta_ah=0.0 batt_temp=83.3000030517578F esp_temp=109.939998626709F ri_fw=67.3143692016602
+[11:39:51] TEST-END: on_battery=off (AC restored or test ended). V=13.155499458313 phase=Charging manual_ah_tracked=0.9718 fw_ah=2.53314113616943
