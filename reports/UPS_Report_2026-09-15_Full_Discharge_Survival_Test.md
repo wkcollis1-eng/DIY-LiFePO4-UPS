@@ -20,6 +20,8 @@ A deliberate outage test (`switch.ups_outlet` OFF at 09:16:58) ran the pack thro
 
 Two secondary results are load-bearing for how this system is specified. First, **the recharge is PSU-current-limited, not pack-limited**: the Mean Well HDR-60-12 is a **54 W / 4.5 A** supply [S, datasheet; confirmed by owner 2026-09-15], and the battery branch alone was measured at **54.627 W** [M] — 101 % of the whole supply's nameplate — before any share for the XB7, host or monitor. Second, **the raw InfluxDB export covers only the first 37.5 minutes of a ~90-minute discharge** and contains three bit-identical stale samples on recorder restart (§10); anyone re-deriving these figures needs both facts before opening the files.
 
+A third result concerns the shutdown trigger itself. Replaying the firmware against **both** this outage and the 2026-09-01 test shows its slope term carries noise of sd 18.7–24.0 mV/min against a −10 mV/min threshold, crossing that threshold 21 and 12 times respectively, and that **every graceful-shutdown attempt in the record has aborted at least once before succeeding** (§6.1). The cause is arithmetic — `delayed_on: 60s` against a 60 s slope update is one extra sample of confirmation — and §6.1.1 gives the one-line change the data supports.
+
 On the timing question this test was run to answer: from the moment the host went down to the moment BP-65 tripped was **~52.8 minutes** [M], entirely unsupervised. That margin is real, but §6 sets out why it cannot be converted into a threshold change from this test alone — and §4 adds a second reason, which is that the margin was measured on a pack whose usable capacity is changing month to month.
 
 ---
@@ -84,6 +86,7 @@ Stated up front so no reader has to reconstruct it from the body (R11).
 - Survival-mode cycle count, wake voltages and exit path, from NVS.
 - Peak *observed* charge current and charge power, and their relation to the PSU nameplate.
 - The unsupervised interval between host-down and LVD, on a non-ping anchor.
+- That the shutdown trigger's slope term is noise-dominated, and that every shutdown attempt in the record aborted at least once before succeeding — both at n = 2 (§6.1).
 
 **Not established:**
 - **Why** capacity fell. §4.5 gives ranked candidates and §4.6 narrows them; none is confirmed. The decisive test is Open Item 14a, a matched-load repeat.
@@ -194,7 +197,9 @@ The 08-31/09-01 test ran fourteen days before this one, at essentially the same 
 
 **Ah and Wh agree to a tenth of a point.** That matters: a voltage-measurement fault would move Wh without moving Ah. Their agreement, combined with §4.1's two-path check, places the shortfall in the pack rather than in the instrument.
 
-**Provenance limit.** The 08-31/09-01 figures are **[S, `UPS_Report_2026-08-31_Boost_Integration.md` r2 §2]** — a prior report, not raw data re-read for this one. They are internally consistent (1.833 ÷ 4.18 = 43.85 %, as that report states). If that figure is wrong, this comparison fails with it. Re-deriving it from the 09-01 raw series is Open Item 15.
+**Provenance: now [M], not [S] — Open Item 15 closed.** The 08-31/09-01 figures have been re-derived from the raw InfluxDB series for this revision: **1.8316 Ah / 23.316 Wh**, against the 08-31 report's 1.833 Ah / 23.369 Wh — **−0.1 % Ah, −0.2 % Wh**. The 2026-08-29 test re-derives the same way (**0.4731 Ah** against that report's 0.4745 Ah, **−0.3 %**). Both endpoints of this comparison are therefore measured, and the prior report's arithmetic is independently confirmed.
+
+> **Warning for anyone re-running these queries — see §10.5.** The InfluxDB measurements `A`, `V` and `W` are **shared across every entity carrying that unit**: 19 entities in `A`, 24 in `V`, including the separate 500 Ah `battery_bank_monitor_*` pack and `ups_outlet_current`. An unfiltered query returns a mixture of them. Every figure above filters `entity_id`.
 
 Against the LVD-to-LVD comparison with May: **−39.4 % Ah, −40.3 % Wh** over 4.3 months.
 
@@ -223,8 +228,7 @@ None of these is confirmed. All are **[I]**; per R15 none may justify a config o
    *Falsifier:* a coulomb-counted charge to termination. If the pack accepts ~2.5 Ah and then tapers to zero, its usable window really is ~2.5 Ah.
 3. **Incomplete charge at test start.** The pack is assumed to begin at its 13.3 V float ceiling (~65 % SOC [S, 05-06 §4.3]). **Nothing on this system measures that.** `binary_sensor.ups_monitor_battery_fully_charged` fires on V > 13.25 V with |I| < 0.10 A held 600 s, and has **never fired once in the entire InfluxDB record**, because the PSU has never floated that high [M, 08-31 §4.1]. "Started full" has therefore been [I] on every test this project has ever run, including the May reference.
    *Falsifier:* same as 2 — a coulomb-counted charge to termination, compared against the discharge count.
-4. **The 08-31/09-01 reference figure is wrong.** See §4.3. Would not rescue the May comparison, which fails independently.
-   *Falsifier:* Open Item 15.
+4. ~~**The 08-31/09-01 reference figure is wrong.**~~ **Excluded.** Both endpoints have now been re-derived from the raw series and agree with the 08-31 report to −0.1 % Ah (§4.3). This candidate is closed, and with it Open Item 15.
 
 **Charge-return evidence is suggestive but incomplete.** From the first true post-recovery sample to report cutoff (43.5 min), the pack accepted **1.1297 Ah** [M, trapz on InfluxDB, n = 519] against 2.5331 Ah removed. This *excludes* the highest-current part of bulk, which occurred before InfluxDB resumed (§10.1) and before the ESP32 woke (§7.1), so it is a lower bound and **44.6 % is not a meaningful completion figure**. At cutoff the bus was 13.160 V with 0.792 A still flowing and falling — charging was ongoing. Watching one recharge through to termination would discriminate candidates 2 and 3, and costs nothing but patience. Open Item 16.
 
@@ -316,7 +320,7 @@ Survival sleep has existed in firmware since V1.6–V1.11 and had never been exe
 
 > **Correction to r1 (R13).** r1 gave "HA host confirmed fully down (ICMP + TCP) ~09:55:45" and derived ~51 m 35 s. That timestamp came from the **uncorrected** reachability tool, which was still emitting false recoveries for another eleven minutes (§9.2); the corrected tool's first confirmation is 10:09:30. The margin figure was approximately right for the wrong reason, and is now anchored on evidence that does not depend on the buggy tool at all.
 
-**At the post-shutdown load of ~1.40 A, the system ran ~52.8 minutes on the BP-65 hardware LVD as its only protection.** The trigger that fired — `cliff_imminent`, slope < −10 mV/min sustained 60 s while V < 12.65 V — tripped at V ≈ 12.53–12.61 V, well inside Knee.
+**At the post-shutdown load of ~1.40 A, the system ran ~52.8 minutes on the BP-65 hardware LVD as its only protection.** The trigger that fired — `cliff_imminent` — tripped at V ≈ 12.53–12.61 V, well inside Knee. Its condition is a composite of slope, dwell and a voltage *gate*; §6.1 shows the slope term is noise-dominated and the firing time effectively stochastic, so the trigger point should not be read as a measurement of pack state.
 
 **Four reasons this is not yet a threshold recommendation:**
 
@@ -326,6 +330,109 @@ Survival sleep has existed in firmware since V1.6–V1.11 and had never been exe
 4. **§4 supersedes the arithmetic.** The margin is a time interval on a pack whose usable capacity fell 42 % in fourteen days. A threshold tuned to this margin is tuned to a moving quantity. **Capacity must be characterised and stabilised before any threshold moves.** This is now the gating dependency on Open Item 10, which it was not in r1.
 
 **A false-alarm cost is already demonstrated.** The aborted trigger sent "Host shutting down in 30 s" to a phone ~62 minutes before LVD. Moving the trigger later without first addressing slope-bounce sensitivity would produce more of these.
+
+---
+
+### 6.1 The trigger is noise-dominated — replicated at n = 2
+
+r1, and the first draft of this revision, described the shutdown trigger as "slope < −10 mV/min sustained 60 s while V < 12.65 V" and left it there. Reading `ups-monitor.yaml` and then replaying it against **two** runs shows that shorthand hides the actual behaviour.
+
+**The condition, as deployed:**
+
+```
+cliff_imminent:  i <= -0.10 A            (confirmed discharging)
+             AND v <  12.65 V            (plateau_min_v -- a GATE, not the trigger)
+             AND slope_ema < -10.0 mV/min
+             delayed_on: 60s, delayed_off: 30s
+
+slope:  sampled every 60 s
+        raw = (V_now - V_60s_ago) * 1000
+        ema = 0.35*raw + 0.65*ema_prev
+```
+
+**The voltage is a gate, and it was not what was binding.** On 2026-09-15 the gate opened at 09:41:48 and the trigger did not hold until 09:53:51 — twelve minutes later. Whatever sets the firing time, it is not the voltage threshold.
+
+**What sets it is slope noise.** Using the firmware's **own published** `voltage_slope` (InfluxDB measurement `mV/min`, entity `ups_monitor_voltage_slope`), over each run's discharge window:
+
+| Run | n | sd | range | crossings of −10 mV/min |
+| :--- | ---: | ---: | ---: | ---: |
+| 2026-09-01 | 52 | 18.7 mV/min | −94.4 … +3.9 | **21** in 52 min |
+| 2026-09-15 | 37 | 24.0 mV/min | −115.3 … −1.2 | **12** in 37 min |
+
+**The noise standard deviation is roughly twice the threshold value on both runs.** The lambda's comment budgets for INA260 LSB noise of ±1.25 mV/min; observed noise is ~15–20× that, it is load-driven rather than ADC-driven, and that comment predates the boost putting the N100 on the bus.
+
+**Consequence, confirmed on both runs** — from the `automation.ups_graceful_shutdown_cliff_or_8_min_runtime` trace records:
+
+```
+2026-09-01   fired 00:55:32Z -> aborted 00:56:02Z (30 s)  -> fired again 00:57:32Z
+2026-09-15   fired 13:44:47Z -> aborted 13:45:18Z (30 s)  -> fired again 13:53:47Z (held)
+```
+
+**Every graceful-shutdown attempt in the record has aborted at least once before succeeding — 2 for 2.** This is not an anomaly of one outage; it is how the trigger behaves. And 2026-09-01 reached a floor of only 12.565 V, never entering the Cliff band at all, so all 21 of its threshold crossings and both of its shutdown attempts occurred in the **knee**. They were false alarms on a pack nowhere near a cliff.
+
+**Root cause is arithmetic.** `delayed_on: 60s` against a 60 s slope update period is **exactly one extra sample of confirmation**. The comment says it "prevents 1-sample spikes", and that is literally all it does — a two-sample excursion passes straight through, and 2026-09-15 had one.
+
+**The fix the data supports.** Firmware-published slope inside the gated region (V < 12.65 V):
+
+```
+09-01:  -10  -1  -6  -15  -5  -7  -20  +1  -13  -3
+09-15:   -3  -4 -13  -1  -2 -14  -5  -6  -17  -5 -10  -7  -7  -5  -7  -8  -8 -10 -12
+```
+
+| Threshold | 09-01 longest consecutive run below | 09-15 longest |
+| ---: | ---: | ---: |
+| −10 mV/min | **1 sample** | **2 samples** |
+| −15 mV/min | 1 | 1 |
+| −20 mV/min | 1 | 0 |
+
+**Every knee excursion is one or two samples. Never three.** The change this implies is Open Item 19.
+
+### 6.1.1 Recommended change — the shutdown dwell
+
+**Change `cliff_imminent`'s confirmation dwell from one extra sample to three. Leave the slope threshold alone.**
+
+```yaml
+  - platform: template
+    name: "Cliff Imminent"
+    ...
+    filters:
+-     - delayed_on:  60s     # 1 min sustained slope - prevents 1-sample spikes
++     - delayed_on: 180s     # 3 consecutive 60 s slope samples. 60 s against a
++                            # 60 s update period was ONE extra sample, which a
++                            # 2-sample burst walks through: measured 2026-09-01
++                            # and 2026-09-15, every knee excursion below
++                            # -10 mV/min was 1-2 samples, never 3 (report SS6.1).
+      - delayed_off: 30s
+```
+
+| | now | recommended |
+| :--- | :--- | :--- |
+| Slope threshold | −10.0 mV/min | **unchanged** |
+| Voltage gate | V < 12.65 V | **unchanged** |
+| Current guard | I ≤ −0.10 A | **unchanged** |
+| `delayed_on` | 60 s = 1 extra sample | **180 s = 3 consecutive samples** |
+| `delayed_off` | 30 s | **unchanged** |
+
+**Why this and not a threshold move.** The threshold is not what is wrong — the confirmation depth is. Raising the threshold to −20 mV/min would also have suppressed the knee triggers, but it would equally suppress a *slow* genuine cliff at light load, which is the case the trigger exists for. Requiring persistence discriminates on the axis that actually separates signal from noise here: real cliff slopes are sustained across many consecutive samples, burst artefacts are not.
+
+**Expected effect on timing.** On 2026-09-15 this suppresses both knee triggers and moves the first assert into the Cliff, which began 10:32:50 — roughly 10:36 with a 3-sample hold, against the 09:53:51 that actually fired. At the load that outage actually ran (1.40 A post-shutdown) that leaves ~11 min to LVD. At a sustained 2.089 A the Cliff is traversed faster: the same ~0.34 Ah at 2.089 A is ~10 min, leaving roughly **7 minutes** after a 3-minute hold — still ~3.5× the measured ~2-minute shutdown, but tighter, and this figure is [D] extrapolated, not measured.
+
+**The change is not unprotected.** `voltage_critical` (V < 12.20 V sustained 10 s, I < −0.10 A) calls `hassio.host_shutdown` **immediately, with no 30 s revalidation** [S, 05-06 §2]. That is precisely the backstop a delayed primary trigger needs, and it has never yet been exercised — on 2026-09-15 it asserted at 10:38:56, 8 m 22 s before LVD, but HA was already down and no automation ran. Delaying `cliff_imminent` is what finally gives that path a job.
+
+**`knee_approaching` has the same defect and is left alone deliberately.** Its `delayed_on: 120s` is two samples, and its −3.0 mV/min threshold sits far inside a noise band of sd 18–24 mV/min, so it is close to a coin flip — which is what the 2026-09-15 direct log shows (on 10:12:48, off 10:14:18, on 10:20:48). It drives a phone notification only (Auto 2), so its failure mode is nuisance rather than risk. Fixing it is not urgent and should not be bundled with a change to the shutdown path.
+
+**What is still untested.** That the EMA converges fast enough for a 3-sample hold to fire promptly in a real cliff rests on reconstruction plus the lambda's own comment, not on a measurement (see the limit below). Ship this behind the 14a repeat, not ahead of it.
+
+*Limit (R11/R18).* The Cliff-phase slopes quoted elsewhere in this report (−27 to −80 mV/min, sustained across ~14 consecutive samples) are **reconstructed from ESP32 heartbeats**, because HA was down and InfluxDB has no coverage during the cliff. That a 3-sample hold would still fire promptly in a genuine cliff therefore rests on that reconstruction plus the lambda's own claim that the EMA converges within 3–4 intervals on a sustained slope — **[S], not [M]**. Verifying it needs a run that reaches the Cliff with HA still recording, which is Open Item 14a.
+
+> **Correction, recorded rather than replaced (R13).** An earlier analysis in this session proposed computing the slope on IR-compensated voltage (`V + I·Ri`) as the fix, citing a 2.5× noise reduction. That figure came from a single hand-picked 24-minute window of one run. Re-measured inside the gated region where the trigger actually operates, on both runs:
+>
+> | Run | sd @ Ri = 0 | sd @ 95 mΩ | improvement | crossings @ 0 | crossings @ 95 mΩ |
+> | :--- | ---: | ---: | ---: | ---: | ---: |
+> | 2026-09-01 | 11.34 | 5.66 | 2.0× | 0 | **1** |
+> | 2026-09-15 | 21.38 | 16.86 | **1.3×** | 6 | **8** |
+>
+> **IR compensation makes the crossing count worse on both runs.** In the gated region the current is already comparatively steady, so the IR term is near-constant and its derivative small; the residual noise is not IR sag. The proposal does not survive n = 2 and is withdrawn. It was generated and refuted inside a single session, which is the whole argument for testing a proposed fix against a second run before it reaches firmware.
 
 ---
 
@@ -443,7 +550,9 @@ Over the dwell window (20 samples, arm at −1.8725 A), deviation from `trig_i`:
 
 This is a **bursty load with stationary noise**, and the 45 s mark landed on one of the ~20 % of samples that are burst excursions. r1's own §6.2 had already diagnosed this exact phenomenon in the slope tool and did not connect the two.
 
-**This changes the fix.** r1's diagnosis implies "lengthen the dwell"; that would not help, because the noise does not decay. The correct remedy is to **compare a median or windowed mean of current against `trig_i`, rather than a single instantaneous sample**. On this data that converts an ~80 %-reliable capture into a reliable one.
+**This changes the fix.** r1's diagnosis implies "lengthen the dwell"; that would not help, because the noise does not decay. The likely remedy is to **compare a median or windowed mean of current against `trig_i`, rather than a single instantaneous sample**. On this data that would convert an ~80 %-reliable capture into a reliable one.
+
+> **Do not ship that change on this evidence alone (R7).** The recommendation rests on **one window of one run** — the same evidential footing as the IR-compensated-slope proposal that §6.1 had to withdraw once it was tested against a second run. Re-test it against 2026-09-01 and against whatever 14a produces, before it reaches firmware. Open Item 20.
 
 **Separately and correctly identified in r1, retained:** both the success branch (`ESP_LOGI`) and the rejection branch (`ESP_LOGW … "out of band"`) sit *inside* the `if (… && stable)` block, so when `stable` is false **nothing is logged and nothing is published**. A silent drop with no log line is a defect in its own right, independent of what triggers it.
 
@@ -467,6 +576,7 @@ The candidate mechanism remains the silent no-op path: if every raw I²C read du
 | 126.3 – 127.6 mΩ | onset step, V@13:17:05 pairing | **same data, different pairing** |
 | 146.3 mΩ | settled-step reconstruction at 45 s | lands on a burst sample (§8.1) |
 | 172.7 mΩ | survival first-wake load step (§5) | upper bound, includes ~2 min relaxation |
+| **75 – 95 mΩ** | **slope-noise minimisation (§6.1 method)** | **Window-dependent: 75 / 85 / 95 / 95 mΩ across four windows. Uses no step, no rest baseline and no V/I pairing, so it is immune to the 1.24 s publish skew (§10.3) — but it is not the single clean value (110 mΩ) an earlier draft of this session reported, and the spread is real.** |
 | ~256 mΩ | recharge-step, firmware formula | spans a 13-min blackout with full relaxation |
 | 260 mΩ | 2026-03 commissioning, OCV recovery | [S] |
 
@@ -544,6 +654,31 @@ residual over ~14 days                0.017 Ah  = 1.2 mAh/day
 
 Against 43.3 mAh/day, a **~36× reduction** [D] — consistent with the defect having been fixed in V1.18/V1.19. Not a clean closure (the 7.787 Ah figure's exact timestamp is not pinned, and the 1.833 Ah input is [S]), but the lifetime counters are now usable as a cycle proxy to within a few percent, which they were not in August.
 
+### 10.5 InfluxDB measurements are shared across entities — filter or be wrong
+
+`A`, `V` and `W` are **not** per-device measurements. Home Assistant's InfluxDB integration names the measurement after the *unit*, and tags rows with `entity_id`. This database holds **19 entities in `A`** and **24 in `V`** [M], including:
+
+- `battery_bank_monitor_battery_current` / `_voltage` — the **separate 12 V / 500 Ah pack**, an entirely different battery
+- `ups_outlet_current` / `ups_outlet_voltage` — the **AC** side of the outlet
+- `ups_monitor_bench_battery_current` / `_voltage` — this pack under its **former entity name**, which is what the May 2026 CSVs carry
+
+An unfiltered query returns all of them interleaved. Doing exactly that, while preparing this revision, produced a "discharge" on 2026-08-02 that never happened, an integration of **659 Wh out of a 53 Wh pack**, and a starting voltage of **119.0 V** — house AC. The error is loud once you look at the numbers and silent if you do not.
+
+Every query must carry both entity names:
+
+```sql
+WHERE ("entity_id"='ups_monitor_battery_current'
+    OR "entity_id"='ups_monitor_bench_battery_current')
+```
+
+The saved JSON exports in `data/2026-09-15_full_discharge_survival_test/` were produced with the filter applied, which is why this trap had not been hit before.
+
+### 10.6 Shallow runs cannot measure capacity
+
+Of the six UPS discharges in the retained record, three never leave the plateau and carry **no** capacity information: 2026-07-21 (floor 12.837 V), 2026-07-28 (12.933 V) and 2026-08-29 (12.791 V). Band comparisons against them are not stable — comparing 2026-08-29 to this outage at matched load gives **−4.4 %** over 12.95→12.90 V and **−73.7 %** over 12.90→12.80 V, from the same two datasets. Adjacent bands in a matched-load May-vs-July comparison likewise give −81.4 %, −41.2 %, **+3.2 %** and −26.2 %.
+
+Near the top of the LiFePO4 curve, charge-per-volt is large enough that a few millivolts of offset moves the answer by tens of percent. **Only runs that leave the plateau — 2026-05-06, 2026-09-01 and 2026-09-15 — can be compared for capacity**, which is why §4.3 uses the one pair that is both load-matched and spans a region with real slope.
+
 ---
 
 ## 11. Open Items
@@ -561,9 +696,11 @@ Against 43.3 mAh/day, a **~36× reduction** [D] — consistent with the defect h
 | 13 | `Last Onset Step Resistance` never updated | **Open, narrowed** — §8.2. Now known to have updated between 08-31 and 09-15, so not permanently dead. |
 | ~~14~~ | ~~Per-cell voltages at end of discharge~~ | **WITHDRAWN — not measurable.** The pack is sealed with no balance taps and no BMS telemetry [M, owner-confirmed 2026-09-15]; the measurement would require destroying the enclosure. Replaced by Items 14a and 16, and partly answered already by §4.6 Test A. |
 | **14a** | **Repeat the full discharge at May's current** — shut the N100 host down *before* cutting AC, so the load is XB7 + monitor only (~1.2–1.4 A). Same pack, same load, same 11.80 V endpoint, same instrument as 2026-05-06. | **OPEN — highest priority.** Now the decisive test: ~2.5 Ah against May's 4.179 Ah confirms the loss with no rate, IR or two-regime correction left to argue about. Also satisfies Item 10's constant-load requirement in the same run. |
-| **15** | **Re-derive the 08-31/09-01 figures (1.833 Ah / 23.369 Wh) from the raw series** | **OPEN.** §4.3's comparison rests on them; they are currently [S], not [M]. |
+| ~~15~~ | Re-derive the 08-31/09-01 figures from the raw series | **CLOSED** — §4.3. Re-derived as **1.8316 Ah / 23.316 Wh**, within **−0.1 % / −0.2 %** of the 08-31 report. 2026-08-29 also re-derives to −0.3 %. Both endpoints of the capacity comparison are now [M]. |
 | **16** | **Coulomb-count one recharge to termination and compare against the discharge count** | **OPEN — second priority.** Discriminates §4.5 candidates 2 and 3, closes §4.6's one substantial confound (that the curve is anchored on an unverified "started full"), and would give this project its first measured answer to that question. |
 | ~~17~~ | PSU overage: 54.627 W into the battery branch alone at 11:00:13 | **Narrowed to one datasheet line** — §7.2. The BP-65 hold-off hypothesis is correct about the *unobserved* true peak but not about this reading: ICMP places the loads back on 24 s earlier, and the 5 s trace shows no reconnect step. Total output settles to 96 % of nameplate within ~90 s, so the overage is a transient. **Remaining action: read the Mean Well HDR-60 peak-load rating and duration for this identifier** (not quoted here — R16). |
+| **19** | **Change `cliff_imminent` `delayed_on: 60s` → `180s`** (§6.1.1). Threshold, gate and guard unchanged. | **OPEN — ready to implement, gated on 14a.** Measured at n = 2: every knee excursion below −10 mV/min lasts 1–2 samples, never 3. Backstopped by `voltage_critical` at 12.20 V, which calls `host_shutdown` with no revalidation. |
+| **20** | **Re-test §8.1's median-filter proposal for the Apparent-Ri gate against a second run before shipping it** | **OPEN (R7).** It rests on one window of one run — the same footing as the IR-compensated-slope proposal §6.1 had to withdraw after testing at n = 2. |
 | 18 | `battery_fully_charged` has never fired — no instrument confirms a completed charge | **Open**, carried from 08-31 §4.1. Now load-bearing: it is why §4.5 candidate 3 cannot be excluded. |
 
 ---

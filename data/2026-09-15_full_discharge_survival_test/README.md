@@ -6,7 +6,7 @@ Backs `reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md` (**r2** �
 
 ## ⚠ Read this before opening the raw files
 
-Three properties of the InfluxDB export will silently corrupt any re-analysis that does not account for them. All three are [M] and all three are reproducible from the files in this directory.
+Four properties of the InfluxDB data will silently corrupt any re-analysis that does not account for them. All four are [M]. The first three are reproducible from the files in this directory; the fourth bites only on live re-queries.
 
 **1. The export covers 37.5 of ~90 discharge minutes, and the gap does NOT start at the LVD trip.**
 
@@ -28,7 +28,18 @@ W  13:54:30.147715Z = -25.3829574584961  ->  15:01:24.728887Z = -25.382957458496
 
 Bit-identical to the last pre-gap value in all three series. This is HA's recorder writing last-known state on restart — **not a measurement**. Left in place, it puts a −1.96 A *discharge* point 74 s after charging began. The first true post-recovery samples are at **15:01:25.27Z** (13.0753 V, +3.1862 A).
 
-**3. V, A and W are skewed against each other.** A lands **+1.24 to +1.32 s** after V; W lands **−0.43 to −0.53 s** before it [M, n = 12 consecutive]. On a 5 s grid that is a fifth of a sample period, and it is the dominant error term in every step-resistance derivation. Pair V with I only where the load is steady — **never across a step**.
+**3. The InfluxDB measurements are SHARED ACROSS ENTITIES — always filter `entity_id`.**
+
+`A`, `V` and `W` are named after the *unit*, not the device. The database holds **19 entities in `A`** and **24 in `V`**, including the separate 12 V / 500 Ah `battery_bank_monitor_*` pack, the AC-side `ups_outlet_*`, and this pack's former `ups_monitor_bench_*` names (which the May 2026 CSVs use). An unfiltered query silently returns a mixture — during this revision it produced a discharge that never happened, 659 Wh out of a 53 Wh pack, and a 119.0 V starting voltage. Always:
+
+```sql
+WHERE ("entity_id"='ups_monitor_battery_current'
+    OR "entity_id"='ups_monitor_bench_battery_current')
+```
+
+The JSON files in this directory were exported with the filter applied; live re-queries are where the trap bites.
+
+**4. V, A and W are skewed against each other.** A lands **+1.24 to +1.32 s** after V; W lands **−0.43 to −0.53 s** before it [M, n = 12 consecutive]. On a 5 s grid that is a fifth of a sample period, and it is the dominant error term in every step-resistance derivation. Pair V with I only where the load is steady — **never across a step**.
 
 ---
 
@@ -72,6 +83,8 @@ Uniform fade predicts the normalised curves overlay. They do not — September s
 
 **Settling-phase collapse — and its limit.** Load `raw_V.json`, filter `13:16:55Z`–`13:17:15Z`. V falls 13.2047 → 13.0340 within one 5 s sample, past both the 13.15 V and 13.00 V boundaries before `on_battery` registers at 13:17:10. **This bounds Settling at < 5 s at this current; it does not show Settling is absent.** The sampler cannot resolve it (R18).
 
+**The shutdown trigger is noise-dominated (report §6.1) — reproducible at n = 2.** Query the firmware's own published slope, `SELECT "value" FROM "mV/min" WHERE "entity_id"='ups_monitor_voltage_slope'`, over each discharge window. 2026-09-01 gives n=52, sd 18.7 mV/min, **21 crossings** of the −10 mV/min threshold in 52 min; 2026-09-15 gives n=37, sd 24.0, **12 crossings**. Then read `automation.ups_graceful_shutdown_cliff_or_8_min_runtime`: both runs show a trigger that fired, aborted after exactly 30 s, and fired again. Inside the gated region (V < 12.65 V) every excursion below −10 mV/min lasts 1–2 samples and never 3 — which is the basis for the `delayed_on: 180s` recommendation in §6.1.1.
+
 **Why `Apparent Ri` failed its gate — and why r1's reason was wrong.** Filter `raw_A.json` from `13:17:01Z` for 100 s and compute deviation from the arm value (−1.8725 A). You get **16 of 20 samples inside the ±15 % band**, **10 up / 9 down** consecutive differences, CV **6.66 %**, peak-to-peak 22.7 % of mean. That is a bursty load with stationary noise, not a ramp — the 45 s mark simply landed on one of the ~20 % burst excursions. The fix is to compare a **median or windowed mean** against `trig_i`, not a single instantaneous sample; lengthening the dwell would not help.
 
 **Ri reconstructions, and why they are not comparable.** Both use the firmware's own formulas (`H:\esphome\ups-monitor.yaml`, or `UPS-Monitor/ups-monitor.yaml` here — identical, see the diff):
@@ -103,4 +116,6 @@ Eight estimates exist across this dataset spanning **67–260 mΩ**, and **no tw
 - The recharge was at the HDR-60-12's constant-current limit throughout — **not** pack-limited.
 - ~52.8 min of unsupervised margin between HA shutdown and the LVD trip, at this test's reduced post-shutdown load. Real headroom, but gated on characterising capacity first — Open Item 14a is a constant-load discharge and satisfies the margin question in the same run.
 - `on_battery` slow-to-clear and `Last Recharge Peak Current` "unknown" were both correct, on-spec behaviour.
+- **The shutdown trigger's slope term is noise-dominated, confirmed at n = 2**, and every graceful-shutdown attempt in the record has aborted at least once before succeeding. The fix is a dwell change (`delayed_on: 60s` → `180s`), not a threshold change — report §6.1 and §6.1.1.
 - `Apparent Ri` and the recharge-step sensors have named, reproducible failure modes (report §8). `Last Onset Step Resistance` (Open Item 13) and `total_outages` (Open Item 9b) remain unexplained.
+- Prior-report figures independently re-derived from raw: 2026-09-01 **1.8316 Ah** (−0.1 %) and 2026-08-29 **0.4731 Ah** (−0.3 %). Open Item 15 closed.
