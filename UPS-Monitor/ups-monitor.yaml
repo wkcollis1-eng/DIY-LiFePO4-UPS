@@ -335,6 +335,35 @@
 #               The 2026-09-01 test falsified them: plateau ~43 min measured
 #               against ~85 projected. Replaced with the measurement and with
 #               the reason the scaling failed. No code change.
+#
+#   V1.20 - Data accuracy from the 2026-09-15 full-discharge report, plus its
+#           shutdown-dwell change. Survival sleep, the watchdogs, and every
+#           shutdown threshold are UNTOUCHED except (c)'s confirmation dwell.
+#           Source-verified against ESPHome 2026.8.2 (the deployed version).
+#
+#           (a) PAIRED V/I BLOCKS (Open Item 21). Per-channel throttle_average
+#               ran V, I, Battery Power and Discharge Power on four free-running
+#               clocks with per-boot random phase; current landed +1.294 s after
+#               voltage in one boot and 1.30 s before it after a wake [M, device
+#               log 09-15]. One accumulator on the raw current publish now emits
+#               V, I, P and discharge I/P from the same 5 reads. Names and ids kept.
+#               Detail at the sensor block.
+#           (b) APPARENT Ri WINDOWED GATE (Open Item 20). Single-sample +/-15 %
+#               gate -> 15 s means; rejects now logged. Replayed on all 4 recorded
+#               onsets and fault-injected both directions [M]. Detail at the
+#               interval.
+#           (c) CLIFF IMMINENT delayed_on 60 s -> 180 s (Open Item 19), per report
+#               S6.1.1. Owner shipped it ahead of 14a; untested in a real cliff.
+#           (d) OUTAGE DURATION stops at AC return (2 charging blocks > 0.20 A)
+#               instead of on_battery on_release; 08-31 recorded 54 min for a
+#               52.3 min discharge [M]. Survival outages unchanged (arm snapshot).
+#           (e) BATTERY FULLY CHARGED current hysteresis (enter < 0.10 A, hold
+#               < 0.30 A); stops ~10-min dropouts at float [M, n=5 in ~12 h].
+#           (f) New diagnostics: "INA260 Unpaired Reads" (tests (a)'s pairing
+#               assumption) and "Battery Current 10 Hz Mean/SD" (measures whether
+#               block noise is sampling -- [I], no behaviour depends on it).
+#           (g) Log line on survival recovery that no recharge-step Ri is captured
+#               for that outage -- correct behaviour, previously silent.
 
 substitutions:
   device_name: ups-monitor
@@ -488,6 +517,20 @@ substitutions:
                                      # gate needs 30 consecutive 100 ms polls.
   onset_float_stable_n:     "30"     # consecutive floating polls (x100ms = 3 s) => quality good
 
+  # --- V1.20: paired V/I blocks, outage clock, fully-charged hold -----------
+  ina_block_n:              "5"      # platform updates per published PAIRED block.
+                                     # 1 Hz x 5 = 5 s, the cadence the V1.19
+                                     # throttle_average published at -- HA sees the
+                                     # same rate, now with V and I from the same reads.
+  ac_return_current_a:      "0.20"   # block I above this for 2 consecutive blocks
+                                     # during an outage = AC is back. Same magnitude
+                                     # as discharge_deadband_a (8.5 sigma of float noise).
+  fully_charged_hold_i_a:   "0.30"   # once Battery Fully Charged is ON it stays ON
+                                     # while |I| < this (entry still needs < 0.10 A for
+                                     # 600 s). Sized on the 5 dropouts of 2026-09-15/16:
+                                     # |I| 0.102-0.182 A for one block, V never below
+                                     # 13.179 V [M, n=5].
+
 # ============================================================================
 esphome:
   name: ${device_name}
@@ -495,7 +538,7 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.ups-monitor"
-    version: "1.19"
+    version: "1.20"
   on_boot:
     # ── Priority 600: wake-cause log — V1.13+: NO INA config writes here ───
     # V1.14 comment correction: the "Step 1 — restore 0x6127 / Step 2 — 10 ms
@@ -556,6 +599,9 @@ esphome:
     #
     # 6s delay guarantees one full INA260 throttle_average cycle (5s) has
     # completed before the voltage check.
+    # V1.20: there is no throttle_average now. The paired-block accumulator
+    # publishes its FIRST pair on the first platform update (~1 s after setup),
+    # so V/I .state are valid well inside the 6 s -- more margin, not less.
     #
     # V1.6 CHANGE — do NOT zero the Ah/Wh counters here. They are restore: true
     # and come back from NVS holding the outage-to-date charge. Zeroing them on a
@@ -599,7 +645,8 @@ esphome:
     #   1. 20 ms settle (V1.13: the SOLE freshness wait — the ina260 platform's
     #      setup() reset + 0x0307 config ran at priority 600; a fresh AVG=4
     #      conversion needs ~5 ms), then register 0x02 read (1.25 mV LSB,
-    #      bypasses throttle_average). V1.7 removed CVRF polling — the settle
+    #      bypasses throttle_average; V1.20: bypasses the paired 5 s block
+    #      average that replaced it). V1.7 removed CVRF polling — the settle
     #      guarantees a fresh conversion and the plausibility check below catches
     #      any bad read, so the poll was latent complexity for no benefit.
     #      (V1.14 comment correction: this previously said "priority 600 already
@@ -734,6 +781,20 @@ esphome:
                     ESP_LOGI("ups.survival",
                       "SURVIVAL EXIT | V1=%.3fV V2=%.3fV >= 13.0V | recovery — normal boot",
                       v1, v2);
+                    // V1.20: say out loud that no recharge-step Ri will be captured
+                    // for this outage, instead of leaving the sensor silently stale.
+                    // This is CORRECT behaviour, not a defect to fix: the BP-65 cut the
+                    // load at the trip, so the pack sat at rest (~40 mA ESP draw)
+                    // through every sleep, and charging had already been running up to
+                    // one wake interval before this boot. There is no discharge->charge
+                    // step to measure. Persisting g_onset_was_discharging across sleep
+                    // would pair a pre-trip loaded sample with a charge sample 13+ min
+                    // later -- the relaxation-contaminated ~256 mOhm in the 2026-09-15
+                    // report S8.3. A mid-outage reboot WITHOUT survival sleep still
+                    // re-arms on its own (the detector sets the flag while I < -0.5 A).
+                    ESP_LOGI("ups.recharge",
+                      "Recharge-step Ri not captured for this outage: no discharge->charge step "
+                      "is observable after survival sleep (Last Recharge Step Resistance keeps its prior value)");
                     return;
                 }
                 ESP_LOGW("ups.survival",
@@ -848,7 +909,7 @@ esphome:
       then:
         - logger.log:
             level: INFO
-            format: "UPS Monitor V1.19 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4), DS18B20 on GPIO10, timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri"
+            format: "UPS Monitor V1.20 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4, paired 5 s V/I blocks), DS18B20 on GPIO10, timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri (windowed gate)"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -1003,7 +1064,8 @@ i2c:
 # The `sensor: - platform: ina260` block reads V/I/P for HA but does not expose a
 # lambda-callable handle for the direct register access the survival path needs
 # (mode power-down/restore at 0x00, bus-voltage read at 0x02 bypassing the 5 s
-# throttle_average). This generic i2c_device is that handle: address-bound to 0x40
+# throttle_average -- V1.20: the paired 5 s block average that replaced it).
+# This generic i2c_device is that handle: address-bound to 0x40
 # on bus_a, it provides write_read/write, which issue the write-pointer ->
 # repeated-START -> read as ONE atomic transaction — the correct INA260 register
 # pattern, and the replacement for the V1.8 hand-rolled bus->write/read pairs that
@@ -1149,6 +1211,63 @@ globals:
     type: uint32_t
     initial_value: '0'
     restore_value: no
+  # V1.20 note on the comment above: throttle_average is gone. The paired-block
+  # accumulator (sensor: ina260) likewise emits nothing without raw publishes, so
+  # a runtime hang still freezes .state and freshness is still the only detector.
+
+  # --- V1.20: paired V/I block accumulator (transient) -----------------------
+  - id: g_blk_vsum
+    type: float
+    initial_value: '0.0'
+    restore_value: no
+  - id: g_blk_isum
+    type: float
+    initial_value: '0.0'
+    restore_value: no
+  - id: g_blk_n
+    type: int
+    initial_value: '0'
+    restore_value: no
+  - id: g_blk_first              # publish the first pair at once, then every block
+    type: bool
+    initial_value: 'true'
+    restore_value: no
+  - id: g_v_pending              # voltage published this update(), current not yet
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+  - id: ina_unpaired_reads       # updates where voltage published and current did not.
+    type: int                    # Tests the pairing assumption directly; also an I2C
+    initial_value: '0'           # health trend. Persisted: increments are rare, so
+    restore_value: yes           # NVS writes are too.
+  # V1.20 diagnostic: 10 Hz raw current from the onset detector, per block.
+  # double: sum of squares over ~50 samples of ~4 A must not lose the variance.
+  - id: g_fast_isum
+    type: double
+    initial_value: '0.0'
+    restore_value: no
+  - id: g_fast_isq
+    type: double
+    initial_value: '0.0'
+    restore_value: no
+  - id: g_fast_n
+    type: int
+    initial_value: '0'
+    restore_value: no
+  # V1.20: AC-return instant, so a normal outage's duration stops when charging
+  # starts instead of at on_battery on_release (up to ~39 min later, 2026-09-15).
+  - id: g_ac_return_uptime       # confirmed AC-return uptime (s); 0 = not seen
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+  - id: g_ac_return_cand         # uptime at the first qualifying block
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+  - id: g_chg_blocks             # consecutive blocks above ac_return_current_a
+    type: int
+    initial_value: '0'
+    restore_value: no
 
   # ---- Apparent Ri (V1.16, ported from bank monitor) ----
   - id: ri_rest_v
@@ -1183,6 +1302,28 @@ globals:
     type: float
     initial_value: 'NAN'
     restore_value: yes
+  # V1.20 (Open Item 20): windowed stability gate -- means over 5-20 s and
+  # 30-45 s after arming replace the two single samples V1.16-V1.19 compared.
+  - id: ri_trig_isum
+    type: float
+    initial_value: '0.0'
+    restore_value: no
+  - id: ri_trig_n
+    type: int
+    initial_value: '0'
+    restore_value: no
+  - id: ri_eval_vsum
+    type: float
+    initial_value: '0.0'
+    restore_value: no
+  - id: ri_eval_isum
+    type: float
+    initial_value: '0.0'
+    restore_value: no
+  - id: ri_eval_n
+    type: int
+    initial_value: '0'
+    restore_value: no
 
   # --- V1.14: survival-wake voltage capture (NVS) -----------------------------
   # Field instrument for the UNMEASURED post-trip resting OCV (doc A-4 / S3.4).
@@ -1328,6 +1469,25 @@ interval:
   # 20-300 mOhm (May 2026 baseline 96.6 mOhm @ 78 F). One sample per
   # rest->load event. INA260 states are 5 s throttled averages — detection lag
   # <= 5 s is absorbed by the 45 s dwell.
+  #
+  # V1.20 (Open Item 20) — WINDOWED STABILITY GATE. V1.16-V1.19 compared two
+  # SINGLE 5 s samples (the arm sample vs the 45 s sample) against +/-15 %. The
+  # N100 load is bursty (CV 6.66 % over the 09-15 dwell [M]), so either sample
+  # landing on a burst failed the gate, and the failure path logged nothing.
+  # MEASURED by replaying this lambda against InfluxDB V/I for every rest->load
+  # event since 2026-08-10, 10 tick phases each [M, n=4 onsets]:
+  #   V1.19 gate : 09-15 rejected at -18.9 % (all phases; would have been 148.1
+  #                mOhm), 08-29 16:08 rejected at +24.5 % on a -1.072 A inrush
+  #                sample ahead of a steady ~0.82 A load; 08-29 19:46 and 08-31
+  #                passed (142.1 / 141.9 mOhm -- the latter reproduces V1.18).
+  #   this gate  : all 4 publish, deviations -1.7 / -1.4 / +3.3 / -1.6 %,
+  #                Ri within 1.5 mOhm across phases.
+  #   R7 fault injection on the 09-15 data: +25 % load at +25 s REJECT, -25 %
+  #   REJECT, return to rest at +30 s ABORT, +12 % PUBLISH (inside the band).
+  # The gate compares the mean current over 5-20 s after arming with the mean
+  # over 30-45 s, and Ri uses the 30-45 s means of V and I -- which V1.20's
+  # paired blocks make genuinely paired. Every reject is now logged.
+  # LIMITS: n=4 real onsets; the replay ran on the pre-V1.20 SKEWED series.
   - interval: 1s
     then:
       - lambda: |-
@@ -1348,6 +1508,10 @@ interval:
             // 13.0510 V in as "rest" against a true float of 13.1970, and the
             // capture published 67.31 mOhm instead of 141.94.
             // Float is stable to sd 2.4 mV [M], so 20 mV is ~8 sigma.
+            // V1.20: V and I are now published as one paired block, so the
+            // "voltage moves first" window above no longer exists. The guard is
+            // kept: a block straddling the cut still averages a partly loaded
+            // voltage with |I| that can sit under 0.20 A.
             bool settled = isnan(id(ri_rest_v)) ||
                            fabsf(v_now - id(ri_rest_v)) < 0.02f;
             if (settled || id(ri_rest_reject) >= 5) {
@@ -1366,16 +1530,39 @@ interval:
                 i_now <= -0.8f) {
               id(ri_trig_ms) = millis();
               id(ri_trig_i) = i_now;
+              // V1.20: fresh gate windows for this arm.
+              id(ri_trig_isum) = 0.0f; id(ri_trig_n) = 0;
+              id(ri_eval_vsum) = 0.0f; id(ri_eval_isum) = 0.0f; id(ri_eval_n) = 0;
             }
             return;
           }
-          if ((millis() - id(ri_trig_ms)) >= 45000u) {
+          // V1.20: accumulate the two gate windows (1 s ticks -> ~15 samples each).
+          uint32_t el = millis() - id(ri_trig_ms);
+          if (el >= 5000u && el < 20000u) {
+            id(ri_trig_isum) += i_now; id(ri_trig_n)++;
+          }
+          if (el >= 30000u && el < 45000u) {
+            id(ri_eval_vsum) += v_now; id(ri_eval_isum) += i_now; id(ri_eval_n)++;
+          }
+          if (el >= 45000u) {
             id(ri_trig_ms) = 0u;
             float rest_v = id(ri_rest_v);
-            float trig_i = id(ri_trig_i);
             id(ri_rest_v) = NAN;
-            bool stable = !isnan(trig_i) &&
-                          fabsf(i_now - trig_i) <= 0.15f * fabsf(trig_i);
+            // V1.20: windowed means replace the arm sample (ri_trig_i, kept for the
+            // log) and the single 45 s sample.
+            float trig_i = id(ri_trig_n) > 0 ? id(ri_trig_isum) / id(ri_trig_n) : NAN;
+            float i_ev   = id(ri_eval_n) > 0 ? id(ri_eval_isum) / id(ri_eval_n) : NAN;
+            float v_ev   = id(ri_eval_n) > 0 ? id(ri_eval_vsum) / id(ri_eval_n) : NAN;
+            bool stable = !isnan(trig_i) && !isnan(i_ev) &&
+                          fabsf(i_ev - trig_i) <= 0.15f * fabsf(trig_i);
+            if (!(i_ev <= -0.8f && !isnan(rest_v) && stable)) {
+              // V1.20: this path was SILENT through V1.19 (report 09-15 S8.1).
+              ESP_LOGW("ups.ri",
+                "Ri settled-step rejected (unstable/unloaded): arm I=%.4fA | 5-20 s mean %.4fA (n=%d) | 30-45 s mean %.4fA (n=%d) | Vrest=%.3f",
+                id(ri_trig_i), trig_i, id(ri_trig_n), i_ev, id(ri_eval_n), rest_v);
+            }
+            float v_now = v_ev;   // V1.20: evaluate on the windowed means; the
+            float i_now = i_ev;   // publish/log block below is otherwise unchanged.
             if (i_now <= -0.8f && !isnan(rest_v) && stable) {
               float ri = ((rest_v - v_now) / (-i_now)) * 1000.0f;
               if (ri >= 20.0f && ri <= 300.0f) {
@@ -1508,6 +1695,13 @@ interval:
           float v = vraw * 0.00125f;                           // V, 1.25 mV LSB
           float i = iraw * 0.00125f;                           // A, 1.25 mA LSB, +chg/-dis
 
+          // V1.20 diagnostic: feed the 10 Hz current samples to the per-block
+          // noise measurement published by the ina260 accumulator. Answers
+          // whether 5-sample block noise is SAMPLING (would shrink with more
+          // reads) or real load variation -- [I] until that data exists, so it
+          // changes nothing here. Samples pause during captures/survival.
+          id(g_fast_isum) += i; id(g_fast_isq) += (double) i * i; id(g_fast_n)++;
+
           // Float hold + stability tracking (latch the count on the transition).
           bool floating = (v > ${onset_float_v_min}f && fabs(i) < ${onset_float_i_max}f);
           if (floating) {
@@ -1566,33 +1760,115 @@ sensor:
   # Updated at 1 Hz internally; 5 s rolling average published to HA.
   # Accuracy at 1.18 A typical: ±2.75 mA (±0.23%) current, ±14 mV (±0.11%) voltage
   # A0 jumper unbridged on this build → I2C address 0x40 (default #4226).
+  #
+  # V1.20 — PAIRED BLOCKS (report 2026-09-15 Open Item 21). Through V1.19 each
+  # channel carried its own `throttle_average: 5s`. Each filter registers its own
+  # scheduler interval with a random first offset in [0, 2.5 s) (ESPHome 2026.8.2
+  # scheduler.cpp calculate_interval_offset_), so V and I published on two
+  # free-running clocks and Battery Power ran on a third. MEASURED from the
+  # 09-15 device log: current landed +1.294 s after voltage in one boot (n=506,
+  # sd 0.026 s) and 1.30 s BEFORE it after the survival wake (n=215) -- re-drawn
+  # every boot. Battery Power used the PREVIOUS current window in 68 of 68
+  # discriminating samples, which is how 54.627 W was published at 11:00:13 for
+  # a true ~50.86 W. Every lambda pairing voltage.state with current.state
+  # inherited the skew (the V1.18 rest-latch bug was one symptom).
+  # NOW: the raw channels below are internal and unfiltered; one accumulator on
+  # the raw CURRENT publish averages ${ina_block_n} (V, I) pairs and publishes
+  # Battery Voltage, Battery Current, Battery Power, Discharge Current and
+  # Discharge Power together. Same names and ids as before, so all V/I .state
+  # readers and the HA entities are unchanged (HA's unique_id is built from the
+  # entity name/object_id, never the YAML id -- aioesphomeapi build_unique_id).
   # --------------------------------------------------------------------------
   - platform: ina260
     address: 0x40
     update_interval: 1s
     current:
-      name: "Battery Current"
-      id: ina260_current
+      name: "INA260 Current Raw"
+      id: ina260_current_raw
+      internal: true
       unit_of_measurement: "A"
       accuracy_decimals: 4
-      device_class: current
-      state_class: measurement
-      filters:
-        - throttle_average: 5s
+      on_value:
+        - lambda: |-
+            // V1.20 — PAIRED BLOCK ACCUMULATOR. ina260.cpp update() (ESPHome
+            // 2026.8.2) publishes bus voltage, THEN current, and returns early on
+            // any failed read. A current publish therefore implies this same
+            // update() just published voltage successfully, so the pair is
+            // matched BY CONSTRUCTION -- including across a failed current read,
+            // whose orphaned voltage is overwritten next update and never enters a
+            // block. (Two counting filters would instead slip one tick apart,
+            // silently, on a single failed current read.) This rests on a driver
+            // implementation detail, not a contract: re-read ina260.cpp update()
+            // on every ESPHome upgrade.
+            id(g_v_pending) = false;
+            float v = id(ina260_voltage_raw).state;
+            if (isnan(v) || isnan(x)) return;
+            id(g_blk_vsum) += v;
+            id(g_blk_isum) += x;
+            id(g_blk_n)++;
+            // First pair publishes at once (keeps "INA260 Healthy" and the -100
+            // boot check fast), then every ${ina_block_n} pairs.
+            if (!id(g_blk_first) && id(g_blk_n) < ${ina_block_n}) return;
+            float vb = id(g_blk_vsum) / id(g_blk_n);
+            float ib = id(g_blk_isum) / id(g_blk_n);
+            id(g_blk_vsum) = 0.0f; id(g_blk_isum) = 0.0f; id(g_blk_n) = 0;
+            id(g_blk_first) = false;
+            id(ina260_voltage).publish_state(vb);
+            id(ina260_current).publish_state(ib);
+            // Everything that multiplies V x I evaluates on the SAME block.
+            id(signed_power).update();
+            id(discharge_current).update();
+            id(discharge_power).update();
+
+            // V1.20 diagnostic: 10 Hz current over this block (onset detector
+            // reads). Compare against Battery Current (5 pairs) to measure how
+            // much of the block noise is sampling.
+            if (id(g_fast_n) >= 2) {
+              double m   = id(g_fast_isum) / id(g_fast_n);
+              double var = id(g_fast_isq) / id(g_fast_n) - m * m;
+              id(ina_fast_i_mean).publish_state((float) m);
+              id(ina_fast_i_sd).publish_state(var > 0.0 ? (float) sqrt(var) : 0.0f);
+            } else {
+              id(ina_fast_i_mean).publish_state(NAN);
+              id(ina_fast_i_sd).publish_state(NAN);
+            }
+            id(g_fast_isum) = 0.0; id(g_fast_isq) = 0.0; id(g_fast_n) = 0;
+
+            // V1.20: AC-return instant for the outage-duration clock. Two
+            // consecutive charging blocks (10 s), timestamped at the first. Same
+            // uptime basis as outage_start_uptime (the 60 s uptime sensor), so
+            // each end carries up to 60 s of that sensor's staleness.
+            if (id(outage_start_uptime) != 0 && id(g_ac_return_uptime) == 0) {
+              if (ib > ${ac_return_current_a}f) {
+                if (id(g_chg_blocks) == 0)
+                  id(g_ac_return_cand) = (uint32_t) id(device_uptime).state;
+                if (++id(g_chg_blocks) >= 2) {
+                  id(g_ac_return_uptime) = id(g_ac_return_cand);
+                  ESP_LOGI("ups", "AC return detected | I=%.4f A | uptime %u s",
+                           ib, (unsigned) id(g_ac_return_uptime));
+                }
+              } else {
+                id(g_chg_blocks) = 0;
+              }
+            }
     bus_voltage:
-      name: "Battery Voltage"
-      id: ina260_voltage
+      name: "INA260 Bus Voltage Raw"
+      id: ina260_voltage_raw
+      internal: true
       unit_of_measurement: "V"
       accuracy_decimals: 3
-      device_class: voltage
-      state_class: measurement
-      filters:
-        - throttle_average: 5s
       # V1.14 — stale-data watchdog feed. on_raw_value fires per actual platform
       # publish (1 Hz), BEFORE filters; a hung INA stops these callbacks entirely
       # (the platform never publishes on a failed read — see globals comment).
+      # V1.20: this raw channel has no filters at all now; unchanged otherwise.
       on_raw_value:
         - lambda: 'id(last_ina_publish_ms) = millis();'
+      on_value:
+        - lambda: |-
+            // V1.20: a voltage publish while the previous update's voltage is
+            // still unpaired means that update's current read failed.
+            if (id(g_v_pending)) id(ina_unpaired_reads)++;
+            id(g_v_pending) = true;
     power:
       # V1.16: renamed + internal. The INA260 POWER register computes an
       # UNSIGNED product per internal conversion; near zero current it reports
@@ -1610,8 +1886,30 @@ sensor:
       filters:
         - throttle_average: 5s
 
+  # V1.20 — the HA-facing Battery Voltage / Battery Current. Published ONLY by the
+  # paired-block accumulator on ina260_current_raw above; never polled.
+  - platform: template
+    name: "Battery Voltage"
+    id: ina260_voltage
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    device_class: voltage
+    state_class: measurement
+    update_interval: never
+
+  - platform: template
+    name: "Battery Current"
+    id: ina260_current
+    unit_of_measurement: "A"
+    accuracy_decimals: 4
+    device_class: current
+    state_class: measurement
+    update_interval: never
+
   # Battery Power — V1.16: V x I from the averaged SIGNED channels (accurate at
   # float, ~±0.01 W) replacing the chip register (see note above).
+  # V1.20: evaluated by the accumulator immediately after each paired block
+  # (was its own free-running 5 s tick -- the third clock).
   - platform: template
     name: "Battery Power"
     id: signed_power
@@ -1624,7 +1922,38 @@ sensor:
       float i = id(ina260_current).state;
       if (isnan(v) || isnan(i)) return NAN;
       return v * i;   // sign from i: charge +, discharge -
-    update_interval: 5s
+    update_interval: never
+
+  # V1.20 diagnostics — see the accumulator. Mean and SD of the ~10 Hz raw current
+  # reads within each 5 s block, published with the block. Measurement only.
+  - platform: template
+    name: "Battery Current 10 Hz Mean"
+    id: ina_fast_i_mean
+    unit_of_measurement: "A"
+    accuracy_decimals: 4
+    device_class: current
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: "Battery Current 10 Hz SD"
+    id: ina_fast_i_sd
+    unit_of_measurement: "A"
+    accuracy_decimals: 4
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: "INA260 Unpaired Reads"
+    id: ina_unpaired_reads_sensor
+    accuracy_decimals: 0
+    icon: "mdi:counter"
+    state_class: total_increasing
+    entity_category: diagnostic
+    lambda: 'return (float) id(ina_unpaired_reads);'
+    update_interval: 60s
 
   # Apparent Ri — V1.16, ported from bank monitor V1.21/V1.22 (settled-step).
   # Device-side replacement for the HA-template Ri calcs (retire those).
@@ -1695,7 +2024,7 @@ sensor:
       float i = id(ina260_current).state;
       if (isnan(i) || i > ${discharge_deadband_a}f) return 0.0f;
       return -i;
-    update_interval: 5s
+    update_interval: never    # V1.20: evaluated per paired block by the accumulator
 
   # Discharge power (rectified, internal) — feeds Wh integration
   - platform: template
@@ -1709,7 +2038,7 @@ sensor:
       float v = id(ina260_voltage).state;
       if (isnan(i) || isnan(v) || i > ${discharge_deadband_a}f) return 0.0f;
       return -i * v;
-    update_interval: 5s
+    update_interval: never    # V1.20: per paired block -- was a 4th free-running V x I clock feeding Wh
 
   # --------------------------------------------------------------------------
   # Coulomb counter — Ah delivered THIS outage
@@ -2238,6 +2567,9 @@ binary_sensor:
               return;
             }
             id(outage_start_uptime)  = (uint32_t)id(device_uptime).state;
+            id(g_ac_return_uptime)   = 0;      // V1.20: fresh AC-return clock
+            id(g_ac_return_cand)     = 0;
+            id(g_chg_blocks)         = 0;
             id(last_outage_start_v)  = id(ina260_voltage).state;   // captured at trip instant
             id(outage_min_voltage)   = NAN;    // reset — 5s tracker will seed from first sample
             id(last_outage_min_v)    = 0.0f;   // V1.5: reset persisted min-v for new outage
@@ -2292,7 +2624,14 @@ binary_sensor:
             // snapshot fields (start==0), while a genuine awake-tracked outage
             // (start>0) recomputes exactly as before.
             if (start > 0 && now > start) {
-              id(last_outage_duration_min) = (now - start) / 60.0f;
+              // V1.20: stop the clock at AC return, not here. on_release waits for
+              // V > on_battery_threshold_v + 60 s, and a depleted pack holds the bus
+              // below 13.15 V through its CC phase: 08-31 recorded 54 min for a
+              // 52.3 min discharge [M]; on 09-15 that phase lasted 39 min [M].
+              // Falls back to `now` if no AC return was confirmed this boot.
+              uint32_t ac = id(g_ac_return_uptime);
+              uint32_t end_s = (ac > start && ac <= now) ? ac : now;
+              id(last_outage_duration_min) = (end_s - start) / 60.0f;
               id(last_outage_ah)        = id(ah_delivered_outage).state;
               id(last_outage_wh)        = id(wh_delivered_outage).state;
             }
@@ -2319,6 +2658,9 @@ binary_sensor:
             // (Survival recoveries finalize at priority -150 and reach on_release with
             // start already 0 from the deep-sleep cold boot, so this is a no-op there.)
             id(outage_start_uptime) = 0;
+            id(g_ac_return_uptime)  = 0;   // V1.20
+            id(g_ac_return_cand)    = 0;
+            id(g_chg_blocks)        = 0;
 
   # --------------------------------------------------------------------------
   # Voltage threshold alarms — drive HA notifications and shutdown automation
@@ -2407,7 +2749,18 @@ binary_sensor:
       if (v >= ${plateau_min_v}) return false;
       return slope < ${cliff_slope_threshold};
     filters:
-      - delayed_on:  60s     # 1 min sustained slope — prevents 1-sample spikes
+      # V1.20 (report 2026-09-15 S6.1.1, Open Item 19): was
+      #   delayed_on: 60s    # 1 min sustained slope — prevents 1-sample spikes
+      # 60 s against a 60 s slope update period was ONE extra sample, which a
+      # 2-sample burst walks through: measured 2026-09-01 and 2026-09-15, every
+      # knee excursion below -10 mV/min inside the V < 12.65 V gate lasted 1-2
+      # samples, never 3 [M, n=2 runs]. Threshold, voltage gate and current guard
+      # UNCHANGED. Backstop: voltage_critical (12.20 V, 10 s) calls host shutdown
+      # with no revalidation. NOT YET MEASURED: that a 3-sample hold still fires
+      # promptly in a genuine cliff (the report's cliff slopes are reconstructed
+      # from ESP32 heartbeats) -- the report asked for this behind 14a; shipped
+      # ahead of it by owner decision 2026-09-16, so 14a observes it.
+      - delayed_on: 180s     # 3 consecutive 60 s slope samples
       - delayed_off: 30s
 
   # --------------------------------------------------------------------------
@@ -2466,6 +2819,9 @@ binary_sensor:
   #
   #   15 s threshold = three missed 5 s throttle windows at the 1 Hz raw rate.
   #   millis() unsigned subtraction is rollover-safe (wrap at ~49.7 days).
+  #   V1.20: throttle_average is replaced by the paired-block accumulator, which
+  #   also emits nothing without raw publishes -- same freeze, same detector; the
+  #   15 s threshold is now three missed 5 s BLOCKS at the same 1 Hz raw rate.
   # --------------------------------------------------------------------------
   - platform: template
     name: "INA260 Healthy"
@@ -2508,8 +2864,17 @@ binary_sensor:
       // having: fully_charged and on_battery are now mutually exclusive by
       // construction. The 0.10 A half is unchanged -- longest continuous run under
       // it post-boost is 31987 s [M] against the 600 s delayed_on below.
-      return id(ina260_voltage).state > ${on_battery_threshold_v}f &&
-             fabs(id(ina260_current).state) < 0.10f;
+      //
+      // V1.20: current HYSTERESIS. Entry is unchanged (|I| < 0.10 A held 600 s);
+      // once ON, it stays ON while |I| < ${fully_charged_hold_i_a} A. Through V1.19 a
+      // single 5 s block over 0.10 A dropped it for a full 600 s re-confirm: 5
+      // dropouts in ~12 h on 2026-09-15/16, each at |I| 0.102-0.182 A with V
+      // 13.179-13.193 V [M, n=5] -- load bursts at float, not a charge change.
+      // The VOLTAGE half stays strict, so exclusivity with on_battery (V below
+      // the same threshold) still holds by construction.
+      if (!(id(ina260_voltage).state > ${on_battery_threshold_v}f)) return false;
+      float i_lim = id(battery_fully_charged).state ? ${fully_charged_hold_i_a}f : 0.10f;
+      return fabs(id(ina260_current).state) < i_lim;
     filters:
       - delayed_on: 600s     # 10 min stable float — confirmed full charge
     on_press:

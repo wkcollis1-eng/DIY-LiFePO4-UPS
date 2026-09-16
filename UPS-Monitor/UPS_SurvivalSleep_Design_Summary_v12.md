@@ -13,6 +13,14 @@ surfaced by the V1.13 pre-deployment review pass. Per the code-review standard, 
 v12 items were caught *during review, before sign-off*; none changes the validated
 survival entry/exit thresholds or decision logic.
 
+> **Currency note (2026-09-16).** This document tracks firmware **through V1.14**;
+> the deployed firmware is **V1.20**. Revisions V1.15–V1.20 are recorded in the
+> header changelog of `ups-monitor.yaml`, not here. One of them alters a mechanism
+> this document describes as current, and is noted at its sites: **V1.20 replaced
+> the per-channel `throttle_average: 5s` filters with a paired V/I block
+> accumulator** (§2.3 "Data path", §9.6). Everything else below is as of V1.14 —
+> check the firmware header before relying on a detail added after that version.
+
 **Added since v11 (firmware V1.14 — review findings + data-collection items):**
 - **FINDING 1 (Medium) — runtime INA hang was undetectable; "INA-unhealthy in HA"
   assumption did not hold.** Source-verified against ESPHome 2026.5.3: on a failed
@@ -338,6 +346,22 @@ reset write itself fails on a survival wake, -150 reads a stale value — but th
 is always a sub-13 V survival reading, so it can only force a re-sleep (never a false
 exit or brick), self-correcting on the next wake; worst case is one 120 s cycle of
 delayed recovery, invisible against the modem-bound ~3–4 min recovery.
+
+> **V1.20 (2026-09-16) — stage (2) is now a PAIRED block.** Each `throttle_average`
+> filter ran on its own scheduler interval with a random first offset re-drawn every
+> boot, so V, I and every V×I product published on free-running clocks: current
+> landed +1.294 s after voltage in one boot and 1.30 s *before* it after the
+> 2026-09-15 survival wake [M, device log, n = 506 / 215], and `Battery Power` used
+> the previous current window in every discriminating sample. V1.20 makes the V and
+> I platform channels internal and unfiltered; one accumulator on the raw current
+> publish averages 5 (V, I) pairs and publishes voltage, current, `Battery Power`
+> and the discharge current/power that feed the Ah/Wh integrals, together. Cadence
+> (5 s) and averaging depth (5 samples) are unchanged, as is everything this section
+> says about the chip's AVG=4 stage and the -150 raw read. The INA260 POWER channel
+> keeps its `throttle_average`; nothing reads it. Verified after flashing: V–I
+> arrival gap median 1 ms on two boots against 1,318 ms on V1.19, and `Battery Power`
+> equal to V×I of the same block in 40 of 40 points [M, InfluxDB]. Full record: the
+> V1.20 entry in the `ups-monitor.yaml` header and `reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md` §10.3.
 
 **Register-map reference (for any future hardware alert):** the INA260 Mask/Enable
 register is **0x06** (alert-function select; CNVR bit 10; CVRF bit 3) and the Alert
@@ -925,6 +949,11 @@ runtime failure; the `-150`/`-160` raw plausibility reads remain the loop-side
 safety net and do not depend on either sensor. **Operational requirement:** an HA
 alert on Data Fresh OFF — the sensor only restores the intervention window if
 someone is notified.
+
+> **V1.20 (2026-09-16).** `throttle_average` no longer sits on the V/I channels; the
+> paired-block accumulator that replaced it (§2.3) likewise emits nothing without raw
+> publishes, so a runtime hang still freezes `.state` and this detector is unchanged.
+> The 15 s threshold now reads as three missed 5 s *blocks* at the same 1 Hz raw rate.
 
 -----
 
