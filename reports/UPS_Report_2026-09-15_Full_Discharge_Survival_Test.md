@@ -1,10 +1,11 @@
 # DIY LiFePO4 UPS: Technical Report
 ## Full Discharge to BP-65 LVD, First Survival-Mode Validation, Recharge — and a 42 % Capacity Shortfall
 
-**Data through:** 2026-09-15 15:52 UTC (11:52 local) · **Version:** 2026-09-15-r2 · **Report series:** UPS-RPT
+**Data through:** 2026-09-15 15:52 UTC (11:52 local) · **Version:** 2026-09-15-r3 · **Report series:** UPS-RPT
 **Repository:** https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS
 **Firmware under test:** `ups-monitor.yaml`, ESPHome 2026.8.2, project version 1.19, ESP32-C3
 **Supersedes:** 2026-09-15-r1 (uncommitted draft). Every r1 finding this revision corrects is recorded at the site where the error was made rather than silently replaced, per R13.
+**r3 (2026-09-16):** corrects four r2 errors found by querying the full InfluxDB history rather than the test-window exports: two open items that were never defects (`Last Onset Step Resistance` and `total_outages` both updated during this test, §8.2, §9.1); a fully-charged detector r2 said had never fired, which was ON before both load-matched runs (§4.5); and a publish-skew mechanism that is re-drawn every boot, not fixed (§7.2, §10.3). Each is recorded at its site, the superseded text struck through rather than removed.
 
 Every numeric claim carries its basis inline: **[M]** measured, **[D]** derived arithmetic on [M] with the formula shown, **[I]** inferred and carrying its falsifier, **[S]** spec or prior document with its identifier. Ratios carry n and a test, or they are not written (R17). Any figure whose sampling cadence is slower than the quantity it describes is named as a bound on the instrument, not a property of the world (R18).
 
@@ -91,9 +92,9 @@ Stated up front so no reader has to reconstruct it from the body (R11).
 **Not established:**
 - **Why** capacity fell. §4.5 gives ranked candidates and §4.6 narrows them; none is confirmed. The decisive test is Open Item 14a, a matched-load repeat.
 - The true peak recharge current. AC return was observed by nothing (§7.1); 4.4465 A is a **lower bound**.
-- Pack state of charge at test start. No instrument on this system confirms a completed charge (§4.5) — "started full" is [I], not [M], and always has been.
+- Pack state of charge at test start. ~~No instrument on this system confirms a completed charge (§4.5) — "started full" is [I], not [M], and always has been.~~ **r3:** the fully-charged detector was ON for 3 h 51 m before this test's cut, and ON before the 08-31 comparison run too [M] — both began at the same float equilibrium. That is not a state-of-charge measurement, and the May reference predates the detector (§4.5 candidate 3).
 - The margin at undiminished load. This outage's load fell mid-discharge because the shutdown fired (§6).
-- Root cause for `Last Onset Step Resistance` (Open Item 13) or `total_outages` (Open Item 9b).
+- ~~Root cause for `Last Onset Step Resistance` (Open Item 13) or `total_outages` (Open Item 9b).~~ **r3: neither was a defect** — both updated during this test (§8.2, §9.1).
 - Whether the HDR-60-12 exceeded its nameplate or the load share was lower than modelled (§7.2, Open Item 17).
 
 ---
@@ -228,6 +229,7 @@ None of these is confirmed. All are **[I]**; per R15 none may justify a config o
    *Falsifier:* a coulomb-counted charge to termination. If the pack accepts ~2.5 Ah and then tapers to zero, its usable window really is ~2.5 Ah.
 3. **Incomplete charge at test start.** The pack is assumed to begin at its 13.3 V float ceiling (~65 % SOC [S, 05-06 §4.3]). **Nothing on this system measures that.** `binary_sensor.ups_monitor_battery_fully_charged` fires on V > 13.25 V with |I| < 0.10 A held 600 s, and has **never fired once in the entire InfluxDB record**, because the PSU has never floated that high [M, 08-31 §4.1]. "Started full" has therefore been [I] on every test this project has ever run, including the May reference.
    *Falsifier:* same as 2 — a coulomb-counted charge to termination, compared against the discharge count.
+   > **Correction (r3, R13).** "Never fired once" was already false when r2 was written. V1.17, flashed 2026-08-31 19:26 EDT, lowered the detector's threshold from 13.25 V to the 13.15 V `on_battery` threshold, and it first fired at **19:37:30** that evening — its 600 s confirmation after that boot [M, InfluxDB `binary_sensor.ups_monitor_battery_fully_charged`, 350 points since 2026-07-12]. It was **ON immediately before both load-matched runs**: 08-31 19:37:30 → 20:05:50, one second before that test's onset, and 09-15 **05:25:31 → 09:17:00**, 3 h 51 m continuous, ending at this test's cut [M]. The 08-31 report §4.1 was right when written; r2 cited it without re-checking. *What this establishes:* both runs began with the PSU holding the bus above 13.15 V and battery current under 0.10 A for at least ten minutes — the same float equilibrium. *What it does not:* state of charge (this report's own basis puts the float ceiling near ~65 % SOC [S, 05-06 §4.3]), or anything about the May reference, which predates the detector. So candidate 3 in its simple form — the pack had not been recharged after 09-01 — is excluded [M]. What remains is that float equilibrium is not full, which applies to both runs equally and can explain a difference between them only if the equilibrium state itself moved — a property of the pack, not of the test.
 4. ~~**The 08-31/09-01 reference figure is wrong.**~~ **Excluded.** Both endpoints have now been re-derived from the raw series and agree with the 08-31 report to −0.1 % Ah (§4.3). This candidate is closed, and with it Open Item 15.
 
 **Charge-return evidence is suggestive but incomplete.** From the first true post-recovery sample to report cutoff (43.5 min), the pack accepted **1.1297 Ah** [M, trapz on InfluxDB, n = 519] against 2.5331 Ah removed. This *excludes* the highest-current part of bulk, which occurred before InfluxDB resumed (§10.1) and before the ESP32 woke (§7.1), so it is a lower bound and **44.6 % is not a meaningful completion figure**. At cutoff the bus was 13.160 V with 0.792 A still flowing and falling — charging was ongoing. Watching one recharge through to termination would discriminate candidates 2 and 3, and costs nothing but patience. Open Item 16.
@@ -269,7 +271,7 @@ At matched **absolute** charge the gap widens monotonically: −134 mV at 0.25 A
 
 **September sits below May at matched depth for every Ri in the family, including the 260 mΩ upper outlier** — which is itself almost certainly too high, since the survival-wake step bounds ohmic Ri at ≤172.7 mΩ *including* two minutes of relaxation (§5). Uniform fade predicts 0.000 in every cell of that table.
 
-**Reading, stated with its limit.** This is evidence *against* uniform capacity fade and *for* a non-uniform pack — one cell, or one cell group, sitting lower than its siblings. It is not proof, and it has one substantial confound: **the curve is anchored at "charge removed = 0", which assumes both runs started from the same state.** Nothing on this system verifies that (§4.5 candidate 3, Open Item 18). A September run that simply began at a lower SoC would shift the whole curve down and produce the same table. Tests B and C close exactly that confound.
+**Reading, stated with its limit.** This is evidence *against* uniform capacity fade and *for* a non-uniform pack — one cell, or one cell group, sitting lower than its siblings. It is not proof, and it has one substantial confound: **the curve is anchored at "charge removed = 0", which assumes both runs started from the same state.** Nothing on this system verifies that (§4.5 candidate 3, Open Item 18). A September run that simply began at a lower SoC would shift the whole curve down and produce the same table. Tests B and C close exactly that confound. **r3:** for the 08-31 → 09-15 pair, the fully-charged detector now shows both began at the same float equilibrium [M, §4.5 candidate 3 correction]. Test A compares against **May**, which predates the detector, so for this overlay the confound stands as written.
 
 **Test B — coulomb-count one recharge to termination (Open Item 16).** Leave the system on AC after the next outage and log until charge current stops falling. Charge accepted ≈ charge delivered (~2.5 Ah), then taper to near zero, means the pack's usable window really is ~2.5 Ah. Charge accepted materially *exceeding* the discharge count means the pack had not started full, and the reference comparisons in §4.3 are measuring starting SoC rather than capacity. Non-invasive, needs only patience, and it is the single most informative test available.
 
@@ -467,6 +469,8 @@ Measured against the correct nameplate:
 
 > **Correction to an earlier draft of this revision (R13).** That draft quoted the 11:00:13 sample as **54.627 W = 101.2 % of nameplate** and built Open Item 17 on it. The figure does not survive checking. `Battery Power` is a template computing `V × I` from the two published channels (`ups-monitor.yaml:1613`), each carrying its own `throttle_average: 5s`, and the template runs on a third independent 5 s tick — so the three clocks free-run against each other with a consistent ~1.29 s V-vs-I offset (§10.3). Across 215 charging samples, published power agrees with a nearest-timestamp `V × I` to **mean +0.29 %, sd 1.41 %**; 13 disagree by more than 3 %; and **11:00:13 is the single worst sample in the entire recharge at +7.41 %**, because the system was four seconds into a CC transient with V moving fast, where a 1.29 s pairing error does maximum damage. The sample implies `P/I = 14.016 V`, which is not physically possible with the PSU floating at 13.3 V and BMS OVP at 14.4–14.6 V. The defensible figure is **V × I = 50.86 W, 94.2 % of nameplate**. The headline was built on the least trustworthy point in the series.
 
+> **Correction to that correction (r3, R13).** The figure is still wrong and 50.86 W still stands, but the mechanism above is not what happened. The offset is not a consistent 1.29 s: ESPHome starts each filter's interval at a random offset re-drawn every boot (§10.3). 11:00:13 falls in the boot that began at the **10:59:47 survival wake**, where current published **1.30 s *before*** voltage and `Battery Power` fired in the same scheduler pass just ahead of the current filter. In all 68 samples of that boot where the two candidate pairings differ, published power used the **previous** current window [M, ESPHome log]. So 54.627 W is 13.047 V (published 3.7 s earlier) × an implied **4.187 A** [D: 54.627 / 13.047] — the current window from ~5 s before, published before the log connected and so not itself observed. The +7.4 % error is current falling between windows (4.187 → 3.8975 A), not voltage moving fast: V went 13.047 → 13.049 V. The "215 samples, sd 1.41 %" figure above compares published power with a nearest-timestamp V × I, and both are skewed estimates — it bounds their disagreement, not the error.
+
 **These are the battery branch alone.** The XB7, the host via the boost, the ESP32 and the BP-65 all draw from the same supply and are not included in any of these figures. §7.4 measures that load share independently on the AC side. The recharge was at the HDR-60-12's constant-current limit from the moment BP-65 reconnected — exactly as README Mode 6 specifies ("PSU immediately enters CC mode at 4.5A") and as the 2026-05-06 run measured directly (4.59 A, "at the constant-current limit of the HDR-60-12" [S, 05-06 §1]).
 
 **The overage is a transient, not a steady state — tested against the BP-65 reconnect hypothesis.**
@@ -493,12 +497,14 @@ Values below are **as published**; the P column at 11:00:13 carries the skew art
 
 | Time | Battery branch | + loads | Total | % of 54 W |
 | :--- | ---: | ---: | ---: | ---: |
-| 11:00:13 | 54.63 W | 26.80 W | 81.43 W | **150.8 %** |
+| 11:00:13 | ~~54.63 W~~ 50.86 W | 26.80 W | ~~81.43 W~~ 77.66 W | ~~150.8 %~~ **143.8 %** |
 | 11:00:33 | 51.49 W | 26.80 W | 78.29 W | 145.0 % |
 | 11:01:18 | 41.81 W | 26.80 W | 68.61 W | 127.1 % |
 | 11:03:18 | 33.18 W | 26.80 W | 59.98 W | 111.1 % |
 | 11:05:53 | 26.05 W | 26.80 W | 52.85 W | 97.9 % |
 | 11:07:58 | 25.02 W | 26.80 W | 51.82 W | **96.0 %** |
+
+*r3 (R13): the 11:00:13 row used the skew-corrupted published 54.63 W that §7.2 had already corrected; recomputed with V × I = 50.86 W [D: (50.86 + 26.80) / 54 = 143.8 %]. The other rows are as published, which agrees with V × I to sd 1.41 % across the recharge.*
 
 **The supply settles inside its nameplate within about 90 seconds and stays there.** The overage is confined to the first minute or so of bulk. That is the shape of a short-duration peak-load region, not of a supply running chronically over-rated — and it is benign.
 
@@ -550,18 +556,20 @@ Terminal voltage reached its plateau within ~6 minutes while current tapered rou
 
 ## 8. Instrument Findings — read from the firmware source
 
-Four Ri-family sensors held pre-test values through the test. Reading `ups-monitor.yaml` directly resolves two, narrows one, and leaves one open.
+~~Four Ri-family sensors held pre-test values through the test. Reading `ups-monitor.yaml` directly resolves two, narrows one, and leaves one open.~~ **r3 (R13):** three of the four held their values. `Last Onset Step Resistance` did not — it updated at 09:17:48, and the value r2 took for "pre-test" was this test's own capture (§8.2).
 
 | Sensor | Pre-test | After | Status |
 | :--- | ---: | :--- | :--- |
 | `Apparent Ri` (settled-step) | 67.314 mΩ | unchanged | **Mechanism identified — r1's mechanism was wrong (§8.1)** |
-| `Last Onset Step Resistance` | 108.744 mΩ | unchanged | **Open, narrowed (§8.2)** |
-| `Last Recharge Step Resistance` | 100.347 mΩ | unchanged | **Confirmed**: arming flag wiped by survival deep sleep |
+| `Last Onset Step Resistance` | ~~108.744 mΩ~~ **97.586 mΩ** (08-31) | ~~unchanged~~ **108.744 mΩ at 09:17:48** | ~~Open, narrowed~~ **Worked — not a defect (r3, §8.2)** |
+| `Last Recharge Step Resistance` | 100.347 mΩ | unchanged | **Confirmed**: arming flag wiped by survival deep sleep. **r3: correct behaviour, not a defect** — see below |
 | `Last Recharge Peak Current` | 2.847 A | **4.4465 A** | **Not a defect** — correctly gated on `on_battery`'s `on_release` |
 
 `Last Recharge Peak Current` is not a fault: `last_recharge_peak_a` is written only in `on_battery`'s `on_release` handler, so it could not populate until 11:39:39. It did, 13 s later. The underlying `recharge_peak_a` max-tracker had been running correctly throughout — and because it samples on its own 5 s schedule it caught 4.4465 A, an instant the throttled publish stream missed.
 
 `Last Recharge Step Resistance` is confirmed: the detector requires `g_onset_was_discharging`, declared `restore_value: no`, which each of the five survival-mode deep sleeps reset to false. The reference pair `g_last_loaded_v` / `g_last_loaded_i` is also `restore_value: no` and was wiped identically, so even an armed detector would have rejected for want of a valid discharge reference. **This interaction had never been exercised because survival mode never had been.**
+
+> **Correction (r3, R13) — the mechanism is right; calling it a defect was not.** After a survival sleep there is no discharge→charge step to measure. The BP-65 had cut the load at the trip, so the pack sat at rest (~40 mA of ESP draw) through every sleep, and charging had been running for up to one 120 s wake interval before the boot that would look for the step (§7.1). Persisting `g_onset_was_discharging` across the sleep would pair a pre-trip loaded sample with a charging sample 13+ minutes later — the relaxation-contaminated ~256 mΩ in §8.3. A mid-outage reboot *without* survival sleep re-arms by itself, because the detector sets the flag while I < −0.5 A. The firmware keeps the prior value; the only defect was that it did so silently.
 
 ### 8.1 `Apparent Ri` — a bursty load, not a ramp
 
@@ -598,6 +606,8 @@ This is a **bursty load with stationary noise**, and the 45 s mark landed on one
 
 The candidate mechanism remains the silent no-op path: if every raw I²C read during the ~100 ms capture window fails the `vraw != 0x0000 && vraw != 0xFFFF` guard, `g_cap_n` stays 0 and the evaluation block is skipped with neither a success nor a rejection log. **There is no log coverage of 09:17:10** — the owner's capture begins at 10:04:58 — so this remains [I] and Open Item 13.
 
+> **Resolved (r3, R13): not a defect.** The sensor updated **during this test**. InfluxDB records **97.586 mΩ (2026-08-31 20:06:30) → 108.744 mΩ at 09-15 09:17:48**, 38 s after the cut [M — in the `mOhm` measurement, where V1.19 moved new points from `mΩ`], with `Last Onset Float Voltage` 13.20375 V, `Last Onset Loaded Voltage` 12.98300 V and `Last Onset Current` 2.030 A published alongside: (13.20375 − 12.98300) / 2.030 × 1000 = **108.74 mΩ** [D], the capture's own inputs. `Onset Capture Quality Good` stayed on. r2 read 108.744 as "pre-test" because every instrument it used started *after* the onset — the HA poller at 09:34:14, the ESPHome capture at 10:04:58, the direct API monitor at 10:06:31 — and the value never changed again. The narrowing above therefore narrowed toward a defect that did not exist, and the silent-I²C-failure mechanism was never needed. Open Item 13 closed.
+
 ### 8.3 Ri estimates are not comparable to each other
 
 | Estimate | Method | Note |
@@ -627,6 +637,8 @@ The candidate mechanism remains the silent no-op path: if every raw I²C read du
 > **Correction to r1 (R13).** An r1 draft called this a stuck firmware flag after ~20 minutes of observation, without checking it against the actual trip voltage. Recorded rather than removed.
 
 **Still open:** `sensor.ups_monitor_total_outages` read 19 before and after, though this is outage #20. The increment fires at *outage start*, before any deep-sleep interaction, so the survival-mode explanation that closed the sibling items does not apply here. Open Item 9b.
+
+> **Resolved (r3, R13): not a defect.** The counter incremented **18 → 19 at 09:17:49** [M, InfluxDB `sensor.ups_monitor_total_outages`], 39 s after the cut — the `on_press` path, exactly as the firmware says. Its own history runs 14 (08-24) → 15, 16, 17 (08-29) → 18 (08-31) → 19 (this test), so this *was* outage #19; the "#20" tally was wrong. As with §8.2, the "before" reading came from an instrument that started after the increment. Open Item 9b closed.
 
 ### 9.2 Ad hoc tooling — two defects, recorded at the site
 
@@ -672,6 +684,8 @@ This is HA's recorder writing last-known state on restart. It is **not a measure
 V, A and W are published on independent schedules: A lands consistently **+1.24 to +1.32 s** after V, and W **−0.43 to −0.53 s** before it [M, n = 12 consecutive]. On a 5 s grid that is a fifth of a sample period, and it is the dominant error term in every step-resistance derivation (§8.3). **Pair V with I only where the load is steady, and never across a step.**
 
 **Root cause, from the firmware.** The `ina260` platform runs at `update_interval: 1s`, and each channel carries its own **`throttle_average: 5s`** (`ups-monitor.yaml:1570-1612`). A time-based throttle publishes when *its own* window closes, so the two channels lock into whatever offset they happened to start with and hold it indefinitely — here 1.29 s. `Battery Power` compounds it: it is a template computing `V × I` from the two published `.state` values on a **third** independent `update_interval: 5s` tick (`ups-monitor.yaml:1613-1628`), so it can pair a fresh current with a 1.3 s-old voltage. The chip's own POWER register is internal-only and unused, correctly, because it is unsigned.
+
+> **Correction (r3, R13).** "Hold it indefinitely — here 1.29 s" is true only within one boot. Each `throttle_average` registers its own scheduler interval, and ESPHome starts every interval at a random offset in [0, min(interval / 2, 5 s)) drawn at boot (`scheduler.cpp`, source-verified at ESPHome 2026.8.2). The offset is therefore **re-drawn every boot**: in the ESPHome capture, current landed **+1.294 s after** voltage in the pre-outage boot (n = 506, sd 0.026 s) and **1.30 s before** it after the 10:59:47 survival wake (n = 215) [M]. That wake falls inside this export, so **the recovery portion of `raw_A` / `raw_V` carries the opposite skew from the discharge portion.** `Battery Power` did not "pair a fresh current with a 1.3 s-old voltage": it read whichever `.state` values were latest when its own tick fired, which in the post-wake boot was the previous current window in 68 of 68 discriminating samples (§7.2).
 
 **This skew has now produced three wrong figures in this report's lifetime:** the onset-step resistance swinging 90 → 128 mΩ on pairing choice (§8.3), r1's inverted recharge conclusion, and the 54.627 W / 101 % figure corrected in §7.2. It is a firmware defect, not an analysis hazard to be worked around — **Open Item 21.**
 
@@ -725,11 +739,11 @@ Near the top of the LiFePO4 curve, charge-per-volt is large enough that a few mi
 | 2 | Full discharge to LVD at the post-boost load | **Closed** — §3, with the caveat that the load fell mid-discharge, so this is not a clean single-load replication. |
 | 8 | `on_battery` slow to clear | **Closed, not a defect** — §9.1. |
 | 9 | `last_recharge_peak_current` not populating | **Closed, not a defect** — §8. Value is a lower bound (§7.1). |
-| 9b | `total_outages` not incremented | **Open, unexplained** — §9.1. |
+| 9b | `total_outages` not incremented | ~~Open, unexplained~~ **CLOSED (r3) — not a defect.** Incremented 18 → 19 at 09:17:49 [M]; the "before" read came after it. §9.1. |
 | 10 | Repeat full-discharge at constant load to measure the real trigger-to-LVD margin | **Open, and now merged into Item 14a**, which is a constant-load full discharge and satisfies both. A margin measured on a pack losing capacity month to month cannot set a threshold. Characterise capacity first. |
 | 11 | Firmware constants cited from the public clone while `H:` was unreachable | **Closed.** `diff` against `H:\esphome\ups-monitor.yaml` is byte-identical, both `version: "1.19"`. |
 | 12 | Whether V1.19 contains the V1.18 Apparent-Ri rest-baseline fix | **Closed.** Present and armed correctly. The capture failed a different, downstream gate — §8.1. |
-| 13 | `Last Onset Step Resistance` never updated | **Open, narrowed** — §8.2. Now known to have updated between 08-31 and 09-15, so not permanently dead. |
+| 13 | `Last Onset Step Resistance` never updated | ~~Open, narrowed — §8.2. Now known to have updated between 08-31 and 09-15, so not permanently dead.~~ **CLOSED (r3) — not a defect.** Updated 97.586 → 108.744 mΩ at 09:17:48, during this test [M]. §8.2. |
 | ~~14~~ | ~~Per-cell voltages at end of discharge~~ | **WITHDRAWN — not measurable.** The pack is sealed with no balance taps and no BMS telemetry [M, owner-confirmed 2026-09-15]; the measurement would require destroying the enclosure. Replaced by Items 14a and 16, and partly answered already by §4.6 Test A. |
 | **14a** | **Repeat the full discharge at May's current** — shut the N100 host down *before* cutting AC, so the load is XB7 + monitor only (~1.2–1.4 A). Same pack, same load, same 11.80 V endpoint, same instrument as 2026-05-06. | **OPEN — highest priority.** Now the decisive test: ~2.5 Ah against May's 4.179 Ah confirms the loss with no rate, IR or two-regime correction left to argue about. Also satisfies Item 10's constant-load requirement in the same run. |
 | ~~15~~ | Re-derive the 08-31/09-01 figures from the raw series | **CLOSED** — §4.3. Re-derived as **1.8316 Ah / 23.316 Wh**, within **−0.1 % / −0.2 %** of the 08-31 report. 2026-08-29 also re-derives to −0.3 %. Both endpoints of the capacity comparison are now [M]. |
@@ -738,7 +752,7 @@ Near the top of the LiFePO4 curve, charge-per-volt is large enough that a few mi
 | **21** | **Publish V, I and P from a single synchronised read** — each `ina260` channel currently carries its own free-running `throttle_average: 5s`, and `Battery Power` runs on a third independent tick, giving a fixed ~1.29 s V-vs-I skew | **OPEN — firmware defect, highest instrument-side priority.** Has produced three wrong published figures (§10.3). Corrupts every step-resistance method (§8.3) and every V×I power sample taken during a transient. |
 | **19** | **Change `cliff_imminent` `delayed_on: 60s` → `180s`** (§6.1.1). Threshold, gate and guard unchanged. | **OPEN — ready to implement, gated on 14a.** Measured at n = 2: every knee excursion below −10 mV/min lasts 1–2 samples, never 3. Backstopped by `voltage_critical` at 12.20 V, which calls `host_shutdown` with no revalidation. |
 | **20** | **Re-test §8.1's median-filter proposal for the Apparent-Ri gate against a second run before shipping it** | **OPEN (R7).** It rests on one window of one run — the same footing as the IR-compensated-slope proposal §6.1 had to withdraw after testing at n = 2. |
-| 18 | `battery_fully_charged` has never fired — no instrument confirms a completed charge | **Open**, carried from 08-31 §4.1. Now load-bearing: it is why §4.5 candidate 3 cannot be excluded. |
+| 18 | `battery_fully_charged` has never fired — no instrument confirms a completed charge | ~~Open, carried from 08-31 §4.1. Now load-bearing: it is why §4.5 candidate 3 cannot be excluded.~~ **CLOSED (r3) — the premise was stale.** Fires since V1.17 (first ON 2026-08-31 19:37:30) and was ON before both load-matched runs [M]. It confirms float equilibrium, not state of charge; candidate 3 narrowed accordingly (§4.5). |
 
 ---
 
@@ -746,11 +760,11 @@ Near the top of the LiFePO4 curve, charge-per-volt is large enough that a few mi
 
 The system did what it was designed to do. It ran the full documented ladder for the first time, tripped the hardware LVD inside its specified window, ran survival sleep for the first time with no surprises, and recovered unattended. The core safety claim held under a real test rather than a projection.
 
-**What it did not do is hold its capacity.** At matched load over a matched voltage span, this pack delivered 42.4 % less charge than it did fourteen days earlier, with Ah and Wh agreeing to a tenth of a point and the coulomb counter validated against an independent path to under 1 %. Rate effects, Peukert, float droop and temperature together account for under a tenth of the LVD-to-LVD gap and for none of the load-matched gap. The instrument is not the problem; the pack is. And nothing on this system would have reported it — the fully-charged detector has never fired once in the entire record, so "the pack started full" has been an assumption on every test this project has ever run, including the May measurement now serving as the reference.
+**What it did not do is hold its capacity.** At matched load over a matched voltage span, this pack delivered 42.4 % less charge than it did fourteen days earlier, with Ah and Wh agreeing to a tenth of a point and the coulomb counter validated against an independent path to under 1 %. Rate effects, Peukert, float droop and temperature together account for under a tenth of the LVD-to-LVD gap and for none of the load-matched gap. The instrument is not the problem; the pack is. ~~And nothing on this system would have reported it — the fully-charged detector has never fired once in the entire record, so "the pack started full" has been an assumption on every test this project has ever run, including the May measurement now serving as the reference.~~ **r3:** the fully-charged detector was ON before both load-matched runs, so the 42.4 % comparison is between two runs that began at the same float equilibrium [M] — which leaves less room, not more, to attribute the shortfall to how the test started. Float equilibrium is not a state-of-charge measurement, and the May reference predates the detector (§4.5).
 
 That reorders the work. The ~52.8-minute unsupervised margin is real and generous, but it is a time measured on a shrinking reservoir, and tuning a threshold to it now would be fitting a constant to a moving target. **Characterise the capacity first** — one discharge repeated at May's load with the host shut down beforehand, and one recharge counted through to termination. Both are cheap, both are non-invasive, and between them they settle what this dataset cannot. The pack is sealed, so the textbook test for imbalance is off the table; §4.6 shows the terminal-only substitute still carries real information, and it points away from uniform fade.
 
-Two things r1 called defects were not: `on_battery` was waiting for the same 13.15 V threshold the dashboard documents, and `Last Recharge Peak Current` was waiting for `on_battery` to clear before copying a value it had tracked correctly throughout. Two that were real got sharper: the recharge-step sensors have a named cause (a `restore_value: no` arming flag, broken specifically by the survival deep sleeps this test was the first to exercise), and `Apparent Ri` has a named and *reproducible* one — a ±15 % gate compared against a single instantaneous sample of a load whose bursts exceed that band 20 % of the time. That last one has a fix that follows from the diagnosis, which the r1 diagnosis did not.
+Two things r1 called defects were not: `on_battery` was waiting for the same 13.15 V threshold the dashboard documents, and `Last Recharge Peak Current` was waiting for `on_battery` to clear before copying a value it had tracked correctly throughout. Two that were real got sharper: the recharge-step sensors have a named cause (a `restore_value: no` arming flag, broken specifically by the survival deep sleeps this test was the first to exercise — **r3: correct behaviour, since no step exists after a survival sleep, §8**), and `Apparent Ri` has a named and *reproducible* one — a ±15 % gate compared against a single instantaneous sample of a load whose bursts exceed that band 20 % of the time. That last one has a fix that follows from the diagnosis, which the r1 diagnosis did not. **r3 adds two more to the first list:** `Last Onset Step Resistance` and `total_outages` both worked (§8.2, §9.1) — read after the fact by instruments that started too late to see them change.
 
 And one number in r1 was wrong in a way worth naming plainly: the HDR-60-12 was read as a 54 **amp** supply. It is 54 watts. The recharge was running at its constant-current limit throughout — the firmware's captured peak of 4.4465 A is 98.8 % of the rated current. A figure as implausible as a 54 A DIN-rail supply should not have survived to a conclusion, and the rule that would have caught it — R16, identity before spec — was available and was not applied.
 
