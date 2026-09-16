@@ -18,7 +18,7 @@ A deliberate outage test (`switch.ups_outlet` OFF at 09:16:58) ran the pack thro
 
 **The finding that matters is not the ladder; it is the capacity.** The pack delivered **2.5331 Ah / 31.821 Wh** [M, firmware coulomb counter, cross-validated against an independent HA-side integration to +0.95 %, §4.1]. Against the 2026-08-31/09-01 test — **same load, same voltage span, fourteen days earlier** — this pack delivered **−42.4 % Ah and −42.5 % Wh** [D, §4.3]. Against the 2026-05-06 LVD run it is −39.4 % Ah / −40.3 % Wh. Every mechanical explanation available to this dataset — rate effect at the LVD endpoint (≤0.04 Ah), Peukert (would require an exponent of 2.40 against 1.01–1.05 for LiFePO4), float-ceiling droop (≤0.11 Ah), temperature (both runs inside the LFP flat zone) — accounts for **under 10 % of the LVD-to-LVD gap, and for none of the load-matched gap**. The residual is a property of the pack, not of the test. §4.5 ranks the candidate mechanisms. The pack is sealed — no balance taps, no BMS telemetry — so per-cell voltages are unavailable at any price, and §4.6 gives three non-invasive substitutes instead. One of them has already been run, on data that was in this repository the whole time, and it argues against uniform capacity fade and for a non-uniform pack.
 
-Two secondary results are load-bearing for how this system is specified. First, **the recharge is PSU-current-limited, not pack-limited**: the Mean Well HDR-60-12 is a **54 W / 4.5 A** supply [S, datasheet; confirmed by owner 2026-09-15], and the battery branch alone was measured at **54.627 W** [M] — 101 % of the whole supply's nameplate — before any share for the XB7, host or monitor. Second, **the raw InfluxDB export covers only the first 37.5 minutes of a ~90-minute discharge** and contains three bit-identical stale samples on recorder restart (§10); anyone re-deriving these figures needs both facts before opening the files.
+Two secondary results are load-bearing for how this system is specified. First, **the recharge is PSU-current-limited, not pack-limited**: the Mean Well HDR-60-12 is a **54 W / 4.5 A** supply [S, datasheet; confirmed by owner 2026-09-15], and the firmware's captured peak of **4.4465 A** is **98.8 %** of its rated current. Charge power into the battery branch alone reached **~50.9 W** [M] — 94 % of the whole supply's nameplate — before any share for the XB7, host or monitor. A Kasa AC-side measurement (§7.4) closes the power-flow loop against the DC-side INA260 and shows the supply operating within rating everywhere it has coverage. Second, **the raw InfluxDB export covers only the first 37.5 minutes of a ~90-minute discharge** and contains three bit-identical stale samples on recorder restart (§10); anyone re-deriving these figures needs both facts before opening the files.
 
 A third result concerns the shutdown trigger itself. Replaying the firmware against **both** this outage and the 2026-09-01 test shows its slope term carries noise of sd 18.7–24.0 mV/min against a −10 mV/min threshold, crossing that threshold 21 and 12 times respectively, and that **every graceful-shutdown attempt in the record has aborted at least once before succeeding** (§6.1). The cause is arithmetic — `delayed_on: 60s` against a 60 s slope update is one extra sample of confirmation — and §6.1.1 gives the one-line change the data supports.
 
@@ -58,7 +58,7 @@ On the timing question this test was run to answer: from the moment the host wen
 | **AC restored (bounded, not observed)** | **~10:57:2x – 10:59:2x** | — | — | — | [I], §7.1 |
 | XB7 + HA host ICMP return | 10:59:49 | 14:59:49 | — | — | net_watch |
 | First ESP32 reading after wake | 11:00:09.98 | 15:00:09.98 | 13.047 | — | ESPHome |
-| **Charge current first observed** | **11:00:13.67** | **15:00:13.67** | 13.047 | **+3.8975 A / 54.627 W** | ESPHome |
+| **Charge current first observed** | **11:00:13.67** | **15:00:13.67** | 13.047 | **+3.8975 A** (published P 54.627 W is skew-corrupted — use V×I = **50.86 W**, §7.2) | ESPHome |
 | Phase → Charging | 11:00:19 | 15:00:19 | 13.049 | +3.8516 A | firmware |
 | Xfinity Modem Online | 11:00:24 | 15:00:24 | — | — | firmware |
 | ESP32 boot confirmed successful | 11:00:47.9 | 15:00:47.9 | — | — | `safe_mode:154` |
@@ -458,20 +458,24 @@ No instrument recorded AC restoration. What bounds it:
 
 Measured against the correct nameplate:
 
-| Time | I (battery branch) | % of 4.5 A | P (battery branch) | % of 54 W |
+| Time | I (battery branch) | % of 4.5 A | P, V×I [corrected] | % of 54 W |
 | :--- | ---: | ---: | ---: | ---: |
-| 11:00:13.67 | +3.8975 A | 86.6 % | **54.627 W** | **101.2 %** |
-| 11:00:18.68 | +3.8516 A | 85.6 % | 50.257 W | 93.1 % |
-| 11:00:33.67 | +3.9520 A | 87.8 % | 51.488 W | 95.3 % |
-| firmware peak (11:39:52) | **4.4465 A** | **98.8 %** | — | — |
+| 11:00:13.67 | +3.8975 A | 86.6 % | **50.86 W** | **94.2 %** |
+| 11:00:18.68 | +3.8516 A | 85.6 % | 50.04 W | 92.7 % |
+| 11:00:33.67 | +3.9520 A | 87.8 % | 51.68 W | 95.7 % |
+| firmware peak (11:39:52) | **4.4465 A** | **98.8 %** | ~58 W [D, × 13.05 V] | ~107 % |
 
-**These are the battery branch alone.** The XB7, the host via the boost, the ESP32 and the BP-65 all draw from the same supply and are not included in any of these figures. The recharge was at the HDR-60-12's constant-current limit from the moment BP-65 reconnected — exactly as README Mode 6 specifies ("PSU immediately enters CC mode at 4.5A") and as the 2026-05-06 run measured directly (4.59 A, "at the constant-current limit of the HDR-60-12" [S, 05-06 §1]).
+> **Correction to an earlier draft of this revision (R13).** That draft quoted the 11:00:13 sample as **54.627 W = 101.2 % of nameplate** and built Open Item 17 on it. The figure does not survive checking. `Battery Power` is a template computing `V × I` from the two published channels (`ups-monitor.yaml:1613`), each carrying its own `throttle_average: 5s`, and the template runs on a third independent 5 s tick — so the three clocks free-run against each other with a consistent ~1.29 s V-vs-I offset (§10.3). Across 215 charging samples, published power agrees with a nearest-timestamp `V × I` to **mean +0.29 %, sd 1.41 %**; 13 disagree by more than 3 %; and **11:00:13 is the single worst sample in the entire recharge at +7.41 %**, because the system was four seconds into a CC transient with V moving fast, where a 1.29 s pairing error does maximum damage. The sample implies `P/I = 14.016 V`, which is not physically possible with the PSU floating at 13.3 V and BMS OVP at 14.4–14.6 V. The defensible figure is **V × I = 50.86 W, 94.2 % of nameplate**. The headline was built on the least trustworthy point in the series.
+
+**These are the battery branch alone.** The XB7, the host via the boost, the ESP32 and the BP-65 all draw from the same supply and are not included in any of these figures. §7.4 measures that load share independently on the AC side. The recharge was at the HDR-60-12's constant-current limit from the moment BP-65 reconnected — exactly as README Mode 6 specifies ("PSU immediately enters CC mode at 4.5A") and as the 2026-05-06 run measured directly (4.59 A, "at the constant-current limit of the HDR-60-12" [S, 05-06 §1]).
 
 **The overage is a transient, not a steady state — tested against the BP-65 reconnect hypothesis.**
 
-The owner's proposed mechanism (2026-09-15) is that the BP-65's reconnect hold-off keeps the modem and host disconnected for a period after AC returns, so the PSU charges the battery *alone* with no load share — which would fully account for 54.627 W into the battery branch — and that the signature would be *"a rapid downfall once the modem/HA PC was powered on."* The 5 s ESPHome trace tests that directly.
+The owner's proposed mechanism (2026-09-15) is that the BP-65's reconnect hold-off keeps the modem and host disconnected for a period after AC returns, so the PSU charges the battery *alone* with no load share — which would account for the high charge power at the first reading — and that the signature would be *"a rapid downfall once the modem/HA PC was powered on."* The 5 s ESPHome trace tests that directly.
 
-| Time | I (battery) | P | ΔI | Event |
+Values below are **as published**; the P column at 11:00:13 carries the skew artifact corrected in §7.2 (V×I = 50.86 W). The current column, which is what this test turns on, is unaffected.
+
+| Time | I (battery) | P as published | ΔI | Event |
 | :--- | ---: | ---: | ---: | :--- |
 | 11:00:13 | 3.8975 | 54.627 | — | first reading after wake |
 | 11:00:18 | 3.8516 | 50.257 | −0.046 | |
@@ -498,7 +502,35 @@ The owner's proposed mechanism (2026-09-15) is that the BP-65's reconnect hold-o
 
 **The supply settles inside its nameplate within about 90 seconds and stays there.** The overage is confined to the first minute or so of bulk. That is the shape of a short-duration peak-load region, not of a supply running chronically over-rated — and it is benign.
 
-**What remains open, narrowed.** The leading explanation is that the HDR-60-12 operates in its specified short-duration peak region during early bulk. **That figure has not been read from the datasheet for this identifier** — quoting it now would repeat exactly the R16 failure that produced the "54 A" error in r1. The falsifier is one line of the Mean Well HDR-60 datasheet: the peak-load rating and its permitted duration. The alternative — that the load share was well under 26.80 W while the N100 was mid-boot — points the arithmetic the wrong way, since a booting host draws more than a settled one. **Open Item 17, narrowed from "unexplained" to "one datasheet line".**
+**What remains open, much narrowed.** With the corrected 50.86 W, the battery branch sits *within* nameplate at every sample the INA260 covers, and §7.4 shows the supply within rating everywhere the Kasa covers. What is still unmeasured is the true peak: the firmware's 4.4465 A max-tracker implies ~58 W (~107 %), and a PSU pinned at its 4.5 A CC limit implies ~58.7 W into the battery alone — both single instantaneous samples, both in the window no instrument observed (§7.1). That is consistent with a short-duration peak region, and inconsistent with chronic overload. **The Mean Well HDR-60 peak-load rating and its permitted duration have deliberately not been quoted here** — doing so without reading the datasheet for this identifier would repeat the R16 failure that produced r1's "54 A" error. **Open Item 17.**
+
+### 7.4 AC-side cross-check — the Kasa closes the power-flow loop
+
+`sensor.ups_outlet_current_consumption` is the Kasa smart plug feeding the HDR-60-12, i.e. the **AC** side of the supply. It is also the device `switch.ups_outlet` toggles, so it is what was switched off to start this test.
+
+**It does not capture AC restoration.** Its record has a single gap, **09:16:58 → 11:08:07 (111.1 min)** [M] — opening exactly at test start and closing about eight minutes *after* the ESP32 woke, because the plug sits behind the XB7 on WiFi and could not be polled until both the gateway and HA were back. §7.1's bound on AC return stands unchanged; nothing observed it.
+
+**What it does establish, on two counts:**
+
+| Window | Kasa AC | Basis |
+| :--- | ---: | :--- |
+| Pre-test float, loads running | **29.99 W** mean (n = 695, min 28.8, max 37.7) | [M] |
+| Post-recovery, charging + loads | 42.45 W mean (n = 996, max **63.2**, only 8 samples ≥ 60 W) | [M] |
+
+1. **The load figure is independently confirmed.** 29.99 W AC at the documented 87 % efficiency [S, `docs/component-selection.md`] is **26.1 W DC** — against the 26.80 W post-boost load measured on the DC side in the 08-31 report. Two instruments on opposite sides of the PSU, agreeing to **3 %**.
+
+2. **The power-flow loop closes.** Over 11:08–11:13, the one window both instruments cover:
+
+```
+battery (INA260, DC)          +23.84 W   [M, n=60]
+loads   (Kasa baseline, DC)    26.1  W   [D]
+                              --------
+total DC                       49.9  W
+-> AC at 87 % efficiency       57.4  W   predicted
+Kasa observed                  56.2 - 59.4 W   [M]
+```
+
+**The supply is within its 54 W rating at every moment the Kasa covers**, and its maximum ever recorded — 63.2 W AC ≈ 55 W DC — sits essentially at nameplate. The 63 W excursions occur at 11:10:09 and 11:10:34, ten minutes after recovery, when battery current had already tapered to ~1.8 A; they are load bursts, not charge current.
 
 ### 7.3 Taper
 
@@ -639,6 +671,10 @@ This is HA's recorder writing last-known state on restart. It is **not a measure
 
 V, A and W are published on independent schedules: A lands consistently **+1.24 to +1.32 s** after V, and W **−0.43 to −0.53 s** before it [M, n = 12 consecutive]. On a 5 s grid that is a fifth of a sample period, and it is the dominant error term in every step-resistance derivation (§8.3). **Pair V with I only where the load is steady, and never across a step.**
 
+**Root cause, from the firmware.** The `ina260` platform runs at `update_interval: 1s`, and each channel carries its own **`throttle_average: 5s`** (`ups-monitor.yaml:1570-1612`). A time-based throttle publishes when *its own* window closes, so the two channels lock into whatever offset they happened to start with and hold it indefinitely — here 1.29 s. `Battery Power` compounds it: it is a template computing `V × I` from the two published `.state` values on a **third** independent `update_interval: 5s` tick (`ups-monitor.yaml:1613-1628`), so it can pair a fresh current with a 1.3 s-old voltage. The chip's own POWER register is internal-only and unused, correctly, because it is unsigned.
+
+**This skew has now produced three wrong figures in this report's lifetime:** the onset-step resistance swinging 90 → 128 mΩ on pairing choice (§8.3), r1's inverted recharge conclusion, and the 54.627 W / 101 % figure corrected in §7.2. It is a firmware defect, not an analysis hazard to be worked around — **Open Item 21.**
+
 ### 10.4 A defect fixed since 08-31, confirmed by arithmetic
 
 The 08-31 report §4.2 documented a phantom-drift defect adding **43.3 mAh/day** to the lifetime counters with no outage. Checked here:
@@ -698,7 +734,8 @@ Near the top of the LiFePO4 curve, charge-per-volt is large enough that a few mi
 | **14a** | **Repeat the full discharge at May's current** — shut the N100 host down *before* cutting AC, so the load is XB7 + monitor only (~1.2–1.4 A). Same pack, same load, same 11.80 V endpoint, same instrument as 2026-05-06. | **OPEN — highest priority.** Now the decisive test: ~2.5 Ah against May's 4.179 Ah confirms the loss with no rate, IR or two-regime correction left to argue about. Also satisfies Item 10's constant-load requirement in the same run. |
 | ~~15~~ | Re-derive the 08-31/09-01 figures from the raw series | **CLOSED** — §4.3. Re-derived as **1.8316 Ah / 23.316 Wh**, within **−0.1 % / −0.2 %** of the 08-31 report. 2026-08-29 also re-derives to −0.3 %. Both endpoints of the capacity comparison are now [M]. |
 | **16** | **Coulomb-count one recharge to termination and compare against the discharge count** | **OPEN — second priority.** Discriminates §4.5 candidates 2 and 3, closes §4.6's one substantial confound (that the curve is anchored on an unverified "started full"), and would give this project its first measured answer to that question. |
-| ~~17~~ | PSU overage: 54.627 W into the battery branch alone at 11:00:13 | **Narrowed to one datasheet line** — §7.2. The BP-65 hold-off hypothesis is correct about the *unobserved* true peak but not about this reading: ICMP places the loads back on 24 s earlier, and the 5 s trace shows no reconnect step. Total output settles to 96 % of nameplate within ~90 s, so the overage is a transient. **Remaining action: read the Mean Well HDR-60 peak-load rating and duration for this identifier** (not quoted here — R16). |
+| 17 | PSU overage at 11:00:13 | **Largely resolved** — §7.2, §7.4. The 101 %-of-nameplate figure was a publish-skew artifact (Open Item 21); corrected to **94.2 %**, within rating. The Kasa AC-side trace shows the supply within rating everywhere it has coverage, and independently confirms the 26.1 W DC load share to 3 %. **Residual:** the unobserved true peak implies ~58 W (~107 %) for a moment no instrument covered. Closing it needs the Mean Well HDR-60 peak-load rating and duration for this identifier (not quoted here — R16). |
+| **21** | **Publish V, I and P from a single synchronised read** — each `ina260` channel currently carries its own free-running `throttle_average: 5s`, and `Battery Power` runs on a third independent tick, giving a fixed ~1.29 s V-vs-I skew | **OPEN — firmware defect, highest instrument-side priority.** Has produced three wrong published figures (§10.3). Corrupts every step-resistance method (§8.3) and every V×I power sample taken during a transient. |
 | **19** | **Change `cliff_imminent` `delayed_on: 60s` → `180s`** (§6.1.1). Threshold, gate and guard unchanged. | **OPEN — ready to implement, gated on 14a.** Measured at n = 2: every knee excursion below −10 mV/min lasts 1–2 samples, never 3. Backstopped by `voltage_critical` at 12.20 V, which calls `host_shutdown` with no revalidation. |
 | **20** | **Re-test §8.1's median-filter proposal for the Apparent-Ri gate against a second run before shipping it** | **OPEN (R7).** It rests on one window of one run — the same footing as the IR-compensated-slope proposal §6.1 had to withdraw after testing at n = 2. |
 | 18 | `battery_fully_charged` has never fired — no instrument confirms a completed charge | **Open**, carried from 08-31 §4.1. Now load-bearing: it is why §4.5 candidate 3 cannot be excluded. |
@@ -715,7 +752,11 @@ That reorders the work. The ~52.8-minute unsupervised margin is real and generou
 
 Two things r1 called defects were not: `on_battery` was waiting for the same 13.15 V threshold the dashboard documents, and `Last Recharge Peak Current` was waiting for `on_battery` to clear before copying a value it had tracked correctly throughout. Two that were real got sharper: the recharge-step sensors have a named cause (a `restore_value: no` arming flag, broken specifically by the survival deep sleeps this test was the first to exercise), and `Apparent Ri` has a named and *reproducible* one — a ±15 % gate compared against a single instantaneous sample of a load whose bursts exceed that band 20 % of the time. That last one has a fix that follows from the diagnosis, which the r1 diagnosis did not.
 
-And one number in r1 was wrong in a way worth naming plainly: the HDR-60-12 was read as a 54 **amp** supply. It is 54 watts. The recharge was running at its constant-current limit throughout — and at the first reading after recovery, the battery branch alone was drawing 101 % of the entire supply's nameplate. A figure that implausible should not have survived to a conclusion, and the rule that would have caught it — R16, identity before spec — was available and was not applied.
+And one number in r1 was wrong in a way worth naming plainly: the HDR-60-12 was read as a 54 **amp** supply. It is 54 watts. The recharge was running at its constant-current limit throughout — the firmware's captured peak of 4.4465 A is 98.8 % of the rated current. A figure as implausible as a 54 A DIN-rail supply should not have survived to a conclusion, and the rule that would have caught it — R16, identity before spec — was available and was not applied.
+
+This revision then made a smaller version of the same mistake and caught it the same way. An earlier draft read the first post-recovery sample as 54.627 W, called it 101 % of nameplate, and built an open item on it. Checking rather than quoting showed that sample implies a 14.02 V pack, which cannot happen here: it is the worst publish-skew artifact in the entire recharge, and the defensible figure is 50.86 W — 94 % of nameplate, within rating. What settled it was an instrument nobody had thought to look at, on the other side of the PSU. The Kasa plug's AC trace independently confirms the DC-side load share to 3 % and closes the power-flow loop, and it shows the supply inside its rating everywhere it has coverage.
+
+The general lesson is now on its third instance and has been promoted to a firmware defect rather than a caveat: **V, I and P are published on three free-running clocks**, and every figure that pairs them across a transient is wrong by an amount nobody can bound from the published data alone. That is Open Item 21, and it is the highest instrument-side priority in this report.
 
 ---
 
