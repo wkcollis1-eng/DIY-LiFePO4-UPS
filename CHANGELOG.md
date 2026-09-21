@@ -15,6 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-09-21] — 2026-09-21
+
+### Added
+- `Top-Off-Charger/top-off-charger-design.md` rev 0.3: a pre-build design for a bench top-off / top-balance charger for the Cyclenbatt, which is removed from the UPS for each session. Moved from `Lifepo4-Battery-Banks/Top-Off Charger/` (rev 0.2, `680caed`) and scoped to this pack only. It includes from/to wiring tables with Wago splice nodes. Nothing is built, and the firmware is not written.
+
+---
+
 ## [2026-03-06c] — 2026-03-06
 
 ### Changed

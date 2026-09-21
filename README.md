@@ -194,6 +194,7 @@ All four tiers are now fully live-validated. The graceful shutdown automation wa
 | [docs/UPS_Validation_Report.md](docs/UPS_Validation_Report.md) | Final Validation Report with Home Assistant configuration |
 | [docs/UPS_Report_2026-04-05.md](docs/UPS_Report_2026-04-05.md) | Inaugural commissioning report (Apr 5, 2026) |
 | [docs/UPS_Report_2026-05-06.md](docs/UPS_Report_2026-05-06.md) | Outage test report; INA260 first measurement; 12.2V automation confirmed |
+| [Top-Off-Charger/top-off-charger-design.md](Top-Off-Charger/top-off-charger-design.md) | Bench top-off / top-balance charger for the removed battery: pre-build design (rev 0.3) with from/to wiring tables |
 
 ## Datasheets
 
