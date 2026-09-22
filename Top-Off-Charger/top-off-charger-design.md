@@ -2,7 +2,7 @@
 
 **System:** bench top-off and top-balance hold charger for the UPS's Cyclenbatt 12V 10Ah. **The pack is removed from the UPS for every session** [owner, 2026-09-21].
 **Controller:** Battery_Bank-Monitor-THT **V2 Rev 1.1** carrier + XIAO ESP32-C3 + Adafruit INA228 (#5832), a second build of the bank-monitor board ([wiring summary v1.10][ws], cited below as **ws**).
-**Document revision:** 0.3 — **pre-build design draft, 2026-09-21.** Nothing here is built or tested. Scoped to the UPS pack and moved here from `Lifepo4-Battery-Banks/Top-Off Charger/` (rev 0.2 is commit `680caed` in that repo). Changes are listed in §15.
+**Document revision:** 0.4 — **pre-build design draft, 2026-09-21.** Nothing here is built or tested. Scoped to the UPS pack and moved here from `Lifepo4-Battery-Banks/Top-Off Charger/` (rev 0.2 is commit `680caed` in that repo). Changes are listed in §15.
 **Author:** William Collis (draft prepared with Claude Code)
 
 Provenance tags follow the house convention: **[M]** measured, **[S]** spec (document + page), **[D]** derived (formula shown), **[I]** inferred (with its falsifier). The fuse's interrupt rating is **[I]** until its datasheet is read (O2).
@@ -130,7 +130,7 @@ HDR −V ◄─ [WG] ◄──────────────────�
 [WL]  Wago 3-position, lead splice:      INA228 VIN− · lead +   (one port spare)
 
 CONTROL
-V2 J2-1 (GPIO4) ─ Rs 1 kΩ ─────────────► #2814 ON   (on-board R4 + R5 = 20 kΩ to GND holds it off)
+V2 J2-1 (GPIO4) ────────────────────────► #2814 ON   (direct; on-board R4 + R5 = 20 kΩ to GND holds it off)
 V2 J2-2 (GND)   ────────────────────────► #2814 GND
 V2 TB2          ─ 3-wire ─ G3 ──────────► DS18B20 module, taped to the pack case
 
@@ -173,7 +173,7 @@ Check that the wire range printed on the lever nuts covers 22–16 AWG. Fix all 
 | W10 | #2814 **VOUT** | #5382 **VIN** | 18 AWG red | #2814 output terminal block → #5382 input |
 | W11 | #5382 **VOUT** | INA228 breakout **VIN+** | 18 AWG red | INA228 3.5 mm terminal block. VBUS jumper closed, so VBUS = this node. Confirm 18 AWG fits (O9) |
 | W12 | INA228 breakout **VIN−** | **WL** | 18 AWG red | 3.5 mm terminal block → lever nut |
-| W13 | V2 board **J2-1 (GPIO4_BTN)** | #2814 **ON**, through **Rs 1 kΩ** | 24–26 AWG | JST-XH 2-pin housing at J2. **Put Rs within ~2 cm of the housing**, heat-shrunk. That puts the whole off-board run behind the resistor, so a chafed wire touching +V cannot drive 14 V straight into GPIO4 |
+| W13 | V2 board **J2-1 (GPIO4_BTN)** | #2814 **ON** (0.1″ hole) | 24–26 AWG | JST-XH 2-pin housing at J2; solder at the #2814. **Direct, no series resistor** (§7.2). Check the pair before the first AC on (§5.4) |
 | W14 | V2 board **J2-2 (GND)** | #2814 **GND** (0.1″ hole) | 24–26 AWG, paired with W13 | ON's signal return. Solder at the #2814. It parallels W7 + W8 at milliamp level and carries no charge current |
 | W15 | *Withdrawn in rev 0.3* | — | — | No external pull-down: the #2814 carries its own (§7.2) |
 
@@ -193,6 +193,7 @@ Not wired in this build: **J1** (OLED, dropped), the **ALERT** test point (L4 wi
 - **First flash by USB with TB1 unplugged** (AC cord unplugged), OTA after that, and never USB with AC on. This carries over the bank build's rule against a 3V3 source conflict between the buck output and the XIAO's USB-fed LDO [[ws] §2.1].
 - **Power-up tell:** the status LED is firmware-driven, not a rail indicator. If it is **dark for more than ~10 s** after AC on, the board is not running [[ws] §4.4]. Check TB1 polarity first.
 - **Before the first AC on:** DMM continuity from each F2 QD back to its node (+ through the fuse to WL, − to WG), with no continuity between them.
+- **Control pair, before the first AC on, XIAO out of its socket:** J2-1 to #2814 ON reads 0 Ω, and J2-1 to GND does **not** read 0 Ω. It reads roughly 10–20 kΩ through the #2814's R4 + R5, with Q3's base junction across R5 depending on the meter. A 0 Ω from J2-1 to GND means the pair is swapped at the #2814, so GPIO4 would drive into ground. This check takes over one of the jobs of the withdrawn Rs (§7.2).
 
 ---
 
@@ -245,8 +246,8 @@ The board pin map below is from `Battery_Bank-Monitor-THT-V2 - Rev_1.kicad_pcb`.
 | INA228 onboard 15 mΩ shunt | removed | **KEEP** | It is the charger's shunt. At 3.64 A it drops 55 mV [D], inside the ±163.84 mV range [D: 312.5 nV × 2¹⁹, from `battery-bank-monitor.yaml`]. The board is sold for up to 10 A [S, Adafruit #5832 page] |
 | Breakout VBUS jumper | open | **CLOSED** (VBUS = VIN+) | High-side use [S, Adafruit #5832 page]. U2 pin 5 (VBUS) is a carrier no-connect [M, Gerber net attribute N/C], so the closed jumper reaches nothing on the board |
 | VBUS lead to busbar | fitted | **none** | VBUS comes from the jumper |
-| **R3** (10 kΩ, GPIO4_BTN ↔ +3V3) | fitted | **DO NOT FIT: mandatory** | GPIO4 powers up high-impedance with no internal pull (reset state "1") and is not in the power-up glitch table [S, ESP32-C3 datasheet pp.20–21]. With R3 fitted, ON sits at 2.1 V [D: 3.3 × 20/31, where 31 kΩ = R3 10 kΩ + Rs 1 kΩ + the #2814's on-board 20 kΩ] through every boot, watchdog reset and flash, above the ~1 V threshold, so **the charger turns on whenever the ESP32 is not running** |
-| J2 (GPIO4_BTN / GND) | wake button | **#2814 ON control** (§5.2 W13–W15) | The only broken-out spare pin |
+| **R3** (10 kΩ, GPIO4_BTN ↔ +3V3) | fitted | **DO NOT FIT: mandatory** | GPIO4 powers up high-impedance with no internal pull (reset state "1") and is not in the power-up glitch table [S, ESP32-C3 datasheet pp.20–21]. With R3 fitted, ON sits at 2.2 V [D: 3.3 × 20/30, where 30 kΩ = R3 10 kΩ + the #2814's on-board 20 kΩ] through every boot, watchdog reset and flash, above the ~1 V threshold, so **the charger turns on whenever the ESP32 is not running** |
+| J2 (GPIO4_BTN / GND) | wake button | **#2814 ON control** (§5.2 W13, W14) | The only broken-out spare pin |
 | TB1 feed | positive busbar | **WP (PSU +V), upstream of the switch** | Board alive whenever AC is on; zero battery drain when AC is off |
 | TB2 (DS18B20) | battery case | battery case (**REQUIRED**) | RQ-9: no sensor reading, no charge (FW-3, FW-4) |
 | J1 (OLED) | fitted | **not fitted** | HA and the ESPHome web page show status; the status LED covers Wi-Fi down (FW-11) |
@@ -266,10 +267,23 @@ The board pin map below is from `Battery_Bank-Monitor-THT-V2 - Rev_1.kicad_pcb`.
 
 | Ref | Part | Connects | Purpose |
 |---|---|---|---|
-| Rs | 1 kΩ ¼ W | J2-1 → ON, **at the J2 end** | Series protection for the off-board run. Rev 0.2's purpose for it (letting ALERT overpower the GPIO) went with L4 |
-| — | *(on the #2814)* R4 10 kΩ + R5 10 kΩ | ON → R4 → Q3 base; R5 base → emitter (GND) | **The off-state pull-down, already on the board** [S, Pololu schematic]. With ON floating, R5 holds Q3's base at 0 V and the switch is off. That is Pololu's "leaving it disconnected will leave the switch off". The ESP32's high-impedance leakage (nanoamps) across 20 kΩ is microvolts. GPIO high gives ON = 3.14 V [D: 3.3 × 20/21], above the ~1 V threshold [S, §4.2]; R4/R5 halve it onto Q3's base-emitter junction |
+| Rs | *Withdrawn in rev 0.4* (owner, 2026-09-21) | — | GPIO4 drives ON directly. The board has no series position on this net: the fabricated copper puts only XIAO D2, R3 pad 1 and J2-1 on GPIO4_BTN [M, Gerber X2 net attributes, 2026-09-21], so the only alternative was a part inline in the wire. The §5.4 continuity check catches a swapped control pair before the first power, and FW-1's 5 mA drive strength limits what the pin pushes if one gets through. **Left uncovered:** +V touching the control wire. That would cost the socketed XIAO, and it turns the charger on whatever the firmware does. That is L6's case, the same as a shorted #2814 |
+| — | *(on the #2814)* R4 10 kΩ + R5 10 kΩ | ON → R4 → Q3 base; R5 base → emitter (GND) | **The off-state pull-down, already on the board** [S, Pololu schematic]. With ON floating, R5 holds Q3's base at 0 V and the switch is off. That is Pololu's "leaving it disconnected will leave the switch off". GPIO4's input leakage, at most 50 nA [S, ESP32-C3 datasheet Table 14 p.32], gives at most 1 mV across 20 kΩ [D]. GPIO high drives ON to ~3.3 V at 0.17 mA [D: 3.3 V ÷ 20 kΩ], above the ~1 V threshold [S, §4.2]; R4/R5 halve it onto Q3's base-emitter junction |
 
 > **Correction record (R13), 2026-09-21.** Rev 0.2 and the first draft of rev 0.3 specified an external **Rpd 10 kΩ** (ON → GND at the switch) to hold ON low with GPIO4 high-impedance, and gave ON = 3.0 V [D: 3.3 × 10/11]. Both were written before the switch's schematic was read. The board already has R4 + R5 = 20 kΩ from ON to GND, which does that job, so Rpd was redundant and the 3.0 V omitted the on-board resistors. The owner asked why Rpd was required, and the schematic answered it. Rpd was withdrawn (W15). T1 and T2 now prove the on-board pull-down. Evidence: Pololu "Big MOSFET Slide Switch with Reverse Voltage Protection" schematic (file 0J1071, ©2015), read 2026-09-21.
+
+> **Correction record (R13), 2026-09-21.** Rev 0.3 (`34e4a52`) said the ESP32's leakage across the 20 kΩ was "microvolts". The datasheet's maximum input leakage is 50 nA [S, ESP32-C3 datasheet Table 14 p.32], which gives up to 1 mV [D]. The conclusion stands, because turn-on needs ~1 V, but the figure was wrong. It was found while answering the owner's question about Rs.
+
+**Off at every reset: why GPIO4, and why R3 stays unfitted.** Power-on, an AC blip, a watchdog reset (L3), an OTA reflash or a crash each leave the ESP32 in ROM and the bootloader for a few hundred milliseconds before ESPHome drives GPIO4 low. In that window the hardware alone holds the switch off:
+
+1. GPIO4 returns to reset state "1": input, high-impedance, no pull [S, ESP32-C3 datasheet pin table p.20, key p.21]. It is not in the power-up glitch table [S, Table 7 p.21].
+2. With ON undriven, the #2814's R5 holds Q3's base at 0 V and the switch is open [S, Pololu schematic].
+3. Leakage gives at most 1 mV against a ~1 V turn-on [D, above].
+4. Only then does FW-1 drive GPIO4 low (`restore_mode: ALWAYS_OFF`), confirming a state the hardware already set.
+
+No added part, no firmware and no resistor ratio is involved. Fitting R3 is the one way to break it (§7). T1 and T2 prove it on the hardware.
+
+**GPIO20 (the status LED) is not an alternative control pin.** It resets in state "3", with its internal pull-up on [S, p.20–21]. That would lift ON to ~1.0 V at every reset [D: 3.3 × 20/66, with the pull-up at its typical 45 kΩ (Table 14), R4 1 kΩ and the #2814's 20 kΩ]. The datasheet gives that pull-up no minimum, so no added pull-down could be proven adequate on paper.
 
 **The #2814 slide must be locked in OFF.** External ON control works only with the slide OFF: "if the physical switch is in the 'off' position, the switch state can also be controlled by a digital signal … via the 'ON' control pin" [S, #2814 page]. Glue or lacquer it.
 
@@ -300,7 +314,7 @@ This is a new, small configuration, **not** `battery-bank-monitor.yaml`. It is g
 
 | ID | Requirement |
 |---|---|
-| FW-1 | Enable switch on GPIO4, `restore_mode: ALWAYS_OFF`. Only the state machine drives it |
+| FW-1 | Enable switch on GPIO4, `restore_mode: ALWAYS_OFF`, **`drive_strength: 5mA`**. Only the state machine drives it. ON needs 0.17 mA [D: 3.3 V ÷ 20 kΩ], so the weakest setting drives it fully and pushes less into a swapped or shorted control wire. The options are 5, 10, 20 (default) and 40 mA on esp-idf [S, esphome.io pin schema], which the bank firmware already uses. The 5 mA is ESPHome's nominal label; the datasheet characterises only the 40 mA setting [S, Table 14], so the dead-short current is [I] |
 | FW-2 | *Withdrawn in rev 0.3* (profile select; bank deferred) |
 | FW-3 | Start preconditions: VBUS (switch open) > 10.0 V (Cyclenbatt BMS UVP [[supplemental-analysis.md](../docs/supplemental-analysis.md)]) and < 14.60 V; battery-case temperature above 32 °F (RQ-9); no latched fault. A reversed or absent pack reads ≤ 10.0 V and is refused |
 | FW-4 | **Hard stops** (any one → switch OFF, FAULT latched): **raw VBUS > 14.60 V** on one averaged sample; I > I_max = 5.0 A (RQ-1); session time > T_max; temperature ≤ 32 °F, or the DS18B20 missing or NaN; INA228 read failure or NaN on consecutive reads. **Upper temperature stop: blocked on Q2 (RQ-11)** |
@@ -398,7 +412,6 @@ Any firmware edit re-runs T1–T4, T6–T9 and T13 (R7: a gate untested against 
 | Pololu **#2814** Big MOSFET Slide Switch, MP | $5.49 [S, Pololu page, 2026-09-21]. Ships with 5 mm terminal blocks and 0.1″ headers |
 | Plug-in countdown timer (mechanical or standalone digital, **no Wi-Fi**) | L6 |
 | ABS enclosure, vented; DIN rail offcut; 3 cord grips | O6 |
-| 1 kΩ ¼ W resistor | Rs (possibly on hand) |
 | JST-XH 2-pin and 3-pin housings with crimps | J2 and TB2 cables, if not on hand |
 | One 16–14 AWG heat-shrink butt splice | S1, if not on hand |
 | 16 AWG red/black; 18 AWG red/black; 22 AWG red/black; a 24–26 AWG pair; 3-conductor DS18B20 cable; 2-conductor AC cord | if not on hand |
@@ -428,3 +441,4 @@ Any firmware edit re-runs T1–T4, T6–T9 and T13 (R7: a gate untested against 
 |---|---|---|
 | 0.2 | 2026-09-21 | In `Lifepo4-Battery-Banks/Top-Off Charger/` (`680caed`). Two packs (UPS P1, bank P2); HDR-30-15; #2815; L4 via INA228 ALERT; keyed connector and fused pigtails; OLED optional |
 | 0.3 | 2026-09-21 | Moved to this repo. **Scoped to the UPS pack**, with the bank deferred (§2; RQ-8, FW-2 and §10.3 withdrawn). **Voltage ceiling on raw VBUS**, with R_series used for reporting only; the margin is checked against the PSU's datasheet regulation (§9). **L4 withdrawn**, with Dx, W15, T5, BOVL and ALERT handling removed. **OLED dropped**, and the status LED is specified (FW-11). **Keyed connector and pigtail dropped**: the lead ends in the fuse and F2 QDs, and RQ-6 becomes procedural (§6.3). **#2815 → #2814** (§4.2, with an R13 correction record). **Normal end is time at voltage**, with the current logged, not acted on (FW-6). **`reboot_timeout: 0s`**, with an IDLE-only recovery reboot (FW-8). Wago splice nodes and a from/to wiring table (§5). Rs moved to the J2 end. **Rpd withdrawn**: the #2814 has its own 20 kΩ pull-down on ON (§7.2, with an R13 correction record). RQ-11 added (blocked on Q2) |
+| 0.4 | 2026-09-21 | **Rs withdrawn** (owner): GPIO4 drives ON directly. A pre-power continuity check (§5.4) and a 5 mA drive strength (FW-1) cover a swapped control pair. §7.2 records the off-at-reset chain and why GPIO20 is not an alternative. The R3 figure is updated (2.2 V). **Leakage figure corrected**, from "microvolts" to ≤ 1 mV (R13, §7.2). Status LED kept (FW-11) |
