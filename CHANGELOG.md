@@ -15,6 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-10-03] — 2026-10-03
+
+### Added
+- `Top-Off-Charger/pcb/`: the owner's charger board, `Top Off Charger- Oct 2026.kicad_pcb` (KiCad 10, v7 saved 2026-10-03 22:42:18), and its `.kicad_pro` design rules. DRC with those rules gives 0 errors, 26 warnings (all silk or library) and 0 unconnected. Schematic parity did not run, as there is no schematic. The `.kicad_prl` (per-user view state) is not committed, and the Gerbers are not exported yet.
+- `Top-Off-Charger/pcb/gnd_drop.py`: a finite-difference solver for the voltage drop across the GND pour, which the design doc's §7.3 uses. `--self-test` checks it against a uniform strip with an exact answer and confirms that a pour cut in two is refused.
+
+---
+
 ## [2026-09-21] — 2026-09-21
 
 ### Added
