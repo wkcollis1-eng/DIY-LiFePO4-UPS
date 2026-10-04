@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Top-Off-Charger/pcb/`: the owner's charger board, `Top Off Charger- Oct 2026.kicad_pcb` (KiCad 10, v7 saved 2026-10-03 22:42:18), and its `.kicad_pro` design rules. DRC with those rules gives 0 errors, 26 warnings (all silk or library) and 0 unconnected. Schematic parity did not run, as there is no schematic. The `.kicad_prl` (per-user view state) is not committed, and the Gerbers are not exported yet.
 - `Top-Off-Charger/pcb/gnd_drop.py`: a finite-difference solver for the voltage drop across the GND pour, which the design doc's §7.3 uses. `--self-test` checks it against a uniform strip with an exact answer and confirms that a pour cut in two is refused.
 
+### Changed
+- `Top-Off-Charger/top-off-charger-design.md` rev 0.6: a purpose-built board (§7) replaces the reuse of the V2 board and the lever nuts. Screw terminals TB1/TB2 and board copper replace most of the loose wiring. The status LED moves to GPIO3 (D1), on a 3 mm footprint, with a call-out for which leg goes in which pad (§5.5). Other additions: staged first power (§5.4), a ground-pour drop analysis (§7.3, falsified by T10) and the board's parts (§13). T7 now holds SDA to GND instead of unplugging the INA228. Open items O11–O14 are new. Rev 0.5 had no CHANGELOG entry; this one does not backfill it.
+
 ---
 
 ## [2026-09-21] — 2026-09-21

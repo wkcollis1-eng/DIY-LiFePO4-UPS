@@ -1,8 +1,8 @@
 # LiFePO4 Top-Off / Top-Balance Charger — Design
 
 **System:** bench top-balance hold charger for the UPS's Cyclenbatt 12V 10Ah. **The pack is removed from the UPS for every session** [owner, 2026-09-21], **charged to full on a Dylannet P20 at 5 A, then held at 14.40 V here** [owner, 2026-09-22; §4.3, §10.1].
-**Controller:** Battery_Bank-Monitor-THT **V2 Rev 1.1** carrier + XIAO ESP32-C3 + Adafruit INA228 (#5832), a second build of the bank-monitor board ([wiring summary v1.10][ws], cited below as **ws**).
-**Document revision:** 0.5 — **pre-build design draft, 2026-09-22.** Nothing here is built or tested. Scoped to the UPS pack and moved here from `Lifepo4-Battery-Banks/Top-Off Charger/` (rev 0.2 is commit `680caed` in that repo). Changes are listed in §15.
+**Controller:** the **Top Off Charger PCB** (`Top Off Charger- Oct 2026.kicad_pcb`, §7), one 2-layer board carrying the XIAO ESP32-C3, Adafruit INA228 (#5832), Pololu #2814 switch, Pololu #5382 ideal diode, Pololu D24V7F3 buck and the status LED. It replaces rev 0.5's second build of the bank-monitor board and its Wago-spliced wiring. The bank-monitor build is still cited for the rules that carry over ([wiring summary v1.10][ws], cited below as **ws**).
+**Document revision:** 0.6 — **pre-build design draft, 2026-10-03.** The board is laid out, with DRC at 0 errors, 26 warnings (all silk or library) and 0 unconnected. Schematic parity did not run (§7). It is not fabricated, and nothing here is built or tested. Scoped to the UPS pack and moved here from `Lifepo4-Battery-Banks/Top-Off Charger/` (rev 0.2 is commit `680caed` in that repo). Changes are listed in §15.
 **Author:** William Collis (draft prepared with Claude Code)
 
 Provenance tags follow the house convention: **[M]** measured, **[S]** spec (document + page), **[D]** derived (formula shown), **[I]** inferred (with its falsifier). The on-hand fuse has no maker's datasheet, so its interrupt rating is **[I]** (O2). Seller listings are cited as **[listing]**: below [S], because R16 needs a maker's document for the identifier on the unit.
@@ -142,19 +142,19 @@ The owner's charger does the bulk charge before every hold session. Everything b
 ```text
 AC 120 V ─ plug-in COUNTDOWN TIMER (L6, no network) ─ 2-wire cord ─ G1 ─► HDR-30-15 AC/L, AC/N
 
-POWER PATH  (charge current, ≤ 3.64 A)
-HDR +V ─► [WP] ─► #2814 VIN ~ VOUT ─► #5382 VIN ~ VOUT ─► INA228 VIN+ ═15 mΩ═ VIN− ─► [WL] ─ G2 ─► S1 ─► 5 A FUSE ─► F2 QD ─► pack +
-HDR −V ◄─ [WG] ◄──────────────────────────────────────────────────────────────────────── G2 ──────────────────► F2 QD ─► pack −
+POWER PATH  (charge current, ≤ 3.64 A)      ── board copper ──────────────────────────────────────────────────────────────────────
+HDR +V ─► TB1-1 ═BATT_RAW═► U4 #2814 VIN ~ VOUT ═Batt_SW═► U5 #5382 VIN ~ VOUT ═VIN+═► U2 INA228 VIN+ ═15 mΩ═ VIN− ═VIN−═► TB2-1 ─ G2 ─► S1 ─► 5 A FUSE ─► F2 QD ─► pack +
+HDR −V ◄─ TB1-2 ◄══════════════════════════════════ GND pour (both layers) ═══════════════════════════════════════ TB2-2 ─ G2 ──────────────────► F2 QD ─► pack −
 
-[WP]  Wago 3-position, positive splice:  HDR +V · #2814 VIN · V2 board TB1-2 (BATT_RAW)
-[WG]  Wago 5-position, GROUND STAR:      HDR −V · V2 board TB1-1 · #2814 GND · #5382 GND · lead −
-[WL]  Wago 3-position, lead splice:      INA228 VIN− · lead +   (one port spare)
+BOARD SUPPLY (upstream of the switch)
+BATT_RAW ─► F1 1 A slow-blow ═V_Fused═► U3 D24V7F3 ═+3V3═► U1 XIAO 3V3 · U2 INA228 VCC
 
-CONTROL
-V2 J2-1 (GPIO4) ────────────────────────► #2814 ON   (direct; on-board R4 + R5 = 20 kΩ to GND holds it off)
-V2 J2-2 (GND)   ────────────────────────► #2814 GND
+CONTROL  (on-board traces)
+U1 D2 (GPIO4) ═GPIO4_SW═► U4 pin 1 ON   (direct; the #2814's own R4 + R5 = 20 kΩ to GND holds it off)
+U1 D1 (GPIO3) ═GPIO3═► R1 1 kΩ ═GPIO3_LED═► LED anode;  LED cathode ─► GND      (status LED, §5.5)
+U1 SDA / SCL ═► U2 SDA / SCL
 
-#2814 slide: LOCKED in OFF.  INA228 VBUS jumper: CLOSED.  V2 board R3: NOT FITTED.
+#2814 slide: LOCKED in OFF.  INA228 VBUS jumper: CLOSED.  GPIO4_SW: NO pull-up (the board has no position for one; never add one, §7.2).
 ```
 
 The order of the power path is deliberate:
@@ -163,19 +163,26 @@ The order of the power path is deliberate:
 - **The ideal diode** blocks the battery from back-feeding the PSU (the job it already does in the UPS [[bom.md](../docs/bom.md)]). It does two further jobs here:
   - **It makes L6 end everything.** The board is fed from the PSU side of the switch. Without the diode, AC loss with the switch ON would let the pack back-feed through the switch into the board. The ESP32 would stay up and hold the switch on, and the pack would drain into the PSU output with nothing to stop it. T12 proves this.
   - **It guarantees I ≥ 0 through the shunt.** The VBUS ceiling trip (§9) relies on this.
-- **The board is fed upstream of the switch**, from the PSU side. It is alive whenever AC is on, draws nothing from the battery when AC is off, and keeps reading the pack while the switch is open.
+- **The board is fed upstream of the switch**, from the PSU side (BATT_RAW → F1 → U3). It is alive whenever AC is on, draws nothing from the battery when AC is off, and keeps reading the pack while the switch is open.
 - **VBUS is on the battery side.** With the switch open, VIN+ is tied to the battery through the idle shunt, so VBUS reads the pack's open-circuit voltage before every start.
-- **The star is [WG].** The charge return (lead −) and the board ground (TB1-1) meet only there. So the charge current never flows in the conductor the INA228 measures VBUS against.
+- **The ground is the pour, not a star (rev 0.6).** Rev 0.5 made the [WG] lever nut a ground star, so charge current never flowed in the conductor the INA228 measures VBUS against. On the board, pack − (TB2-2) and HDR −V (TB1-2) both land on the GND pour, and so does the INA228's GND (U2 pin 2). The charge return therefore passes the INA228's reference on its way across the pour, and **VBUS reads high by 0.375–0.407 mΩ × I: 1.36–1.48 mV at 3.64 A** [D, §7.3]. High is the safe direction for the 14.60 V ceiling (§9). It is zero before every start (I = 0, FW-3), and T10 measures it as part of R_series.
 
-### 5.1 Splice nodes
+### 5.1 Terminal blocks (rev 0.6: replaces the splice nodes)
 
-| Node | Part | Ports used | Conductors landed |
-|---|---|---|---|
-| **WP** | Wago lever nut, 3-position | 3 of 3 | W3 (from HDR +V, 18 AWG) · W4 (to #2814 VIN, 18 AWG) · W5 (to TB1-2, 22 AWG) |
-| **WG** | Wago lever nut, 5-position (**the ground star**) | 5 of 5 | W6 (from HDR −V, 18 AWG) · W7 (to TB1-1, 22 AWG) · W8 (to #2814 GND, 22 AWG) · W9 (to #5382 GND, 22 AWG) · W18 (lead −, 16 AWG) |
-| **WL** | Wago lever nut, 3-position | 2 of 3 | W12 (from INA228 VIN−, 18 AWG) · W16 (lead +, 16 AWG) |
+The rev 0.5 lever nuts WP, WG and WL are gone: their joints are board copper now. Only four wires land on the board, on two 2-position 3.81 mm screw terminals [M, board file, footprint `TerminalBlock_Phoenix_MKDS-1-2-3.81_1x02_P3.81mm_Horizontal`; the part fitted is not named on the board, O9]. Directions below assume the board is held **component side up, with the INA228 end at the top** (the TB2 end; KiCad's y = 10 mm edge).
 
-Check that the wire range printed on the lever nuts covers 22–16 AWG. Fix all three nodes to the enclosure (a mounting carrier or an adhesive base) so none can float against the PSU (O6).
+| Block | Pin | Pad | Silk | Net | Wire landed | Which screw |
+|---|---|---|---|---|---|---|
+| **TB1** (PSU in) | 1 | square | `+` | BATT_RAW | W3 from HDR **+V** | the **upper** screw, nearer F1 and C4 |
+| | 2 | round | `GND` | GND | W6 from HDR **−V** | the **lower** screw, nearer the H4 corner hole |
+| **TB2** (pack lead) | 1 | square | `+` | VIN− (the shunt's low side) | W16, lead **+** | the **right** screw, nearer the board centre |
+| | 2 | round | `GND` | GND | W18, lead **−** | the **left** screw, nearer the left edge |
+
+[M, board file v5, saved 2026-10-03 22:29:12, pad nets and positions; silk as corrected by the owner in v5. In v7 (22:42:18) the owner deleted two duplicate TB1 labels. The `+` and `GND` left are the ones this table names.]
+
+- **TB1's wires enter from the board's left edge**; **TB2's from the top edge**, so the lead leaves the box that way without a hard turn (owner, rev 0.6 layout).
+- **TB1's `+` and `GND` silk sits under the #2814.** Both labels sit at x 21–22 mm, inside U4's outline (x ≥ 20.76 mm) [M, board file v7], so a seated #2814 hides them. Read them before U4 goes in, or go by the table: **upper screw `+`**. TB2's labels are clear of every module.
+- **Nothing on the board blocks a reversed TB1.** BATT_RAW has no diode or protection part [M, netlist §7]. The #2814 has its own reverse-voltage protection [S, product name, §14], but F1's branch feeds C4 and U3 directly. Check polarity before first power (§5.4).
 
 ### 5.2 From/to — inside the enclosure
 
@@ -183,37 +190,69 @@ Check that the wire range printed on the lever nuts covers 22–16 AWG. Fix all 
 |---|---|---|---|---|
 | W1 | AC cord, **hot** conductor (smooth jacket; narrow blade on a polarized plug) | HDR-30-15 **AC/L** | 2-conductor cord, through cord grip **G1** | HDR screw terminal. The cord's plug goes into the countdown timer |
 | W2 | AC cord, **neutral** conductor (ribbed jacket; wide blade) | HDR-30-15 **AC/N** | same cord | HDR screw terminal |
-| W3 | HDR-30-15 **+V** | **WP** | 18 AWG red | HDR screw terminal → lever nut |
-| W4 | **WP** | #2814 **VIN** | 18 AWG red | #2814 input 5 mm terminal block |
-| W5 | **WP** | V2 board **TB1-2 (BATT_RAW)** | 22 AWG red | TB1 is a Phoenix MKDS-1.5-3.81 screw terminal [[ws] §4.6]. The board's F1 (1 A SB) protects it. **The board has no reverse protection** [[ws] §4.4]: check TB1 polarity before first power |
-| W6 | HDR-30-15 **−V** | **WG** | 18 AWG black | HDR screw terminal → lever nut |
-| W7 | **WG** | V2 board **TB1-1 (GND)** | 22 AWG black | Phoenix screw terminal |
-| W8 | **WG** | #2814 **GND** (input terminal block) | 22 AWG black | Keeps the #2814 grounded even if the J2 cable is unplugged. It then sees ON disconnected, which is **off** [S, §4.2] |
-| W9 | **WG** | #5382 **GND** (either pad; they are one node) | 22 AWG black | 5 mm terminal block or solder. The LM74700 controller needs it |
-| W10 | #2814 **VOUT** | #5382 **VIN** | 18 AWG red | #2814 output terminal block → #5382 input |
-| W11 | #5382 **VOUT** | INA228 breakout **VIN+** | 18 AWG red | INA228 3.5 mm terminal block. VBUS jumper closed, so VBUS = this node. Confirm 18 AWG fits (O9) |
-| W12 | INA228 breakout **VIN−** | **WL** | 18 AWG red | 3.5 mm terminal block → lever nut |
-| W13 | V2 board **J2-1 (GPIO4_BTN)** | #2814 **ON** (0.1″ hole) | 24–26 AWG | JST-XH 2-pin housing at J2; solder at the #2814. **Direct, no series resistor** (§7.2). Check the pair before the first AC on (§5.4) |
-| W14 | V2 board **J2-2 (GND)** | #2814 **GND** (0.1″ hole) | 24–26 AWG, paired with W13 | ON's signal return. Solder at the #2814. It parallels W7 + W8 at milliamp level and carries no charge current |
+| W3 | HDR-30-15 **+V** | board **TB1-1 (BATT_RAW, `+`)** | 18 AWG red | HDR screw terminal → TB1 upper screw (§5.1). Feeds the power path and, through F1 (1 A SB), the board supply. PSU-fed only: the ideal diode keeps the pack off it (§5) |
+| W4, W5 | *Withdrawn in rev 0.6* | — | — | Board copper: the BATT_RAW track to U4 VIN and to F1 (§7) |
+| W6 | HDR-30-15 **−V** | board **TB1-2 (GND)** | 18 AWG black | HDR screw terminal → TB1 lower screw. The charge return lands here from the pour (§5, §7.3) |
+| W7–W14 | *Withdrawn in rev 0.6* | — | — | Board copper. W7–W9 (grounds) → the GND pour; W10 → the Batt_SW track; W11 → the VIN+ track; W12 → the VIN− track; W13/W14 (the J2 control pair) → the GPIO4_SW track, U1 D2 to U4 ON, and the pour. The #2814 and #5382 grounds are their own module pins on the pour (§7) |
 | W15 | *Withdrawn in rev 0.3* | — | — | No external pull-down: the #2814 carries its own (§7.2) |
 
 ### 5.3 From/to — leaving the enclosure
 
 | W# | From | To | Wire | Termination / notes |
 |---|---|---|---|---|
-| W16 | **WL** | Splice **S1** → fuse holder, line-side lead | 16 AWG red, through cord grip **G2** | **Lead +.** S1 is a crimped, heat-shrunk butt splice, not a lever nut: this joint is outside the box, on a lead that is handled every session. Length to suit; R_series is measured at T10 |
+| W16 | board **TB2-1 (VIN−, `+`)** | Splice **S1** → fuse holder, line-side lead | 16 AWG red, through cord grip **G2** | **Lead +.** S1 is a crimped, heat-shrunk butt splice, not a lever nut: this joint is outside the box, on a lead that is handled every session. Length to suit; R_series is measured at T10 |
 | W17 | Fuse holder, battery-side lead (**5 A**) | **F2 female QD** → Cyclenbatt **+** | the holder's own lead | **The fuse sits within a few inches of the + tab** (§6.1). Insulated 6.3 mm female QD |
-| W18 | **WG** | **F2 female QD** → Cyclenbatt **−** | 16 AWG black, through **G2**, twisted with W16 | **Lead −**, the charge return. Insulated 6.3 mm female QD |
+| W18 | board **TB2-2 (GND)** | **F2 female QD** → Cyclenbatt **−** | 16 AWG black, through **G2**, twisted with W16 | **Lead −**, the charge return. Insulated 6.3 mm female QD |
 | W19 | *Withdrawn in rev 0.5* | — | — | DS18B20 dropped: RQ-9 and RQ-11 are met by siting (§3). Enclosure temperature comes from the INA228 die (FW-10) |
 
-Not wired in this build: **J1** (OLED, dropped), **TB2** (DS18B20, dropped in rev 0.5), the **ALERT** test point (L4 withdrawn), the INA228's separate VBUS lead (the jumper replaces it).
+Not on the rev 0.6 board: an OLED header (dropped in rev 0.3), a DS18B20 terminal (dropped in rev 0.5), an ALERT test point (L4 withdrawn), or a separate VBUS lead (the jumper replaces it). INA228 header pins 5 (VBUS) and 8 have no net [M, board file].
 
 ### 5.4 Build notes
 
-- **First flash by USB with TB1 unplugged** (AC cord unplugged), OTA after that, and never USB with AC on. This carries over the bank build's rule against a 3V3 source conflict between the buck output and the XIAO's USB-fed LDO [[ws] §2.1].
-- **Power-up tell:** the status LED is firmware-driven, not a rail indicator. If it is **dark for more than ~10 s** after AC on, the board is not running [[ws] §4.4]. Check TB1 polarity first.
-- **Before the first AC on:** DMM continuity from each F2 QD back to its node (+ through the fuse to WL, − to WG), with no continuity between them.
-- **Control pair, before the first AC on, XIAO out of its socket:** J2-1 to #2814 ON reads 0 Ω, and J2-1 to GND does **not** read 0 Ω. It reads roughly 10–20 kΩ through the #2814's R4 + R5, with Q3's base junction across R5 depending on the meter. A 0 Ω from J2-1 to GND means the pair is swapped at the #2814, so GPIO4 would drive into ground. This check takes over one of the jobs of the withdrawn Rs (§7.2).
+- **First flash by USB with AC off** (cord unplugged from the timer), OTA after that, and never USB with AC on. The board puts U3's 3.3 V output straight onto the XIAO's 3V3 pin (§7), so the bank build's rule against a 3V3 source conflict with the XIAO's USB-fed LDO carries over [[ws] §2.1].
+- **Power-up tell:** the status LED is firmware-driven, not a rail indicator. GPIO3 resets as an input with no pull and is not in the power-up glitch table [S, ESP32-C3 datasheet pp.20–21], so the LED is dark from reset until the firmware drives it. If it is **dark for more than ~10 s** after AC on, the board is not running [[ws] §4.4]. Check TB1 polarity first, **then the LED's own polarity** (§5.5): a reversed LED is dark forever and fakes this symptom.
+- **Staged first power (rev 0.6).** The modules plug into sockets, and every socket accepts a module turned 180° or shifted along the row. Bring the board up one module at a time, AC off for every insertion:
+  1. **Bare board** (U1–U4 out; U5 is soldered): DMM TB1-1 to TB1-2 must **not** read a steady short. C4 and C5 charge from the meter, so the reading climbs.
+  2. **U4 (#2814) in:** repeat step 1. Turned 180°, the module's GND pin 2 lands on board pad 11 (BATT_RAW) while its pins 9–10 land on GND pads, so TB1 reads a dead short [D, from the pad map, §7]. On AC, that short would hold the PSU in hiccup.
+  3. **U3 (D24V7F3) in, U1 and U2 out:** AC on, read **3.3 V** at the U1 socket's 3V3 pin and at U2 socket pin 1. Turned 180°, U3 puts V_Fused on its own output pin. What that does to the +3V3 net depends on the module's internals, which the board review could not settle: whether C4's body blocks the reversed insertion is inconclusive [I; falsifier: the step-3 reading]. That is why U1 and U2 stay out until this reads 3.3 V.
+  4. **U2, then U1**, each with AC off.
+- **Control net, XIAO out, U4 in, before the first AC on:** the U1 socket's D2 contact to U4 pin 1 (ON) reads 0 Ω, and D2 to GND reads roughly 10–20 kΩ through the #2814's R4 + R5, with Q3's base junction across R5 depending on the meter. A 0 Ω to GND, or an open to ON, means U4 is mis-seated. On the board, copper replaces the J2 cable, so the pair can no longer be swapped; this check now proves the seating. It still does one of the jobs of the withdrawn Rs (§7.2).
+- **Before the first AC on:** DMM continuity from each F2 QD back to its terminal (+ through the fuse to TB2-1, − to TB2-2), with no continuity between them.
+
+### 5.5 Status LED: where it goes, and which leg goes in which hole
+
+**Where.** With the board component side up and the INA228 end at the top, the LED is on the **right edge**, just below the INA228 module and just above the H3 mounting hole. The XIAO's USB-C socket opens toward it from the left, slightly lower [M, 3D render]. Its two holes are 2.54 mm apart, at (37.50, 39.00) and (40.04, 39.00) mm [M, board file v6, saved 2026-10-03 22:41:30]. R1 (1 kΩ) lies horizontally to its lower left.
+
+```text
+            INA228 end of the board is UP, component side facing you
+
+                silk ring: cut FLAT on this side (on the
+                3 mm footprint the flat shows only as two   right edge
+                short ticks, above and below the square pad) of the board
+                       │                                         │
+                       ▼                                         │
+                       ▐   [■]          (●)                      │
+                       ▐  pad 1        pad 2                     │
+                       ▐  SQUARE       ROUND                     │
+                            │             │                      │
+                        SHORT leg      LONG leg                  │
+                        cathode (−)    anode (+)                 │
+                        to GND         to R1 ─► XIAO D1 (GPIO3)  │
+```
+
+| LED lead | How to recognise it | Goes in | Pad | Net |
+|---|---|---|---|---|
+| **Cathode (−)** | the **short** leg; the **flat** on the LED's rim is on this side | the **left** hole, on the flat side of the silk ring | **square** (pad 1) | GND |
+| **Anode (+)** | the **long** leg | the **right** hole, nearer the board edge | **round** (pad 2) | GPIO3_LED → R1 → GPIO3 |
+
+**Mnemonic: Square = Short = Flat = minus.** The square pad, the short leg and the flat on the rim all mark the same lead, the cathode. The long leg goes in the round hole.
+
+- **What is measured, and what is convention.** The pad shapes, their nets and the flat in the silk are [M], read from the board file: pad 1 is square and on GND, and pad 2 is round and on R1. "Long leg = anode, flat = cathode" is the industry convention. For this part it is **[I]**: Lite-On's LTL-4231N datasheet could not be retrieved (§14).
+- **The check that settles it, before soldering and before trimming the legs** (trimmed legs lose the length cue). Put the DMM on diode test, red probe on the long leg and black on the short. The LED should glow faintly and read about 2 V [I: the listing's 2.1 V forward voltage]. If it reads open, swap the probes. If it glows that way round, this part breaks the convention: trust the meter, and put the lead on the **black** probe in the square hole.
+- **A reversed LED** sits reverse-biased at 3.3 V and never lights. Whether that is inside its reverse rating is [I] without the datasheet. The real cost is the indicator: a dark LED reads as "board not running" (§5.4), and FW-11's status patterns are lost. The first boot checks it: once HA or the web page shows the node running, the LED must show the IDLE blink.
+- **Current:** about 1.2 mA [D: (3.3 V − 2.1 V) ÷ 1 kΩ; Vf from the listing]. Whether that is bright enough in room light is [I]. The falsifier is the first boot. If it is too dim, R1 is the only part to change.
+- **Size: 3 mm.** The Value field names the LTL-4231N, which LCSC lists as a 3 mm (T-1) part [listing, C125082]. The owner changed the footprint from `LED_D5.0mm` to `LED_D3.0mm` in v6 (2026-10-03 22:41:30), and that closed Q6. The pads did not move: same positions, same nets, 1.8 mm pads, 0.9 mm drill [M, v5/v6 diff]. The Value text still reads "LED_D5.0mm - LTL-4231N". It is on F.Fab, which is not fabricated, so nothing printed is wrong (O13).
+- **USB-C plug clearance.** The XIAO sits about 8 mm up on its sockets (owner), and its USB-C socket opens toward the LED, so a cable's overmold passes over or beside it. Whether it clears the 3 mm LED is not modeled [I]. **Dry-fit before soldering:** seat the XIAO, plug a USB-C cable in, and stand the LED in its holes. If they touch, mount the LED flush, or do the one USB flash (§5.4) with the XIAO out of its socket. Every later flash is OTA.
 
 ---
 
@@ -251,61 +290,120 @@ What reversal would do: with the switch open, a reversed pack puts about −13 V
 ### 6.4 Conductors
 
 - **External lead:** 16 AWG, 4.016 mΩ/ft [S, standard AWG table, 20 °C].
-- **Internal power path** (W3, W4, W6, W10–W12): 18 AWG, short runs. Board feeds and grounds (W5, W7–W9): 22 AWG.
-- **Voltage drop** between VBUS and the pack terminals is I × R_series, where R_series = shunt (15 mΩ [S, Adafruit #5832]) + fuse + both lead conductors + splice + contacts. Measure it once at commissioning (T10). **The firmware does not use it (rev 0.5):** it publishes raw VBUS and I, and V_batt = VBUS − I·R_series is computed in InfluxDB/Grafana, where a revised R_series re-computes history. T10's value also splits FW-12's per-session edge resistance into series and pack parts.
+- **PSU to board** (W3, W6): 18 AWG, short runs.
+- **On the board (rev 0.6):** the power path is 1.5 mm track on F.Cu: BATT_RAW, Batt_SW, VIN+ and VIN−, each a single route [M, board file]. IPC-2221's external-conductor formula gives 3.21 A at a 10 °C rise and 4.35 A at 20 °C for 1.5 mm of 1 oz copper [D: I = 0.048 · ΔT^0.44 · A^0.725, with A = 81.4 mil²; 1 oz is assumed, not measured]. 2.0 A is the steady case (RQ-12); 3.64 A is a transient no longer than t_ol. The ground is the pour (§7.3).
+- **Module contacts.** U2's VIN+ and VIN− are one socket contact each, so the whole charge current crosses two Sullins contacts rated 3 A [S, Sullins 0.100″ female header datasheet pp.114–115]. That covers 2.0 A steady. **3.64 A exceeds it**, and is tolerated only as the t_ol transient [I; falsifier: the contact runs warm to the touch after T11's opening minutes]. The #2814 has two contacts on VIN and two on VOUT (§7). U5 is soldered on pin headers.
+- **Voltage drop** between VBUS and the pack terminals is I × R_series, where R_series = shunt (15 mΩ [S, Adafruit #5832]) + U2's VIN− contact + the VIN− track (≈ 8.0 mΩ [D: 24.4 mm ÷ 1.5 mm = 16.3 squares × 0.4926 mΩ/sq, at 35 µm and 20 °C]) + TB2 + fuse + both lead conductors + splice + QDs + the pour's shared path (0.375–0.407 mΩ [D, §7.3]). VIN+ is upstream of the VBUS sense point, so its track is not in R_series. Measure it once at commissioning (T10). **The firmware does not use it (rev 0.5):** it publishes raw VBUS and I, and V_batt = VBUS − I·R_series is computed in InfluxDB/Grafana, where a revised R_series re-computes history. T10's value also splits FW-12's per-session edge resistance into series and pack parts.
 - **Worked example**, lead alone: 5 ft each way of 16 AWG is 40 mΩ [D: 10 ft × 4.016 mΩ/ft], which drops 146 mV at 3.64 A [D]. The drop falls toward zero as the current tapers.
 
 ---
 
-## 7. Board configuration — deltas from the bank-monitor build
+## 7. The board — Top Off Charger PCB (rev 0.6)
 
-The board pin map below is from `Battery_Bank-Monitor-THT-V2 - Rev_1.kicad_pcb`. It was cross-checked against the **fabricated copper**: the Gerber F_Cu X2 net attributes (exported 2026-06-25) give the same net on every pin used here, 62 attributed pads, none ambiguous [M, 2026-09-21]. The `.kicad_pcb` was saved after the Gerbers (06-26 22:03), so the Gerbers, not the board file, are the authority for what was built.
+The controller is a purpose-built board, `Top Off Charger- Oct 2026.kicad_pcb` (KiCad 10): two layers, 31.5 × 95 mm [M, F.Cu/B.Cu stackup, Edge.Cuts]. It is drawn for OSH Park and replaces rev 0.5's reuse of a bank-monitor V2 board. Everything in this section is read from the board file using kicad-cli 10.0 [M]. Most of it was read from v6 (saved 2026-10-03 22:41:30, 318,750 B). The gate verdicts are from v7 (22:42:18, 318,320 B). The only change from v6 to v7 is the deletion of two silk texts, so every "[M, board file v6]" citation holds for v7.
 
-| Item | Bank-monitor build | **Charger build** | Why |
+- **Not yet fabricated.** The board file, v7, and its project file (design rules) are the only artifacts. Both are in [`pcb/`](pcb/) (O11). When the Gerbers are exported for the order, they become the authority for what was built, as the V2 Gerbers were for rev 0.5.
+- **No schematic.** The board was drawn directly, so the netlist below is the design. KiCad's schematic-parity check therefore cannot run.
+
+**Gate verdicts, v7:**
+
+- DRC (`--severity-all --refill-zones`, with the board's `.kicad_pro` rules): **0 errors, 26 warnings** (lib_footprint_issues 3, lib_footprint_mismatch 9, silk_edge_clearance 5, silk_over_copper 7, silk_overlap 2), **0 unconnected**.
+- Schematic parity: **DID NOT RUN** (no `.kicad_sch`). This is a WARN, not a clean result.
+- None of the 26 warnings is in an electrical class. Two of the silk items are worth fixing before the order (O13).
+
+| Ref | Part (from the Value field) | Mounting | Pads → nets |
 |---|---|---|---|
-| INA228 onboard 15 mΩ shunt | removed | **KEEP** | It is the charger's shunt. At 3.64 A it drops 55 mV [D], inside the ±163.84 mV range [D: 312.5 nV × 2¹⁹, from `battery-bank-monitor.yaml`]. The board is sold for up to 10 A [S, Adafruit #5832 page] |
-| Breakout VBUS jumper | open | **CLOSED** (VBUS = VIN+) | High-side use [S, Adafruit #5832 page]. U2 pin 5 (VBUS) is a carrier no-connect [M, Gerber net attribute N/C], so the closed jumper reaches nothing on the board |
-| VBUS lead to busbar | fitted | **none** | VBUS comes from the jumper |
-| **R3** (10 kΩ, GPIO4_BTN ↔ +3V3) | fitted | **DO NOT FIT: mandatory** | GPIO4 powers up high-impedance with no internal pull (reset state "1") and is not in the power-up glitch table [S, ESP32-C3 datasheet pp.20–21]. With R3 fitted, ON sits at 2.2 V [D: 3.3 × 20/30, where 30 kΩ = R3 10 kΩ + the #2814's on-board 20 kΩ] through every boot, watchdog reset and flash, above the ~1 V threshold, so **the charger turns on whenever the ESP32 is not running** |
-| J2 (GPIO4_BTN / GND) | wake button | **#2814 ON control** (§5.2 W13, W14) | The only broken-out spare pin |
-| TB1 feed | positive busbar | **WP (PSU +V), upstream of the switch** | Board alive whenever AC is on; zero battery drain when AC is off |
-| TB2 (DS18B20) | battery case | **unused** (rev 0.5) | RQ-9 and RQ-11 are met by siting (§3). Enclosure temperature is the INA228 die (FW-10) |
-| J1 (OLED) | fitted | **not fitted** | HA and the ESPHome web page show status; the status LED covers Wi-Fi down (FW-11) |
-| ALERT (GPIO5, test point "ALERT") | alert input | **unused** | L4 withdrawn (§8) |
-| F1 (1 A slow-blow, BATT_RAW → V_FUSED), U3 D24V7F3 | as built | unchanged | The D24V7F3 takes 4–36 V [[ws] §3.1], which covers the PSU's 22.5 V OVP ceiling [S] |
+| U1 | Seeed XIAO ESP32-C3 | Sullins female sockets, 2 × 1×7, ~8 mm up (owner) | 3V3 → +3V3; GND; D1 → GPIO3; D2 → GPIO4_SW; SDA, SCL (§7.1) |
+| U2 | Adafruit INA228 #5832 | Sullins socket, 1×8 | 1 → +3V3; 2 → GND; 3 → SCL; 4 → SDA; 6 → VIN−; 7 → VIN+; 5 (VBUS) and 8 have no net |
+| U3 | Pololu D24V7F3, 3.3 V | Sullins socket, 1×3 | V_Fused in, GND, +3V3 out |
+| U4 | Pololu #2814 Big MOSFET Slide Switch, MP | Sullins sockets, 2 × 1×6 | 1 (ON) → GPIO4_SW; 11–12 (VIN) → BATT_RAW; 5–6 (VOUT) → Batt_SW; 2–4 and 9–10 → GND; 7–8 have no net |
+| U5 | Pololu #5382 ideal diode | **soldered** on pin headers, ~2.54 mm up (owner, 2026-10-03) | 1 → Batt_SW (from the switch); 3 → VIN+ (to the shunt); 2 and 4 → GND |
+| F1 | 1 A slow-blow, 5 × 20 mm, in a Würth 696108003002 holder | soldered | BATT_RAW → V_Fused: the board supply only, not the charge path |
+| C1 | 10 µF 25 V X7R, disc | soldered, **under U3's module** | +3V3 |
+| C2, C3 | 0.1 µF 50 V X7R, disc | soldered; C3 **under the XIAO** | +3V3; C2 beside U2 |
+| C4 | 47 µF 50 V, radial 6.3 × 11 mm | soldered | V_Fused (U3's input) |
+| C5 | 0.1 µF 50 V X7R, disc | soldered | V_Fused (U3's input) |
+| R1 | 1 kΩ 1/4 W, axial | soldered, partly **under the XIAO** | GPIO3 → GPIO3_LED |
+| LED | Lite-On LTL-4231N, green diffused, 3 mm | soldered; **polarity in §5.5** | pad 1 (square) → GND; pad 2 (round) → GPIO3_LED |
+| TB1, TB2 | 2-position 3.81 mm screw terminals | soldered | §5.1 |
+| H1, H3, H4 | M3 mounting holes | — | no net |
+
+The V_Fused capacitors are rated 50 V against the PSU's 22.5 V OVP ceiling [S, §4.1]. C1, at 25 V, sits on 3.3 V.
+
+**Solder the parts that sit under a module first:** C1 under U3, and C3 and R1 under the XIAO. The 2026-10-03 review's 3D render showed C1 clearing U3's underside at the 8.5 mm socket height [D, render]. On the bench, a module that will not seat fully on its socket is the tell. The plan-view courtyards cannot show this, because U3's covers only its 1×3 socket.
+
+**Netlist** [M, board file v6]. Every track is on F.Cu: 1.5 mm for the power nets and 0.2 mm for signals. Each power net is a single route, with no copper on the bottom layer except the pour.
+
+- **BATT_RAW:** TB1-1, U4 VIN (11, 12), F1.
+- **Batt_SW:** U4 VOUT (5, 6), U5 pad 1.
+- **VIN+:** U5 pad 3, U2 pin 7.
+- **VIN−:** U2 pin 6, TB2-1.
+- **V_Fused:** F1, C4, C5, U3 VIN.
+- **+3V3:** U3 VOUT, U1 3V3, U2 pin 1, C1, C2, C3.
+- **GPIO4_SW:** U1 D2 and U4 pin 1 (ON), and nothing else.
+- **GPIO3:** U1 D1 and R1. **GPIO3_LED:** R1 and LED pad 2.
+- **SDA / SCL:** U1 to U2 pins 4 / 3.
+- **GND:** a pour on both layers, stitched by 92 vias. It reaches 18 pads: TB1-2, TB2-2, U1, U2 pin 2, U3, U4 (2–4, 9, 10), U5 (2, 4), C1–C5, and LED pad 1 (§7.3).
+
+| Setting | Charger build | Why |
+|---|---|---|
+| INA228 onboard 15 mΩ shunt | **KEEP** | It is the charger's shunt. At 3.64 A it drops 55 mV [D], inside the ±163.84 mV range [D: 312.5 nV × 2¹⁹, from `battery-bank-monitor.yaml`]. The board is sold for up to 10 A [S, Adafruit #5832 page] |
+| Breakout VBUS jumper | **CLOSED** (VBUS = VIN+) | High-side use [S, Adafruit #5832 page]. U2 pin 5 (VBUS) has no net on this board [M, board file v6], so the closed jumper reaches nothing else, and no VBUS lead is needed |
+| **No pull-up on GPIO4_SW** | **mandatory**; the board has no position for one | GPIO4 powers up high-impedance with no internal pull (reset state "1") and is not in the power-up glitch table [S, ESP32-C3 datasheet pp.20–21]. A 10 kΩ pull-up (the V2 board's R3) would hold ON at 2.2 V [D: 3.3 × 20/30, where 30 kΩ = R3 10 kΩ + the #2814's on-board 20 kΩ] through every boot, watchdog reset and flash, above the ~1 V threshold, so **the charger turns on whenever the ESP32 is not running** (§7.2) |
+| Board supply | **BATT_RAW, upstream of the switch** (TB1-1, from PSU +V) | Board alive whenever AC is on; zero battery drain when AC is off |
+| F1 (1 A slow-blow, BATT_RAW → V_Fused), U3 D24V7F3 | as on the V2 board | The D24V7F3 takes 4–36 V [[ws] §3.1], which covers the PSU's 22.5 V OVP ceiling [S] |
 
 ### 7.1 XIAO pin map (charger)
 
 | XIAO | GPIO | Net | Charger function |
 |---|---|---|---|
-| D2 | GPIO4 | GPIO4_BTN → J2-1 | **Charge enable** output, active-high. Boot-safe only with R3 not fitted |
-| SDA/SCL | GPIO6/7 | SDA/SCL | INA228 |
-| D10 | GPIO10 | GPIO10_DQ | Unused (rev 0.5) |
-| D7 | GPIO20 | GPIO20LED | Status LED (FW-11) |
+| D1 | GPIO3 | GPIO3 → R1 → LED | **Status LED** (FW-11), active-high. Reset state "1", no internal pull, not in the glitch table [S, ESP32-C3 datasheet pp.20–21], so the LED stays dark until the firmware drives it |
+| D2 | GPIO4 | GPIO4_SW → U4 ON | **Charge enable** output, active-high. Boot-safe because nothing pulls the net up (§7.2) |
+| D4 / D5 | GPIO6 / GPIO7 | SDA / SCL | INA228 |
+| 3V3, GND | — | +3V3, GND | Supplied by U3 |
 
-### 7.2 Switch control net (off-board)
+Every other XIAO pin has no net [M, board file v6]: 5V, D0, D6, D7 (GPIO20), D8, D9 and D10 (GPIO10). The footprint's D3 position is a plain non-plated hole. The strapping pins GPIO2 (D0), GPIO8 (D8) and GPIO9 (D9) are among the unconnected pins, so nothing on the board can pull them at boot [S, Seeed XIAO ESP32C3 wiki pin map].
+
+### 7.2 Switch control net (on-board)
 
 | Ref | Part | Connects | Purpose |
 |---|---|---|---|
-| Rs | *Withdrawn in rev 0.4* (owner, 2026-09-21) | — | GPIO4 drives ON directly. The board has no series position on this net: the fabricated copper puts only XIAO D2, R3 pad 1 and J2-1 on GPIO4_BTN [M, Gerber X2 net attributes, 2026-09-21], so the only alternative was a part inline in the wire. The §5.4 continuity check catches a swapped control pair before the first power, and FW-1's 5 mA drive strength limits what the pin pushes if one gets through. **Left uncovered:** +V touching the control wire. That would cost the socketed XIAO, and it turns the charger on whatever the firmware does. That is L6's case, the same as a shorted #2814 |
+| Rs | *Withdrawn in rev 0.4* (owner, 2026-09-21) | — | GPIO4 drives ON directly. On the rev 0.6 board, GPIO4_SW is one 0.2 mm track from U1 D2 to U4 pin 1 (ON), with no other pad on the net [M, board file v6]. There is no series position. The V2 board had none either: XIAO D2, R3 pad 1 and J2-1 only [M, Gerber X2 net attributes, 2026-09-21]. A swapped control pair is no longer possible, because the J2 cable is now copper. The §5.4 continuity check proves U4 is seated, and FW-1's 5 mA drive strength limits what the pin pushes into a fault. **Left uncovered:** +V reaching the track, through a solder bridge or a mis-seated #2814. That would cost the socketed XIAO, and it turns the charger on whatever the firmware does. That is L6's case, the same as a shorted #2814 |
 | — | *(on the #2814)* R4 10 kΩ + R5 10 kΩ | ON → R4 → Q3 base; R5 base → emitter (GND) | **The off-state pull-down, already on the board** [S, Pololu schematic]. With ON floating, R5 holds Q3's base at 0 V and the switch is off. That is Pololu's "leaving it disconnected will leave the switch off". GPIO4's input leakage, at most 50 nA [S, ESP32-C3 datasheet Table 14 p.32], gives at most 1 mV across 20 kΩ [D]. GPIO high drives ON to ~3.3 V at 0.17 mA [D: 3.3 V ÷ 20 kΩ], above the ~1 V threshold [S, §4.2]; R4/R5 halve it onto Q3's base-emitter junction |
 
 > **Correction record (R13), 2026-09-21.** Rev 0.2 and the first draft of rev 0.3 specified an external **Rpd 10 kΩ** (ON → GND at the switch) to hold ON low with GPIO4 high-impedance, and gave ON = 3.0 V [D: 3.3 × 10/11]. Both were written before the switch's schematic was read. The board already has R4 + R5 = 20 kΩ from ON to GND, which does that job, so Rpd was redundant and the 3.0 V omitted the on-board resistors. The owner asked why Rpd was required, and the schematic answered it. Rpd was withdrawn (W15). T1 and T2 now prove the on-board pull-down. Evidence: Pololu "Big MOSFET Slide Switch with Reverse Voltage Protection" schematic (file 0J1071, ©2015), read 2026-09-21.
 
 > **Correction record (R13), 2026-09-21.** Rev 0.3 (`34e4a52`) said the ESP32's leakage across the 20 kΩ was "microvolts". The datasheet's maximum input leakage is 50 nA [S, ESP32-C3 datasheet Table 14 p.32], which gives up to 1 mV [D]. The conclusion stands, because turn-on needs ~1 V, but the figure was wrong. It was found while answering the owner's question about Rs.
 
-**Off at every reset: why GPIO4, and why R3 stays unfitted.** Power-on, an AC blip, a watchdog reset (L3), an OTA reflash or a crash each leave the ESP32 in ROM and the bootloader for a few hundred milliseconds before ESPHome drives GPIO4 low. In that window the hardware alone holds the switch off:
+**Off at every reset: why GPIO4, and why GPIO4_SW has no pull-up.** Power-on, an AC blip, a watchdog reset (L3), an OTA reflash or a crash each leave the ESP32 in ROM and the bootloader for a few hundred milliseconds before ESPHome drives GPIO4 low. In that window the hardware alone holds the switch off:
 
 1. GPIO4 returns to reset state "1": input, high-impedance, no pull [S, ESP32-C3 datasheet pin table p.20, key p.21]. It is not in the power-up glitch table [S, Table 7 p.21].
 2. With ON undriven, the #2814's R5 holds Q3's base at 0 V and the switch is open [S, Pololu schematic].
 3. Leakage gives at most 1 mV against a ~1 V turn-on [D, above].
 4. Only then does FW-1 drive GPIO4 low (`restore_mode: ALWAYS_OFF`), confirming a state the hardware already set.
 
-No added part, no firmware and no resistor ratio is involved. Fitting R3 is the one way to break it (§7). T1 and T2 prove it on the hardware.
+No added part, no firmware and no resistor ratio is involved. Adding a pull-up to GPIO4_SW is the one way to break it, and the rev 0.6 board has no position for one (§7). T1 and T2 prove it on the hardware.
 
-**GPIO20 (the status LED) is not an alternative control pin.** It resets in state "3", with its internal pull-up on [S, p.20–21]. That would lift ON to ~1.0 V at every reset [D: 3.3 × 20/66, with the pull-up at its typical 45 kΩ (Table 14), R4 1 kΩ and the #2814's 20 kΩ]. The datasheet gives that pull-up no minimum, so no added pull-down could be proven adequate on paper.
+**GPIO20, the bank board's LED pin, is not an alternative control pin, and it is not used.** It resets in state "3", with its internal pull-up on [S, p.20–21]. That would lift ON to ~1.0 V at every reset [D: 3.3 × 20/66, with the pull-up at its typical 45 kΩ (Table 14), R4 1 kΩ and the #2814's 20 kΩ]. The datasheet gives that pull-up no minimum, so no added pull-down could be proven adequate on paper. The rev 0.6 board moves the LED to GPIO3 (D1). It resets in state "1" with no pull and no glitch [S, pp.20–21], so the LED stays dark through every reset (§5.4).
 
 **The #2814 slide must be locked in OFF.** External ON control works only with the slide OFF: "if the physical switch is in the 'off' position, the switch state can also be controlled by a digital signal … via the 'ON' control pin" [S, #2814 page]. Glue or lacquer it.
+
+### 7.3 Ground: the pour, and what it costs VBUS
+
+The ground is copper pour on both layers, stitched by 92 vias, with no star point [M, board file v6]. The charge return enters at TB2-2 (pack −) and leaves at TB1-2 (PSU −V). The INA228's ground (U2 pin 2) sits on the same pour, so part of the return path is shared with its reference. **VBUS reads high** by the drop across that shared part. The pack's negative terminal sits above U2's ground by I × R_shared.
+
+| Case | R_shared, TB2-2 → U2 pin 2 | Whole pour, TB2-2 → TB1-2 |
+|---|---|---|
+| 0.1 mm cells, ideal vias | 0.383 mΩ | 1.720 mΩ |
+| 0.05 mm cells, ideal vias | 0.375 mΩ | 1.699 mΩ |
+| 0.1 mm cells, 1.5 mΩ per via barrel [I] | 0.407 mΩ | 1.819 mΩ |
+
+All rows are [D]. **Effect:** VBUS reads high by 0.75–0.81 mV at 2.0 A, and by 1.36–1.48 mV at 3.64 A [D: I × 0.375–0.407 mΩ]. The lead alone drops 146 mV at 3.64 A (§6.4), so the pour is a small term in R_series, and T10 measures R_series whole.
+
+- **Method.** Finite differences on the GND copper, rasterised at 0.1 mm and 0.05 mm. The model includes both layers' zone fills as KiCad refills them, the GND tracks, and the through-hole GND pads (both layers, each pad one node). It also includes the 92 vias, as ideal links or with a barrel resistance. Sheet resistance is 0.4926 mΩ/sq [D: ρ 1.724 × 10⁻⁸ Ω·m, annealed copper at 20 °C, ÷ 35 µm]. 1 A goes in at TB2-2 and out at TB1-2. The solver is [`pcb/gnd_drop.py`](pcb/gnd_drop.py); by default it reads the board file beside it.
+- **Solver checks.** A uniform strip, solved by the same code, gave 1.9481 mΩ against 1.9457 mΩ exact. A pour cut in two is refused by its connectivity check. `python gnd_drop.py --self-test` runs both.
+- **Limits (R11).** One geometry, computed on v4 (2026-10-03). The copper is byte-identical in v5, v6 and v7. Their diffs touch only silk text, the LED footprint (same pads, same nets) and a 3D-model offset [M]. A re-run on v7 itself, the committed file, reproduced all three cases in the table above [M]. Left out: resistance inside the modules, the socket contacts, the solder joints, and temperature (copper at 20 °C; warmer copper reads higher). The copper thickness, 1 oz (35 µm), is assumed, not measured. The 1.5 mΩ barrel is [I].
+- **Falsifier (T10).** With a known charge current flowing, put the DMM on mV from TB2-2's screw to U2's GND pin. It should read about 0.38 mV per amp: about 0.76 mV at 2.0 A [D]. More than 1.5 mV at 2.0 A falsifies the model [I: the margin covers a 0.1 mV meter resolution and probe placement]. If that happens, look for a joint or a thin pour, not a modelling error.
 
 ---
 
@@ -346,7 +444,7 @@ This is a new, small configuration, **not** `battery-bank-monitor.yaml`. It is g
 | FW-8 | Sampling ≥ 1 Hz while charging. INA228 averaging window ≥ one 120 Hz ripple period (8.3 ms [D: 1 ÷ 120 Hz]); one conversion cycle is "one sample period" for §1 clause 2. **ESPHome's defaults miss this (rev 0.5):** its INA2xx driver always converts bus, shunt and die temperature (MODE 0x0F [M, source read, ESPHome 2026.8.2 `ina2xx_base.cpp:344`]), and its defaults of 4120 µs × 128 averages give a 1,582 ms cycle [D: 3 × 4.120 ms × 128]; the bank firmware logged the same ~1.58 s cycle in V1.12. FW-10 pins the settings. Termination and stops are local; HA is not in the loop. **`reboot_timeout: 0s` on both `api:` and `wifi:`** (both default to 15 min [S, esphome.io `api` and `wifi` component pages, read 2026-09-21]): a mid-session reboot is safe (FW-1) but discards the session's Ah count, the Open Item 16 measurement. Because ESPHome notes that a full reboot is sometimes needed to recover Wi-Fi [S, `wifi` page], add an interval check that reboots after 15 min without an API client **only while IDLE** |
 | FW-9 | Publish to HA: raw VBUS, I, P, Ah this session, time at voltage, state, fault reason, the INA228 die temperature (enclosure; report-only), FW-5's pre-step VBUS and I, and FW-12's edge values. **No V_batt and no R_series in firmware** (rev 0.5, §6.4). **Session Ah is the INA228's hardware CHARGE register**, not a sum in a lambda (R10): ESPHome publishes it (`charge:`, INA228/229 only) and `reset_energy_counters()` zeroes it at Start [M, source read, ESPHome 2026.8.2 `ina2xx_base/__init__.py:74`, `ina2xx_base.cpp:237`]. An INA228 power-on reset also clears it, but that reset ends the session anyway (FW-1). Hold session Ah, FW-5's pre-step VBUS and I, and the end reason in `restore_value` globals, written once at DONE/FAULT, so a later reboot does not lose them. Controls: Start/Stop, fault acknowledge |
 | FW-10 | INA228 at boot: shunt 0.015 Ω; ADC range ±163.84 mV; **`adc_time: 1052us`, `adc_averaging: 64`** → 67.3 ms per channel [D: 1.052 ms × 64], above FW-8's 8.3 ms, and a 202 ms cycle [D: 3 × 67.3 ms], inside FW-8's 1 s. Both are valid settings [S, TI INA228 datasheet SLYS021A pp.23–24]. Publish `temperature:` (the die): ±1 °C max at 25 °C, ±2 °C max over −40…+125 °C [S, SLYS021A p.6]. It reads the breakout, which carries the 15 mΩ shunt (0.199 W at 3.64 A [D: 3.64² × 0.015]), so it runs above the enclosure air while current is high [I; falsifier: in T0 it does not move with current]. The XIAO's own sensor is not used: Espressif gives it no accuracy figure and says it reads "higher than the operating ambient" [S, ESP32-C3 datasheet v1.2 §3.3.2 p.19]. No BOVL or ALERT configuration (L4 withdrawn) |
-| FW-11 | **Status LED (GPIO20)**, the only local indicator when Wi-Fi is down. IDLE: one short blink every 3 s. CHARGING: 500 ms on / 500 ms off; a hung CPU freezes it on or off. DONE: two short blinks every 3 s. FAULT: 4 Hz |
+| FW-11 | **Status LED (GPIO3, XIAO D1; active-high, through R1 1 kΩ; §5.5)**, the only local indicator when Wi-Fi is down. IDLE: one short blink every 3 s. CHARGING: 500 ms on / 500 ms off; a hung CPU freezes it on or off. DONE: two short blinks every 3 s. FAULT: 4 Hz |
 | FW-12 | **Edge resistance, both switch edges, every session (rev 0.5).** In the same loop pass, capture VBUS and I from the last sample before the edge and from the first full conversion after it (discard the conversion that straddles the edge), and publish both pairs. R_edge = ΔVBUS ÷ ΔI = R_series + the pack's ohmic resistance + whatever polarisation relaxes within one conversion [I; falsifier: session-to-session scatter too large to trend]. Computed downstream, not in firmware. **The pairing must be done here:** HA writes VBUS and I to InfluxDB as separate state changes with their own timestamps, the problem UPS firmware V1.20's paired V/I blocks fixed (UPS Open Item 21). The ON edge carries the session's largest current; the OFF edge carries the tail. Both happen on a full pack indoors, so conditions repeat session to session. Hold FW-10's conversion settings fixed, or the trend breaks |
 
 **Voltage ceiling: 14.60 V on raw VBUS, not on compensated V_batt.**
@@ -399,16 +497,18 @@ Run T1–T9 and T14 on a **resistive load, no battery**: **10 Ω, ≥ 25 W**, 1.
 | T4 | Test build: ceiling below V_SET | OFF, FAULT "over-voltage" | Production ceiling (14.60 V): a full **warm** session on the load with no trip |
 | T5 | *Withdrawn in rev 0.3* (L4) | — | — |
 | T6 | Test build: I_max below the load current | OFF, FAULT "over-current" | — |
-| T7 | Unplug the INA228 breakout mid-session; then boot with it unplugged and press Start | OFF, FAULT "sensor"; Start refused (NaN, FW-3) | — |
+| T7 | **Rev 0.6:** mid-session, hold SDA to GND with a clip lead from U2's SDA pin (pin 4) to a GND point. Then, **AC off**, remove the INA228, power up, and press Start | OFF, FAULT "sensor"; Start refused (NaN, FW-3), with ON < 1 V at U4 pin 1 | — |
 | T8 | Test build: T_max = 1 min | OFF at 1 min | — |
 | T9 | Pull AC mid-session, then restore | Stays OFF | — |
-| T10 | On the pack, at a steady known current | DMM at the pack terminals vs VBUS → **R_series** (analysis only: V_batt downstream, and FW-12's split, §6.4) | — |
+| T10 | On the pack, at a steady known current | DMM at the pack terminals vs VBUS → **R_series** (analysis only: V_batt downstream, and FW-12's split, §6.4). Also mV from TB2-2's screw to U2's GND pin: ~0.38 mV per amp, and more than 1.5 mV at 2.0 A falsifies §7.3 | — |
 | T11 | First **supervised** session, on a pack fresh off the P20 | Log the current at 14.40 V (the balancer question, §2); set V_hold, T_hold, T_max, t_ol (how long the opening current stays above 2.0 A) and FW-5's thresholds; note how long the pack takes to rest below V_hold. Session 1 may end in an FW-5 trip | — |
 | T12 | Let the countdown timer expire mid-session | Everything dark: LED off, pack current 0. This proves the ideal diode stops the pack keeping the board alive (§5) | — |
 | T13 | *Withdrawn in rev 0.5* (DS18B20 dropped) | — | — |
 | T14 | Test build: overload threshold below the load current | OFF after t_ol, FAULT "overload" | Production threshold (2.0 A) on the 10 Ω load: a full session, no trip |
 
 Any firmware edit re-runs T1–T4, T6–T9 and T14 (R7: a gate untested against a known-bad input is not a gate).
+
+**Why T7 changed in rev 0.6.** On the board, the INA228 is in the charge path: VIN+ and VIN− pass through its socket contacts 7 and 6 (§6.4). Unplugging it mid-session would break up to 3.64 A at a socket contact. It would also end the charge by opening the path, so the test could pass without the firmware doing anything. And it would tilt a module carrying ~14 V on pin 7 beside SDA and SCL on pins 4 and 3. Holding SDA low produces the same I2C read failure without touching the power path [I: the ESP32's I2C pins are open-drain, so the short fights only the breakout's pull-ups]. **Never unplug U2 with AC on.**
 
 ---
 
@@ -420,16 +520,22 @@ Any firmware edit re-runs T1–T4, T6–T9 and T14 (R7: a gate untested against 
 | Q2 | Does the Cyclenbatt label give an **upper** charge temperature? | **Answered 2026-09-22:** none on the label. RQ-11 is met by siting |
 | Q3 | Is the on-hand 5 A fuse a mini (ATM/APM) or a regular (ATC) blade, and whose make? | **Answered 2026-09-22:** mini (ATM/APM), from an AKOSN assortment kit with no maker's datasheet (O2) |
 | Q4 | Which 3-stage charger does the bulk charge, and what are its LiFePO4 voltage, current and end-of-charge behaviour? | **Answered 2026-09-22:** Dylannet P20 at 5 A (§4.3) |
+| Q5 | How is U5 (#5382) mounted on the board? | **Answered 2026-10-03:** soldered on pin headers, ~2.54 mm above the board (§7) |
+| Q6 | Is the status LED 3 mm (the LTL-4231N in the Value field) or 5 mm (the rev 0.6 draft's footprint)? | **Answered 2026-10-03** by the owner's v6 edit: `LED_D3.0mm`, with the pads unchanged (§5.5) |
 | O1 | Charge current limit | **Closed:** 0.5 C = 5.0 A, owner 2026-09-21 |
 | O2 | A fuse whose DC interrupt rating can be cited | The AKOSN kit fuse has no datasheet, so RQ-5 is unproven with it. Buy a branded 5 A mini fuse whose maker publishes a DC interrupt rating, then cite it |
 | O3 | HDR-30 overload below 50% Vout (hiccup) | **Closed 2026-09-22:** hiccup below 50% of rated output voltage, constant-current limiting from 50% to 100%, both "recover automatically after fault condition is removed" [S, p.2] (§4.1) |
 | O4 | Charger firmware | Not written; FW-1 and FW-3…FW-12 are the spec. The ESPHome facts in FW-8…FW-10 were read in the 2026.8.2 source: re-check them on the Device Builder add-on's version before the compile gate |
 | O5 | V_hold, T_hold, T_max, t_ol, FW-5's step and floor thresholds | Set from T11. T_hold is also bounded by the host's no-backup window (§10.2) |
-| O6 | Enclosure | ABS, vented, DIN rail offcut, cord grips G1–G2, lever nuts fixed in place. The XIAO's U.FL antenna needs an RF-transparent box [[ws] §8.2, item J] |
+| O6 | Enclosure | ABS, vented, DIN rail offcut, cord grips G1–G2; the board on M3 standoffs at H1, H3 and H4 (rev 0.6: no lever nuts). The #2814's slide knob stands 0.56 mm past the board's right edge [D, 2026-10-03 review], so leave it room. Leave room too for wire entry at TB1 (the left edge) and TB2 (the top edge, §5.1). The XIAO's U.FL antenna needs an RF-transparent box [[ws] §8.2, item J] |
 | O7 | [component-selection.md](../docs/component-selection.md) gives 14.4–14.6 V as the BMS **over-voltage cutoff**. The label gives that range as the **charge voltage**, so the BMS cutoff value is undocumented [I: a maker would not rate charging at its own cutoff] | Correct that doc (now in this repo); this one does not rely on it |
 | O8 | §10.2 bleed to ≤ 13.3 V | No load or method named |
-| O9 | INA228 breakout 3.5 mm terminal block wire range | Adafruit lists none; confirm 18 AWG fits (W11, W12) |
+| O9 | TB1/TB2 part and wire range (rev 0.6; it was the INA228 breakout's 3.5 mm terminal block, which is no longer used because VIN± go through the socket) | The board names only the footprint, a 2-position 3.81 mm Phoenix MKDS. Choose a part that takes 16 AWG at TB2 (W16, W18) and 18 AWG at TB1 (W3, W6), rated above 3.64 A, and cite its datasheet |
 | O10 | UPS Open Item 16, a coulomb-counted recharge to termination | **Not served since rev 0.5:** the P20 does the bulk charge and counts nothing. The owner's call whether to serve it another way |
+| O11 | Board files in the repo | **Partly done 2026-10-03:** the board file (v7), its `.kicad_pro` design rules and §7.3's solver are in [`pcb/`](pcb/), so §7's [M] citations can be re-read from this repo. Still open: commit the Gerbers actually sent to OSH Park, which become the authority for what was built. There is no schematic, so KiCad's parity check cannot run (§7) |
+| O12 | LED vs the USB-C plug | Clearance between a plugged USB-C cable's overmold and the LED is not modeled [I]. Dry-fit before soldering the LED (§5.5) |
+| O13 | Silk and text, before the order | (a) The B.Silk text "Board Size: 31.5mm x 90mm / 1 1/4" x 3 1/2"" is stale: the board is 95 mm long [M, Edge.Cuts]. (b) That text, and the B.Silk "W. Collis", sit over pads (R1; U4 pads 2–5) [M, DRC silk_over_copper]. Whether OSH Park clips silk from pads is not checked. (c) The LED's reference text overlaps U2's outline [M, DRC silk_overlap]. (d) The LED's Value text still names `LED_D5.0mm`. That is on F.Fab, which is not fabricated, so it is a file-only fix |
+| O14 | TB1's labels hidden under U4 | All of TB1's `+`/`GND` silk sits inside the #2814's outline (x ≥ 20.76 mm [M]), so it is covered once U4 is seated. Read it before U4 goes in, or go by "upper screw `+`" (§5.1). It would be fixed by moving the labels left of x 20.76 mm |
 
 ---
 
@@ -441,16 +547,21 @@ Any firmware edit re-runs T1–T4, T6–T9 and T14 (R7: a gate untested against 
 | Pololu **#2814** Big MOSFET Slide Switch, MP | $5.49 [S, Pololu page, 2026-09-21]. Ships with 5 mm terminal blocks and 0.1″ headers |
 | Plug-in countdown timer (mechanical or standalone digital, **no Wi-Fi**) | L6 |
 | ABS enclosure, vented; DIN rail offcut; 2 cord grips | O6 |
-| JST-XH 2-pin housing with crimps | J2 cable, if not on hand |
+| **Top Off Charger PCB** (rev 0.6, §7) | OSH Park; not priced here. Order from the Gerbers after O13 |
+| Sullins 0.100″ female sockets, 8.5 mm: 2 × 1×7 (U1), 1×8 (U2), 1×3 (U3), 2 × 1×6 (U4) | 3 A per contact [S, Sullins catalog pp.114–115]. Cut from longer strips if that is what is on hand |
+| Male pins for U5 (#5382), fitted singly | The pads are not on a 0.1″ grid [M, board file v6], so a strip will not fit. Soldered with the module ~2.54 mm up (Q5) |
+| Würth **696108003002** 5 × 20 mm PCB fuse holder, and a **1 A slow-blow** 5 × 20 mm fuse | F1 [M, Value field]. The board supply only, not the charge path |
+| C1 10 µF 25 V X7R; C2, C3, C5 0.1 µF 50 V X7R; C4 47 µF 50 V radial 6.3 × 11 mm; R1 1 kΩ 1/4 W axial | [M, Value fields] |
+| Lite-On **LTL-4231N** green, 3 mm (LCSC C125082) | Status LED [listing]. Polarity: §5.5 |
+| TB1, TB2: two 2-position 3.81 mm PCB screw terminals | O9: the part is not chosen yet |
 | One 16–14 AWG heat-shrink butt splice | S1, if not on hand |
-| 16 AWG red/black; 18 AWG red/black; 22 AWG red/black; a 24–26 AWG pair; 2-conductor AC cord | if not on hand |
+| 16 AWG red/black (W16, W18); 18 AWG red/black (W3, W6); 2-conductor AC cord | if not on hand. Rev 0.6 needs no 22 AWG or 24–26 AWG wire: the board carries those nets |
 | Branded 5 A mini (ATM) blade fuse with a published DC interrupt rating | O2. Not priced here |
 | 10 Ω, ≥ 25 W resistor | Commissioning load (§11), if not on hand |
-| Two 2-pin 5 mm terminal blocks for the #5382 | The UPS order bought 4 [[bom.md](../docs/bom.md)]; otherwise solder |
 
-**On hand** [owner, 2026-09-21 and 2026-09-22]: the inline fuse holder and an AKOSN mini-blade kit (no datasheet, O2); F2 female spade QDs; Wago 3- and 5-position lever nuts; the Dylannet P20 (§4.3). From rev 0.2: a V2 Rev 1.1 board and parts, XIAO ESP32-C3, Adafruit INA228, DS18B20 module (unused from rev 0.5), and the spare Pololu #5382 (bought as a pair, one used [[bom.md](../docs/bom.md)]).
+**On hand** [owner, 2026-09-21 and 2026-09-22]: the inline fuse holder and an AKOSN mini-blade kit (no datasheet, O2); F2 female spade QDs; Wago 3- and 5-position lever nuts; the Dylannet P20 (§4.3). From rev 0.2: a V2 Rev 1.1 board and parts, XIAO ESP32-C3, Adafruit INA228, DS18B20 module (unused from rev 0.5), and the spare Pololu #5382 (bought as a pair, one used [[bom.md](../docs/bom.md)]). **From rev 0.6 the lever nuts and the V2 board are not used.** Check the V2 parts on hand before buying the board's passives, fuse holder and LED.
 
-**Budget: $43** [owner]. PSU + switch + Pololu shipping comes to $25.44–$29.70 [D: 13.50 or 17.76, + 5.49 + 6.45; the $6.45 is the UPS order's Pololu USPS charge in [bom.md](../docs/bom.md), not a current quote]. That leaves $13.30–$17.56 [D] for the PSU's shipping, the timer, the enclosure, the cord grips and the replacement fuse.
+**Budget: $43** [owner]. PSU + switch + Pololu shipping comes to $25.44–$29.70 [D: 13.50 or 17.76, + 5.49 + 6.45; the $6.45 is the UPS order's Pololu USPS charge in [bom.md](../docs/bom.md), not a current quote]. That leaves $13.30–$17.56 [D] for the PSU's shipping, the timer, the enclosure, the cord grips and the replacement fuse. **The rev 0.6 board and its parts are not in this arithmetic.** Whether they fit the $43 is the owner's call once the OSH Park quote is in.
 
 ---
 
@@ -464,6 +575,12 @@ Any firmware edit re-runs T1–T4, T6–T9 and T14 (R7: a gate untested against 
 - TI INA228 datasheet SLYS021A (January 2021, revised May 2022): p.6 (temperature sensor accuracy), pp.23–24 (conversion times, averaging counts).
 - ESPHome 2026.8.2 source, `components/ina2xx_base/` (`__init__.py`, `ina2xx_base.cpp`): conversion mode, defaults, `charge:`, `reset_energy_counters()`. Read locally; the add-on's version governs (O4).
 - Seller listings, read 2026-09-22: Dylannet P20 charger (Amazon B0BM9H759L) and AKOSN mini-blade fuse kit (Amazon B0DNC57LR9). Cited as [listing], not [S].
+- **Rev 0.6 board:** `Top Off Charger- Oct 2026.kicad_pcb`, the owner's file, read in v4–v7 (2026-10-03, 22:11:51 to 22:42:18) from scratch copies. It was never opened for writing. The reads used kicad-cli 10.0 (`pcb drc --severity-all --refill-zones`, `pcb render`) and an s-expression parse for the pads, nets, tracks and zones. The §7.3 solver is `gnd_drop.py`. v7, its `.kicad_pro` and the solver are in [`pcb/`](pcb/); the Gerbers are not yet (O11).
+- Pololu #2814 dimension drawing (psw04b, 2016-01-14) and the #5382 outline DXF (the pads on a 0.150″ pitch), both the owner's copies, read 2026-10-03.
+- Sullins 0.100″ female header catalog pages, pp.114–115 (owner-supplied, 2026-10-03): 3 A per contact, 8.50 mm body.
+- [Seeed XIAO ESP32C3 wiki](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/): pin map (D1 GPIO3, D2 GPIO4, D4/D5 GPIO6/7, D7 GPIO20) and the strapping pins, read 2026-10-03.
+- [LCSC C125082](https://lcsc.com/product-detail/Light-Emitting-Diodes-LED_green_C125082.html) (Lite-On LTL-4231N: 3 mm, green, 2.1 V), read 2026-10-03 and cited as [listing]. Lite-On's own datasheet, DS-20-92-0246, could not be retrieved: the maker's site rejected the request and Mouser timed out. So the "long leg = anode" in §5.5 is convention [I], and a DMM diode test settles it.
+- IPC-2221 external-conductor current formula, I = 0.048 · ΔT^0.44 · A^0.725 (A in mil²), as widely published. The standard itself was not read (§6.4).
 - This repo: [09-15 survival-test README](../data/2026-09-15_full_discharge_survival_test/README.md), [component-selection.md](../docs/component-selection.md), [boost-subsystem-design.md](../UPS-Monitor/boost-subsystem-design.md), [bom.md](../docs/bom.md), [wiring.md](../docs/wiring.md), [supplemental-analysis.md](../docs/supplemental-analysis.md).
 - `Lifepo4-Battery-Banks`: [bank-monitor wiring summary v1.10][ws] (board connectors, first-flash rule, DS18B20 module), `INA228 Monitor/battery-bank-monitor.yaml`, and rev 0.2 of this document (commit `680caed`).
 
@@ -477,3 +594,4 @@ Any firmware edit re-runs T1–T4, T6–T9 and T14 (R7: a gate untested against 
 | 0.3 | 2026-09-21 | Moved to this repo. **Scoped to the UPS pack**, with the bank deferred (§2; RQ-8, FW-2 and §10.3 withdrawn). **Voltage ceiling on raw VBUS**, with R_series used for reporting only; the margin is checked against the PSU's datasheet regulation (§9). **L4 withdrawn**, with Dx, W15, T5, BOVL and ALERT handling removed. **OLED dropped**, and the status LED is specified (FW-11). **Keyed connector and pigtail dropped**: the lead ends in the fuse and F2 QDs, and RQ-6 becomes procedural (§6.3). **#2815 → #2814** (§4.2, with an R13 correction record). **Normal end is time at voltage**, with the current logged, not acted on (FW-6). **`reboot_timeout: 0s`**, with an IDLE-only recovery reboot (FW-8). Wago splice nodes and a from/to wiring table (§5). Rs moved to the J2 end. **Rpd withdrawn**: the #2814 has its own 20 kΩ pull-down on ON (§7.2, with an R13 correction record). RQ-11 added (blocked on Q2) |
 | 0.4 | 2026-09-21 | **Rs withdrawn** (owner): GPIO4 drives ON directly. A pre-power continuity check (§5.4) and a 5 mA drive strength (FW-1) cover a swapped control pair. §7.2 records the off-at-reset chain and why GPIO20 is not an alternative. The R3 figure is updated (2.2 V). **Leakage figure corrected**, from "microvolts" to ≤ 1 mV (R13, §7.2). Status LED kept (FW-11) |
 | 0.5 | 2026-09-22 | **Bulk charge moves to the owner's Dylannet P20 at 5 A** (§4.3); this charger does the top-balance hold only. **RQ-12 and the FW-4 overload stop** keep the HDR-30-15 inside its 2.0 A rating (R13 correction record in §4.1: overload is a fault condition, and rev 0.4 used it for bulk). **DS18B20 dropped**: RQ-9 and RQ-11 met by siting indoors; W19, TB2, GPIO10 and T13 withdrawn; the INA228 die temperature is published for the enclosure (FW-10). **R_series out of the firmware**: raw VBUS and I published, V_batt computed downstream (§6.4); FW-12 records the edge resistance every session. **FW-3 refuses Start above V_hold** (a pack fresh off the P20 would be counted as time at voltage) and on NaN. **FW-4 read failure N = 1.** **FW-8/FW-10 pin the INA228 conversion** (ESPHome's defaults give a 1.58 s cycle). **Session Ah from the INA228 CHARGE register** (FW-9). **Commissioning load 10 Ω** (R13 correction record in §11: rev 0.4's 5 Ω overloaded the PSU). O3 closed; Q2–Q4 answered; O10 added (Open Item 16 no longer served); the fuse needs a branded replacement (O2) |
+| 0.6 | 2026-10-03 | **A purpose-built board replaces the V2 reuse and the lever nuts** (§7: `Top Off Charger- Oct 2026.kicad_pcb`, v7; DRC 0 errors, 26 warnings, 0 unconnected; schematic parity did not run, as there is no schematic). The modules sit on Sullins sockets, and U5 is soldered on pins (Q5). **TB1/TB2 replace WP/WG/WL**, W4/W5 and W7–W14 become copper, and the J2 control pair is gone, so it can no longer be swapped (§5.1, §7.2). **Status LED moves to GPIO3 (D1)** on a 3 mm footprint (Q6), with a polarity call-out: which leg goes in which hole (§5.5). **Staged first power**, one module at a time (§5.4). **Ground pour** analysed: VBUS reads high by ~0.38 mV/A [D] (§7.3; T10 falsifier). §6.4 adds the board copper and the socket contacts to the conductor checks. **T7 changed**: holding SDA to GND replaces unplugging the INA228, which now carries the charge current (§11). O6 and O9 revised; O11–O14 added. The board file, its `.kicad_pro` and the §7.3 solver are committed in `pcb/` (O11). §13 adds the board's parts and drops the J2, #5382 terminal block and thin-wire rows |
