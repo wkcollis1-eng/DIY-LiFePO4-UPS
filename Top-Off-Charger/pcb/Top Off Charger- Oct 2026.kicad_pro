@@ -41,7 +41,7 @@
         "pads": {
           "drill": 0.9,
           "height": 1.8,
-          "width": 1.8
+          "width": 1.6
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -300,7 +300,7 @@
     "last_paths": {
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "./",
       "specctra_dsn": "",
       "step": "",
       "vrml": ""

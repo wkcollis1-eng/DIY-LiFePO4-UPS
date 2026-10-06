@@ -15,6 +15,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-10-06] — 2026-10-06
+
+### Changed
+- `Top-Off-Charger/pcb/`: the owner's re-laid board, `Top Off Charger- Oct 2026.kicad_pcb` (saved 2026-10-06 15:16:19; 29.5 × 78 mm, was 31.5 × 95), and its `.kicad_pro` replace v7. The `.kicad_pro` differs only in the default pad width for new pads and the last plot path, so the design rules are unchanged. DRC gives 0 errors, 26 warnings (all silk or library) and 0 unconnected; schematic parity did not run, as there is no schematic. The Gerbers have not been exported from this layout.
+- `Top-Off-Charger/top-off-charger-design.md` rev 0.7, for that layout. TB1's pins are swapped, so the PSU's +V lands on the lower screw. The terminal blocks are named as Phoenix 5442756 (O9 closed). The LED moved and turned 180°, XIAO D6/D7 became unplated holes, and three signals moved to B.Cu. The assembly order is set for the parts under the modules. §7.3 compares the electrical figures with rev 0.6, including what the B.Cu tracks cost the ground pour. Its §15 lists the changes.
+
+### Fixed
+- `Top-Off-Charger/pcb/gnd_drop.py`: it took pad 2 of each terminal block as the GND pads. On the rev 0.7 board TB1's GND is pad 1, so it stopped with "expected two terminal-block GND pads". It now finds TB2's and TB1's GND pads by reference and net (R13 note at the site). `--self-test` adds a third direction: a board with no TB2 must be refused. Re-run on rev 0.6's v7, it reproduces the doc's rev 0.6 figures exactly.
+
+---
+
 ## [2026-10-03] — 2026-10-03
 
 ### Added

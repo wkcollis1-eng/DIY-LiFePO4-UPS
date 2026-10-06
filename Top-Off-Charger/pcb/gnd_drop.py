@@ -1,14 +1,15 @@
 """Ground-pour voltage drop on the Top Off Charger board (design doc section 7.3).
 
 Finite differences on the rasterised GND copper of a KiCad board file. +1 A goes
-in at the GND pad (pad 2) of the upper terminal block (TB2, pack -) and out at the
-GND pad of the lower one (TB1, PSU -V, held at 0 V). The potential of every GND
-pad per amp is printed in milliohms, followed by the two figures section 7.3 uses:
+in at TB2's GND pad (pack -) and out at TB1's GND pad (PSU -V, held at 0 V); each
+is found by reference and net, so a layout that renumbers or moves them still
+solves. The potential of every GND pad per amp is printed in milliohms, followed
+by the two figures section 7.3 uses:
 
-  R_shared    V(TB2-2) - V(U2 pin 2): the pour resistance the charge current
+  R_shared    V(TB2 GND) - V(U2 pin 2): the pour resistance the charge current
               shares with the INA228's ground reference, so VBUS reads high by
               R_shared x I
-  whole pour  V(TB2-2) - V(TB1-2)
+  whole pour  V(TB2 GND) - V(TB1 GND)
 
 The model includes the zone fills as saved in the board file (refill the zones in
 KiCad before saving), the GND tracks, the through-hole GND pads (both layers, each
@@ -21,7 +22,8 @@ usage:
   python gnd_drop.py --self-test
 
 --self-test solves a uniform 20 x 100 mm strip against its exact resistance, and
-checks that a pour cut in two is refused rather than solved.
+checks that a pour cut in two, and a board with no TB2, are refused rather than
+solved.
 """
 
 import argparse
@@ -246,14 +248,15 @@ def solve(board_text, h, r_barrel=0.0, t_cu=35e-6):
     ).tocsr()
 
     pads = {lab: remap[gnode[lab]] for lab, _, isp in groups if isp}
-    # pad 2 of each terminal block; the upper one (smaller y) is the source
-    tb = sorted(
-        (k for k in pads if k.startswith("TB") and ".2@" in k),
-        key=lambda k: float(k.split(",")[1][:-1]),
-    )
-    if len(tb) != 2:
-        raise ValueError(f"expected two terminal-block GND pads, found {tb}")
-    src, snk = tb
+    # the GND pad of each terminal block, by reference and net, not by pad number or
+    # position: TB2 (pack -) is the source, TB1 (PSU -V) the sink.
+    # R13, 2026-10-06: this took pad 2 of each block and called the upper one the
+    # source; the 2026-10-06 layout moved TB1's GND to pad 1 and it raised
+    # "expected two terminal-block GND pads, found ['TB2.2@(16.79,24.50)']".
+    tb = {r: [k for k in pads if k.startswith(r + ".")] for r in ("TB2", "TB1")}
+    if any(len(v) != 1 for v in tb.values()):
+        raise ValueError(f"expected one GND pad on each of TB2 and TB1, found {tb}")
+    src, snk = tb["TB2"][0], tb["TB1"][0]
     ncomp, comp = connected_components(A, directed=False)
     if comp[pads[src]] != comp[pads[snk]]:
         raise NotConnected(
@@ -284,7 +287,7 @@ def solve(board_text, h, r_barrel=0.0, t_cu=35e-6):
 
 
 STRIP = """(kicad_pcb (gr_rect (start 0 0) (end 20 100) (layer "Edge.Cuts"))
- (footprint "t" (at 10 10) (property "Reference" "TB1") (pad "2" thru_hole rect (at 0 0) (size 20 1)
+ (footprint "t" (at 10 10) (property "Reference" "TB2") (pad "2" thru_hole rect (at 0 0) (size 20 1)
   (drill 0.5) (layers "*.Cu") (net "GND")))
  (footprint "t" (at 10 90) (property "Reference" "TB1") (pad "2" thru_hole rect (at 0 0) (size 20 1)
   (drill 0.5) (layers "*.Cu") (net "GND")))
@@ -310,6 +313,14 @@ def self_test():
         ok = False
     except NotConnected as e:
         print(f"cut pour: refused ({e})")
+    # direction 3: a board with no TB2 GND pad must be refused, not guessed at
+    no_tb2 = STRIP.replace('"TB2"', '"TB1"', 1).format(fills=FILL.format(y0=0, y1=100))
+    try:
+        solve(no_tb2, 0.1)
+        print("no TB2: SOLVED - the pad selection did not fire")
+        ok = False
+    except ValueError as e:
+        print(f"no TB2: refused ({e})")
     print("SELF-TEST PASSED" if ok else "SELF-TEST FAILED")
     return 0 if ok else 1
 
