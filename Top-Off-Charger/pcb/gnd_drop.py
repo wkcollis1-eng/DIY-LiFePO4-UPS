@@ -192,24 +192,38 @@ def solve(board_text, h, r_barrel=0.0, t_cu=35e-6):
             groups.append((f"viaF@({x},{y})", [(0, sj, si, m)], False))
             groups.append((f"viaB@({x},{y})", [(1, sj, si, m)], False))
 
-    # node numbering: every copper cell its own node, then supernode cells collapsed
+    # node numbering: every copper cell its own node, then supernode cells collapsed.
+    # A later group takes the cells it shares with an earlier one. A pad that loses every
+    # cell that way is moved to the end and the numbering redone, so it keeps a node.
+    # R13, 2026-10-08: there was one pass. From the owner's 2026-10-07 19:09 save on,
+    # TB2-2's enlarged pad covered the net tie's GND pad, which came first in the file, so
+    # TB2-2 took every cell of it; remap gave -1 and the tie read V[-1], another node's
+    # voltage: a Kelvin residual of 0.24-0.26 mohm where the solve gives 0.0000.
     N = NY * NX
-    node = np.full(2 * N, -1, np.int64)
     cid = np.flatnonzero(cu.ravel())
-    node[cid] = np.arange(cid.size)
-    nxt = cid.size
-    gnode = {}
-    for lab, parts, _ in groups:
-        for L, sj, si, m in parts:
-            idx = (
-                L * N
-                + np.add.outer(
-                    np.arange(sj.start, sj.stop) * NX, np.arange(si.start, si.stop)
-                )
-            )[m]
-            node[idx] = nxt
-        gnode[lab] = nxt
-        nxt += 1
+    for _pass in range(2):
+        node = np.full(2 * N, -1, np.int64)
+        node[cid] = np.arange(cid.size)
+        nxt = cid.size
+        gnode = {}
+        for lab, parts, _ in groups:
+            for L, sj, si, m in parts:
+                idx = (
+                    L * N
+                    + np.add.outer(
+                        np.arange(sj.start, sj.stop) * NX, np.arange(si.start, si.stop)
+                    )
+                )[m]
+                node[idx] = nxt
+            gnode[lab] = nxt
+            nxt += 1
+        own = np.bincount(node[node >= cid.size] - cid.size, minlength=len(groups))
+        gone = [i for i, g in enumerate(groups) if g[2] and own[i] == 0]
+        if not gone:
+            break
+        groups = [g for i, g in enumerate(groups) if i not in gone] + [
+            groups[i] for i in gone
+        ]
 
     rows, cols = [], []
     c3 = cu.reshape(2, NY, NX)
@@ -248,6 +262,10 @@ def solve(board_text, h, r_barrel=0.0, t_cu=35e-6):
     ).tocsr()
 
     pads = {lab: remap[gnode[lab]] for lab, _, isp in groups if isp}
+    # a pad with no node in the network would read V[-1], another node's voltage (R8)
+    lost = [lab for lab, n in pads.items() if n < 0]
+    if lost:
+        raise ValueError(f"pads missing from the solved network: {lost}")
     # the GND pad of each terminal block, by reference and net, not by pad number or
     # position: TB2 (pack -) is the source, TB1 (PSU -V) the sink.
     # R13, 2026-10-06: this took pad 2 of each block and called the upper one the
@@ -321,6 +339,36 @@ def self_test():
         ok = False
     except ValueError as e:
         print(f"no TB2: refused ({e})")
+    # direction 4: a small pad inside TB2's pad, listed before it, keeps a node of its
+    # own and reads TB2's voltage, since no current leaves it (the 2026-10-08 R13 case)
+    tie = (
+        '(footprint "t" (at 10 10.2) (property "Reference" "NT1") (pad "1" smd rect'
+        ' (at 0 0) (size 0.4 0.4) (layers "F.Cu") (net "GND")))\n (footprint "t" (at 10 10)'
+    )
+    board = STRIP.replace('(footprint "t" (at 10 10)', tie, 1)
+    pads, src, _snk, _ = solve(board.format(fills=FILL.format(y0=0, y1=100)), 0.1)
+    nt = [k for k in pads if k.startswith("NT1.")]
+    if len(nt) == 1 and abs(pads[nt[0]] - pads[src]) < 1e-9:
+        print(f"pad inside TB2: reads TB2 ({pads[nt[0]] * 1e3:.4f} mohm)")
+    else:
+        got = {k: pads[k] for k in nt}
+        print(f"pad inside TB2: WRONG {got} vs {pads[src]}")
+        ok = False
+    # direction 5: two pads on the same copper cannot both keep a node; refuse, not guess
+    pad = (
+        ' (footprint "t" (at 10 50) (property "Reference" "X{n}") (pad "1" smd rect'
+        ' (at 0 0) (size 0.4 0.4) (layers "F.Cu") (net "GND")))\n'
+    )
+    twin = pad.replace("{n}", "1") + pad.replace("{n}", "2") + " (zone"
+    board = STRIP.replace(" (zone", twin, 1)
+    try:
+        solve(board.format(fills=FILL.format(y0=0, y1=100)), 0.1)
+        print("coincident pads: SOLVED - the missing-pad check did not fire")
+        ok = False
+    except ValueError as e:
+        if "missing from the solved network" not in str(e):
+            raise
+        print(f"coincident pads: refused ({e})")
     print("SELF-TEST PASSED" if ok else "SELF-TEST FAILED")
     return 0 if ok else 1
 
