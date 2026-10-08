@@ -1,0 +1,12 @@
+{
+ "about": "Top Off Charger, this board's pads for the pcb-eval tools (C:/repos/Tools/pcb-eval, run.py netdrop, gnd_drop, tracknet), which read this file because it sits beside the board. Written 2026-10-08 from the pads tracknet.py and gnd_drop.py held until that day. Edit it when the board's terminals change. Tools' tests/fixtures/toc_1100.pcb-eval.json holds the same pads today but is a frozen test input for a frozen board copy: do not keep the two in step. gnd.shared U2.2 is not a GND pad on this board, so gnd_drop prints R_shared 'not solved'; kept as gnd_drop had it, because which pad R_shared should name is still open.",
+ "paths": {
+  "BATT_RAW": [[["TB1", null]], [["U4", "11"], ["U4", "12"]]],
+  "Batt_SW": [[["U4", "5"], ["U4", "6"]], [["U5", "1"]]],
+  "VIN+": [[["U5", "3"]], [["U2", "7"]]],
+  "VIN-": [[["U2", "6"]], [["TB2", "1"]]],
+  "V_Fused": [[["F1", "2"]], [["U3", "3"]]]
+ },
+ "total": {"name": "charge path (excl V_Fused)", "nets": ["BATT_RAW", "Batt_SW", "VIN+", "VIN-"]},
+ "gnd": {"source": ["TB2", null], "sink": ["TB1", null], "shared": ["U2", "2"]}
+}
