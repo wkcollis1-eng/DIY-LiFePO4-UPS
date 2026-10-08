@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Top-Off-Charger/pcb/gnd_drop.py` (2389987): from the 2026-10-07 19:09 save on, TB2-2's enlarged pad covers the net tie's GND pad, and the tie's per-pad line read another node's voltage. It printed a Kelvin residual of 0.24–0.26 mΩ [D, false] where the solve gives 0.0000. A pad that loses all its copper to a later pad is now numbered last, and a pad left with no node is refused (O16(b)). Saves from 2026-10-06 15:16 to 22:29 give the same per-pad values as before [M, both scripts on all 17 saves, `--h 0.1`].
 - R13, 2026-10-08: e27eeab, 1ef6daa and 2389987 shipped without these entries. They were added afterwards, in a commit of their own.
 
+### Removed
+- `Top-Off-Charger/pcb/gnd_drop.py`: moved to the Tools repo as `pcb-eval/solve/gnd_drop.py` (Tools 6fe2087, byte-identical to 2389987), with the other board review tools. Since Tools e273314 the board file is a required argument; its default was the board beside the script. Design doc §7.3 and §7.4 point there.
+
 ---
 
 ## [2026-10-06] — 2026-10-06
