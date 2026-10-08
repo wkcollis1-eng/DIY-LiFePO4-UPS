@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2026-10-08] — 2026-10-08
 
 ### Added
-- `Top-Off-Charger/pcb/Top Off Charger- Oct 2026.pcb-eval.json` (35c07cc): this board's profile for the Tools repo's pcb-eval tools (netdrop, gnd_drop, dump, tracknet). Since Tools 9273225 those tools hold no board's pads and refuse a board without a profile. It names the pads they held until 2026-10-08. Run on this board with no flag, they print the same figures as before apart from the profile line (whole GND pour 1.9645 mΩ [M, h = 0.1 mm]).
+- `Top-Off-Charger/pcb/Top Off Charger- Oct 2026.pcb-eval.json` (35c07cc): this board's profile for the Tools repo's pcb-eval tools (netdrop, gnd_drop, dump, tracknet). Since Tools 077054a those tools hold no board's pads and refuse a board without a profile. It names the pads they held until 2026-10-08. Run on this board with no flag, they print the same figures as before apart from the profile line (whole GND pour 1.9645 mΩ [M, h = 0.1 mm]).
 
 ### Changed
 - `Top-Off-Charger/pcb/`: the owner's 2026-10-08 11:00:58 save, rev 0.8, replaces the 17:09:17 one (e27eeab). VIN+ is re-routed on B.Cu and the power path is wider; TB1 moved 4.5 mm down so its labels can be read with U4 seated; the LED is on the left edge. All checks ran on the 10:48:22 save; the 11:00 save adds only U1's 3D models and its DRC set is identical. DRC 0 errors / 34 warnings / 0 unconnected [M, kicad-cli DRC with the board's own rules]. Schematic parity did not run (no schematic).
@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - R13, 2026-10-08: e27eeab, 1ef6daa and 2389987 shipped without these entries. They were added afterwards, in a commit of their own.
 
 ### Removed
-- `Top-Off-Charger/pcb/gnd_drop.py`: moved to the Tools repo as `pcb-eval/solve/gnd_drop.py` (Tools 6fe2087, byte-identical to 2389987), with the other board review tools. Since Tools e273314 the board file is a required argument; its default was the board beside the script. Design doc §7.3 and §7.4 point there.
+- `Top-Off-Charger/pcb/gnd_drop.py`: moved to the Tools repo as `pcb-eval/solve/gnd_drop.py` (Tools cefe8a0, byte-identical to 2389987), with the other board review tools. Since Tools e6c198f the board file is a required argument; its default was the board beside the script. Design doc §7.3 and §7.4 point there.
 
 ---
 
