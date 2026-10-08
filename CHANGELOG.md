@@ -15,6 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-10-08] — 2026-10-08
+
+### Changed
+- `Top-Off-Charger/pcb/`: the owner's 2026-10-08 11:00:58 save, rev 0.8, replaces the 17:09:17 one (e27eeab). VIN+ is re-routed on B.Cu and the power path is wider; TB1 moved 4.5 mm down so its labels can be read with U4 seated; the LED is on the left edge. All checks ran on the 10:48:22 save; the 11:00 save adds only U1's 3D models and its DRC set is identical. DRC 0 errors / 34 warnings / 0 unconnected [M, kicad-cli DRC with the board's own rules]. Schematic parity did not run (no schematic).
+- `Top-Off-Charger/top-off-charger-design.md` rev 0.8 (e27eeab): §6.4's charge-path track resistance 37.33 → 12.17 mΩ [D, 2-D solve, §6.4]; §5.1 and §5.5 for the TB1 and LED moves, with the polarity table rewritten; §7, §7.3 and §7.4 for the rev 0.8 gate verdicts, pour and Kelvin figures, and an R13 record of a review session's 2026-10-06 edits to the board. O12 and O15 closed; O11, O13, O14 and O16 revised. The Gerbers are still to be exported (O11). §7 also gives the LF sha256 git stores for each board file beside the CRLF one KiCad writes (1ef6daa).
+
+### Fixed
+- `Top-Off-Charger/pcb/gnd_drop.py` (2389987): from the 2026-10-07 19:09 save on, TB2-2's enlarged pad covers the net tie's GND pad, and the tie's per-pad line read another node's voltage. It printed a Kelvin residual of 0.24–0.26 mΩ [D, false] where the solve gives 0.0000. A pad that loses all its copper to a later pad is now numbered last, and a pad left with no node is refused (O16(b)). Saves from 2026-10-06 15:16 to 22:29 give the same per-pad values as before [M, both scripts on all 17 saves, `--h 0.1`].
+- R13, 2026-10-08: e27eeab, 1ef6daa and 2389987 shipped without these entries. They were added afterwards, in a commit of their own.
+
+---
+
 ## [2026-10-06] — 2026-10-06
 
 ### Changed
