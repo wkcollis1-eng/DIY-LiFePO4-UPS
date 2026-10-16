@@ -32,7 +32,7 @@ Figures in this README carry the repository's provenance tags: **[M]** measured,
 - ✅ Use appropriate **fusing** on battery connections
 - ✅ Never charge LiFePO4 below **0°C (32°F)**
 - ✅ Keep a **Class B or ABC fire extinguisher** accessible
-- ✅ Follow the boost's energization order, OP-1 in [boost-subsystem-design.md](boost-subsystem-design.md): *battery last-off, first-on; host barrel jack last-on, first-off*. This keeps the host off every connect transient.
+- ✅ Follow the boost's energization order, OP-1 in [boost-subsystem-design.md](UPS-Monitor/boost-subsystem-design.md): *battery last-off, first-on; host barrel jack last-on, first-off*. This keeps the host off every connect transient.
 - ✅ Review [docs/safety.md](docs/safety.md) before building
 
 **Disclaimer:** Information provided for educational purposes only. Build at your own risk.
@@ -65,7 +65,7 @@ The boost takes its input from the BP-65 load output, and its EN pin is not yet 
 
 Outages that reach LVD do recover, because the BP-65 collapses the rail. On 2026-09-15 the host booted with no button press after AC was restored [M]. The 09-15 report's Open Item 1 records why one operator-timed restoration does not fully establish the BIOS behaviour.
 
-The fix is designed and not built: an EN shed from the monitor through an N-FET, latched low for the rest of the outage and released only on confirmed AC return. In [BOOST-DS-r1](boost-subsystem-design.md) this is design rule DR-1 and procedure OP-2.
+The fix is designed and not built: an EN shed from the monitor through an N-FET, latched low for the rest of the outage and released only on confirmed AC return. In [BOOST-DS-r1](UPS-Monitor/boost-subsystem-design.md) this is design rule DR-1 and procedure OP-2.
 
 ---
 
@@ -258,7 +258,7 @@ The 13.3 V float never takes the cells to balancing voltage. The plan is to take
 | [reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md](reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md) | Full discharge to LVD, first survival sleep, recharge, capacity shortfall (r3) |
 | [data/2026-09-15_full_discharge_survival_test/](data/2026-09-15_full_discharge_survival_test/README.md) | Raw series, logs, capture scripts and reproduction guide for that report |
 | [reports/UPS_Report_2026-08-31_Boost_Integration.md](reports/UPS_Report_2026-08-31_Boost_Integration.md) | Boost integration: float and trip-margin effects, outage load, unattended-recovery gap |
-| [boost-subsystem-design.md](boost-subsystem-design.md) | BOOST-DS-r1: 18 V boost design, failure analysis, rules DR-1 and OP-1–OP-4, scope gate |
+| [boost-subsystem-design.md](UPS-Monitor/boost-subsystem-design.md) | BOOST-DS-r1: 18 V boost design, failure analysis, rules DR-1 and OP-1–OP-4, scope gate |
 | [UPS-Monitor/ups-monitor.yaml](UPS-Monitor/ups-monitor.yaml) | Monitor firmware V1.20 (header holds the pin map and full changelog) |
 | [UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v12.md](UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v12.md) | Survival-sleep engineering basis (tracks firmware through V1.14) |
 | [Top-Off-Charger/top-off-charger-design.md](Top-Off-Charger/top-off-charger-design.md) | Top-off charger pre-build design, rev 0.10 |

@@ -29,6 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - the 10–20 year battery lifespan in Key Specifications, a calendar-aging projection made before the shortfall;
   - graceful shutdown described as "< 12.2V for 1 min". It fires on the first of `cliff_imminent`, the 12.40 V warning or runtime < 8 min. 12.20 V is the critical-shutdown fallback.
 
+### Removed
+- `boost-subsystem-design.md` at the repo root. It was a byte-identical second copy of `UPS-Monitor/boost-subsystem-design.md`, which the top-off design and the 2026-08-31 report cite. The README's three links now point there.
+- `UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v11.md`. v12 supersedes it ("Added since v11") and nothing linked to it. It remains in git history.
+
 ### Fixed
 - `README.md`: the 2026-04-05 and 2026-05-06 report links pointed into `docs/`; the reports are in `reports/`. The 06-18, 08-31 and 09-15 reports, the boost design, the monitor firmware and PCB, and the 09-15 data set were not linked at all. All relative links and anchors now resolve [M, checked against `git ls-files`].
 - `README.md`: the "<1 ms" switchover is labelled as the ideal diode's design value. The 5 s telemetry cannot measure it.
