@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "DIY LiFePO₄ UPS for Home Assistant & Network Equipment"
+title: "DIY LiFePO₄ UPS for a Home Assistant Host & Xfinity XB7 Modem"
 message: "If you use this design or documentation, please cite as below."
 type: software
 authors:
@@ -8,8 +8,8 @@ authors:
 repository-code: "https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS"
 url: "https://github.com/wkcollis1-eng/DIY-LiFePO4-UPS"
 license: MIT
-version: "2026-03-06"
-date-released: "2026-03-06"
+version: "2026-10-16"
+date-released: "2026-10-16"
 keywords:
   - UPS
   - uninterruptible power supply
@@ -17,15 +17,21 @@ keywords:
   - battery
   - home-assistant
   - victron
-  - shelly
+  - esphome
+  - INA260
+  - coulomb counting
+  - boost converter
   - DIY electronics
   - 12V
   - power backup
   - MOSFET ideal diode
 abstract: >-
-  Complete design documentation for a 12V LiFePO₄-based uninterruptible
-  power supply for Home Assistant Green and network equipment. Features
-  sub-millisecond switchover via MOSFET ideal diode, 8+ hour runtime on
-  10Ah battery, Victron BP-65 low-voltage disconnect, and Shelly Plus Uni
-  monitoring integration. Includes bill of materials, wiring diagrams,
-  thermal analysis, FMEA, and cost comparison with commercial alternatives.
+  Design documentation, firmware and test reports for a 12 V LiFePO₄ DC
+  uninterruptible power supply that keeps a Home Assistant host (ASRock
+  N100DC-ITX, on an 18 V boost rail) and an Xfinity XB7 cable modem running
+  through grid outages. A Mean Well HDR-60-12 floats the pack through a
+  MOSFET ideal diode, a Victron BP-65 provides the low-voltage disconnect,
+  and an ESPHome INA260 monitor on a custom carrier PCB coulomb-counts each
+  outage and drives Home Assistant's graceful host shutdown. Includes the
+  bill of materials, wiring, FMEA, the original design set, dated discharge
+  test reports with raw data, and a planned bench top-off charger.
