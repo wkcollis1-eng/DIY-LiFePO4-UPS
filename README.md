@@ -268,7 +268,7 @@ The 13.3 V float never takes the cells to balancing voltage. The plan is to take
 | [reports/UPS_Report_2026-05-06.md](reports/UPS_Report_2026-05-06.md) | Outage to LVD; first INA260 coulomb count; graceful shutdown confirmed |
 | [reports/UPS_Report_2026-04-05.md](reports/UPS_Report_2026-04-05.md) | Inaugural commissioning report |
 
-**Original design set, January–May 2026** (the HA Green build. Figures for load, runtime, cost and lifespan predate the boost and the September capacity result; [CHANGELOG.md](CHANGELOG.md) supersedes [docs/CHANGELOG.md](docs/CHANGELOG.md))
+**Original design set, January–May 2026** (the HA Green build. Figures for load, runtime, cost and lifespan predate the boost and the September capacity result)
 
 | File | Contents |
 | :--- | :--- |
