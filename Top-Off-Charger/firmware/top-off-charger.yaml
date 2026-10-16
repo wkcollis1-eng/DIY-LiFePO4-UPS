@@ -92,6 +92,9 @@
 #
 # Changelog:
 #   V0.1 — 2026-10-16. First draft from design rev 0.9. Not validated.
+#          Same day: T11 start values T_hold 6 h, T_max 8 h (owner), up from
+#          1 h / 2 h placeholders. Counters are uint32 ms, so they are good to
+#          ~49.7 days [D: 2^32 ms / 86.4e6 ms per day]; 8 h = 28.8e6 ms.
 # ============================================================================
 
 substitutions:
@@ -113,9 +116,16 @@ substitutions:
   # ---- PLACEHOLDERS, set from T11 (O5). Integers here are seconds.
   v_hold: "14.30"        # PLACEHOLDER. FW-3/FW-6. Must sit below V_SET 14.40 V by more
                          #   than the tail-current drops, and above the pack's rest voltage
-  t_hold_s: "3600"       # PLACEHOLDER. FW-6 time at voltage. Owner's trade vs. the host's
-                         #   no-backup window (§10.2)
-  t_max_s: "7200"        # PLACEHOLDER. FW-4 session cap. Set the L6 timer above it
+  t_hold_s: "21600"      # 6 h. T11 START VALUE (owner, 2026-10-16), FW-6 time at voltage.
+                         #   Long enough to see whether a balancer floor exists and holds
+                         #   (it should show within the first hour on a full pack), and to
+                         #   do real balancing if it does: 6 h x 50 mA = 0.30 Ah = 3 % of
+                         #   10 Ah [D; the bleed rate is an assumption until T11]. Size the
+                         #   later sessions from T11's floor: hold time = imbalance / floor.
+                         #   Still the owner's trade against the no-backup window (§10.2).
+  t_max_s: "28800"       # 8 h. T11 START VALUE, FW-4 session cap: T_hold plus 2 h for the
+                         #   pack to reach V_hold and margin. The L6 timer must be set above it
+                         #   (§10.1 step 5), so it must reach > 8 h.
   t_ol_s: "300"          # PLACEHOLDER. FW-4 cumulative time with I > i_overload
   bms_i_from: "0.100"    # PLACEHOLDER. FW-5: "charging" before the step (A)
   bms_i_zero: "0.005"    # PLACEHOLDER. FW-5: "~0" after the step (A)
