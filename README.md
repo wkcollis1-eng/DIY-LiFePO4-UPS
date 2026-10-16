@@ -257,6 +257,7 @@ The 13.3 V float never takes the cells to balancing voltage. The plan is to take
 | [boost-subsystem-design.md](UPS-Monitor/boost-subsystem-design.md) | BOOST-DS-r1: 18 V boost design, failure analysis, rules DR-1 and OP-1–OP-4, scope gate |
 | [UPS-Monitor/ups-monitor.yaml](UPS-Monitor/ups-monitor.yaml) | Monitor firmware V1.20 (header holds the pin map and full changelog) |
 | [UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v12.md](UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v12.md) | Survival-sleep engineering basis (tracks firmware through V1.14) |
+| [HA Automation/README_HA_UPS_Integration.md](HA%20Automation/README_HA_UPS_Integration.md) | Home Assistant side: the entities, the five `ups_*_v3` automations and their guards, and what the test record shows about them |
 | [Top-Off-Charger/top-off-charger-design.md](Top-Off-Charger/top-off-charger-design.md) | Top-off charger pre-build design, rev 0.10 |
 | [CHANGELOG.md](CHANGELOG.md) | Repository changelog |
 
@@ -287,7 +288,6 @@ The 13.3 V float never takes the cells to balancing voltage. The plan is to take
 | [docs/ups_full_discharge_cycle_r6400.html](docs/ups_full_discharge_cycle_r6400.html) | The same R6400 cycle as an HTML chart |
 | [docs/Final_As_Built_Performance_&_Cost_Summary.md](docs/Final_As_Built_Performance_&_Cost_Summary.md) | As-built performance and cost summary (HA Green build) |
 | [docs/UPS_Validation_Report.md](docs/UPS_Validation_Report.md) | Validation report with Home Assistant configuration |
-| [HA Automation/README_HA_UPS_Integration.md](HA%20Automation/README_HA_UPS_Integration.md) | The March 2026 Shelly-era automation chain, superseded by the `ups_*_v3` chain |
 
 ## Datasheets
 

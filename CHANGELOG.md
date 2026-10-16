@@ -14,7 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Boost EN shed (BOOST-DS-r1 DR-1/OP-2), closing the unattended-recovery gap, and the BOOST-DS-r1 §10 scope gate
 - Top-off charger: fabrication (O11), firmware validation (O4), tests T0–T15
 - INA260 ALERT input: the firmware reads GPIO3 (D1), but the THT Rev 1 PCB routes ALERT to GPIO5 (D3)
-- Home Assistant automation documentation for the `ups_*_v3` chain (`HA Automation/` describes the March 2026 chain)
 
 ---
 
@@ -29,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - the 10–20 year battery lifespan in Key Specifications, a calendar-aging projection made before the shortfall;
   - graceful shutdown described as "< 12.2V for 1 min". It fires on the first of `cliff_imminent`, the 12.40 V warning or runtime < 8 min. 12.20 V is the critical-shutdown fallback.
 - The 13 `docs/*.md` files each open with a dated currency note. It says the document describes the March 2026 HA Green build, gives what has changed since (the INA260 monitor, the N100DC host on the 18 V boost, today's load and the 2026-09-15 capacity result), and names what in that document no longer holds. Their bodies are unchanged. `docs/UPS_Final_Report.pdf` and `docs/ups_full_discharge_cycle_r6400.html`, charts of the March commissioning cycle, were linked from nowhere; the README now lists them.
+- `HA Automation/README_HA_UPS_Integration.md` rewritten for the `ups_*_v3` chain now in service: the entities and their firmware conditions, the five automations and their guards, and what the test record shows about them. The automation YAML is linked by id at a pinned home-assistant-config commit, not copied (R10), and the notify service is a placeholder. The March 2026 version, which documented the retired Shelly-era `ups_*_v2` chain, is in git history. The README now lists the file under Current.
 
 ### Removed
 - `boost-subsystem-design.md` at the repo root. It was a byte-identical second copy of `UPS-Monitor/boost-subsystem-design.md`, which the top-off design and the 2026-08-31 report cite. The README's three links now point there.
