@@ -29,6 +29,8 @@ LiFePO4 is the safest lithium chemistry — thermal runaway threshold above 270�
 - The battery's built-in BMS provides cell-level over-voltage, under-voltage, and 10A overcurrent protection
 - Do not charge with a voltage above 14.4V — the PSU is set to 13.3V and the BMS OVP ceiling is 14.4–14.6V
 
+> **Correction (2026-10-16).** The "BMS OVP ceiling" in the last bullet is the **charge voltage** printed on the Cyclenbatt label [owner, 2026-09-21], not the BMS over-voltage cutoff. Neither the label nor any document in this repo gives the cutoff, so its value is unknown; a BMS normally trips above the charge range it is rated for [I; falsifier: a Cyclenbatt document that puts the cutoff inside 14.4–14.6 V]. The planned top-off procedure charges the pack to 14.6 V on a Dylannet P20 and then holds it at 14.40 V, both inside the label's range ([top-off design](../Top-Off-Charger/top-off-charger-design.md), RQ-10); the 14.4 V limit above predates that plan.
+
 ---
 
 ## Fire Safety

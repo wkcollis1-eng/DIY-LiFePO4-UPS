@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - `README.md`: the 2026-04-05 and 2026-05-06 report links pointed into `docs/`; the reports are in `reports/`. The 06-18, 08-31 and 09-15 reports, the boost design, the monitor firmware and PCB, and the 09-15 data set were not linked at all. All relative links and anchors now resolve [M, checked against `git ls-files`].
 - `README.md`: the "<1 ms" switchover is labelled as the ideal diode's design value. The 5 s telemetry cannot measure it.
+- Top-off Open Item O7. Eight places in five `docs/` files (component-selection, design-rationale, safety, specifications, supplemental-analysis) gave 14.4–14.6 V as the Cyclenbatt BMS over-voltage cutoff. The label gives that range as the charge voltage [owner, 2026-09-21], and nothing in the repo gives the cutoff. A dated correction now follows each place; the original text is unchanged.
 
 ---
 

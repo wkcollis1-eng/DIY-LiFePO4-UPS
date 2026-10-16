@@ -36,6 +36,8 @@ Expected battery lifespan: 10–20 years in residential continuous-float service
 
 **PSU trimmer setting:** The HDR-60-12 output voltage is adjustable from 10.2–13.8V via an onboard trimmer pot. The pot is set to 13.3V and lacquered to prevent mechanical drift. Aging drift in a climate-controlled installation is analytically negligible (estimated 3–5 mV/year), well within the 1.1V headroom before the BMS OVP threshold at 14.4–14.6V.
 
+> **Correction (2026-10-16).** 14.4–14.6 V is the **charge voltage** printed on the Cyclenbatt label [owner, 2026-09-21], not the BMS over-voltage cutoff, so the 1.1 V is the headroom to the bottom of the charge range [D: 14.4 − 13.3], not to a BMS trip. Neither the label nor any document in this repo gives the cutoff, so its value is unknown; a BMS normally trips above the charge range it is rated for [I; falsifier: a Cyclenbatt document that puts the cutoff inside 14.4–14.6 V].
+
 ---
 
 ## Direct Battery Feed — No DC-DC Converter

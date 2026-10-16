@@ -85,6 +85,8 @@
 | Reverse Current | Ideal Diode | Automatic blocking |
 | Over temperature — Battery | DS18B20 + HA alert | 40°C warning |
 
+> **Correction (2026-10-16).** The 14.4–14.6 V in the "Over voltage — Secondary" row is the **charge voltage** printed on the Cyclenbatt label [owner, 2026-09-21], not the BMS over-voltage cutoff. Neither the label nor any document in this repo gives the cutoff, so its value is unknown; a BMS normally trips above the charge range it is rated for [I; falsifier: a Cyclenbatt document that puts the cutoff inside 14.4–14.6 V].
+
 ---
 
 ## Monitoring (Shelly Plus Uni)

@@ -18,6 +18,8 @@ Selected for its adjustable voltage range and efficiency characteristics:
 - DIN rail mount capability, compact form factor
 - OVP range of 13.8–16.2V provides a hard ceiling above the 13.3V float setpoint
 
+> **Correction (2026-10-16).** The second bullet's 14.4–14.6 V is the label's charge voltage, not a BMS trip point, so its 1.3 V is the margin to the top of the charge range [D: 14.6 − 13.3], and the margin to the BMS cutoff is not known. See the correction under [Cyclenbatt 12V 10Ah LiFePO4 Battery](#cyclenbatt-12v-10ah-lifepo4-battery).
+
 At the 14.5W DC typical system load (~1.2A), the PSU operates at approximately 26% of its 4.5A rated capacity. Light loading reduces thermal stress and extends service life.
 
 ---
@@ -32,6 +34,8 @@ LiFePO4 chemistry selected over SLA for:
 - Weight: approximately 40% lighter than equivalent SLA
 
 Built-in 10A BMS provides cell-level over-voltage (14.4–14.6V), under-voltage (10.0V), and overcurrent protection as a secondary layer behind the system-level protections.
+
+> **Correction (2026-10-16).** The over-voltage figure in this paragraph is the **charge voltage** printed on the Cyclenbatt label [owner, 2026-09-21], not the BMS over-voltage cutoff. Neither the label nor any document in this repo gives the cutoff, so its value is unknown; a BMS normally trips above the charge range it is rated for [I; falsifier: a Cyclenbatt document that puts the cutoff inside 14.4–14.6 V].
 
 The 10Ah capacity provides approximately 7.8 hours runtime at the measured 14.5W DC combined load (Kill-a-Watt confirmed, 16.0W AC avg with adapter losses removed).
 

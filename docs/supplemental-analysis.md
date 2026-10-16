@@ -180,6 +180,8 @@ Scale 1–10 for each factor. For Occurrence and Detection, lower is better. For
 | Wiring / Terminals | Terminal short circuit (pre-F2) | 8 | 1 | 4 | 32 | High instantaneous current to BMS limit (10A). F2 provides backup. IP65 ABS enclosure provides containment. F2-first installation procedure mitigates risk. |
 | DS18B20 | Sensor failure | 2 | 2 | 2 | 8 | Battery temperature monitoring disabled; 40°C alert non-functional. Climate-controlled environment provides substantial inherent margin. Alert absence visible in HA dashboard. |
 
+> **Correction (2026-10-16).** The two HDR-60-12 rows cite a BMS secondary OVP at 14.4–14.6 V. That range is the **charge voltage** printed on the Cyclenbatt label [owner, 2026-09-21], not the BMS over-voltage cutoff. Neither the label nor any document in this repo gives the cutoff, so its value is unknown; a BMS normally trips above the charge range it is rated for [I; falsifier: a Cyclenbatt document that puts the cutoff inside 14.4–14.6 V]. The rows' ratings are left as written.
+
 ### C.3 Highest-RPN Items
 
 No failure modes exceed the RPN 70 review threshold. The three highest items are:
@@ -198,6 +200,8 @@ No single credible failure mode produces hardware damage, injury, or fire risk i
 - **Over-discharge:** BP-65 LVD (11.8V, primary) → BMS UVP (10.0V, backup)
 - **Overcurrent / short:** Branch fuses F3/F4 → F2 → BMS current limit (10A)
 - **Monitoring:** Shelly Plus Uni (voltage + temperature to HA) — passive, no shutdown authority
+
+> **Correction (2026-10-16).** The BMS OVP figure in the Overcharge line is the label's charge voltage, not the BMS cutoff; see the correction under [C.2](#c2-fmea-results).
 
 The Shelly Plus Uni's monitoring-only role is architecturally correct: the system does not depend on WiFi connectivity or software automation for any protective function. All hardware-layer protections operate independently. This is the appropriate separation of concerns for a residential UPS application.
 
