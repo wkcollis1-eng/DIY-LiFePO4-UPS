@@ -283,6 +283,8 @@ The 13.3 V float never takes the cells to balancing voltage. The plan is to take
 | [docs/supplemental-analysis.md](docs/supplemental-analysis.md) | Thermal budget, runtime analysis, FMEA |
 | [docs/design-specification.md](docs/design-specification.md) | Requirements, design decisions, verification matrix |
 | [docs/commissioning.md](docs/commissioning.md) | Commissioning process and results |
+| [docs/UPS_Final_Report.pdf](docs/UPS_Final_Report.pdf) | One-page chart of the March 25–26 commissioning cycle on the R6400 substitute load: two discharges, the recharge between them, the LVD trip |
+| [docs/ups_full_discharge_cycle_r6400.html](docs/ups_full_discharge_cycle_r6400.html) | The same R6400 cycle as an HTML chart |
 | [docs/Final_As_Built_Performance_&_Cost_Summary.md](docs/Final_As_Built_Performance_&_Cost_Summary.md) | As-built performance and cost summary (HA Green build) |
 | [docs/UPS_Validation_Report.md](docs/UPS_Validation_Report.md) | Validation report with Home Assistant configuration |
 | [HA Automation/README_HA_UPS_Integration.md](HA%20Automation/README_HA_UPS_Integration.md) | The March 2026 Shelly-era automation chain, superseded by the `ups_*_v3` chain |

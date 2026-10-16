@@ -3,6 +3,10 @@
 **DIY LiFePO4 UPS for Home Assistant Green & Xfinity XB7 Modem**
 March 2026
 
+> **Currency note (2026-10-16).** This document is part of the original design set. It describes the build as of March 2026, when a Home Assistant Green ran directly on the 12 V bus and a Shelly Plus Uni ADC did the monitoring. Since then the ESPHome INA260 monitor (April 2026, now on the UPS-Monitor-THT Rev 1 board) has become the measurement of record, the HA Green has been retired, and the HA host is an ASRock N100DC that has run from this UPS through an 18 V boost since 2026-08-29 ([BOOST-DS-r1](../UPS-Monitor/boost-subsystem-design.md)). The load on battery is now 2.089 A / 26.80 W steady [M, 2026-08-29 outage, n = 156, [08-31 report](../reports/UPS_Report_2026-08-31_Boost_Integration.md)]. On 2026-09-15 the pack delivered 2.5331 Ah / 31.821 Wh from onset to LVD [M, [09-15 report](../reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md)], a capacity shortfall that is still under investigation. The [README](../README.md) describes the system as it runs now.
+>
+> *In this document:* Its thermal budget, runtime analysis and FMEA cover the HA Green load with Shelly monitoring. The boost has its own failure analysis in BOOST-DS-r1.
+
 This document provides supplemental engineering analysis derived from the component specifications and design parameters in the project repository. All values are sourced from the current repo documentation.
 
 ---

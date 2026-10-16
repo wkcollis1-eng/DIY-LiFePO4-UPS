@@ -1,5 +1,9 @@
 # Design Specification
 
+> **Currency note (2026-10-16).** This document is part of the original design set. It describes the build as of March 2026, when a Home Assistant Green ran directly on the 12 V bus and a Shelly Plus Uni ADC did the monitoring. Since then the ESPHome INA260 monitor (April 2026, now on the UPS-Monitor-THT Rev 1 board) has become the measurement of record, the HA Green has been retired, and the HA host is an ASRock N100DC that has run from this UPS through an 18 V boost since 2026-08-29 ([BOOST-DS-r1](../UPS-Monitor/boost-subsystem-design.md)). The load on battery is now 2.089 A / 26.80 W steady [M, 2026-08-29 outage, n = 156, [08-31 report](../reports/UPS_Report_2026-08-31_Boost_Integration.md)]. On 2026-09-15 the pack delivered 2.5331 Ah / 31.821 Wh from onset to LVD [M, [09-15 report](../reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md)], a capacity shortfall that is still under investigation. The [README](../README.md) describes the system as it runs now.
+>
+> *In this document:* The architecture decision (§2.1) still holds for the XB7, which runs directly on the bus; the host has its own boost because its 17.1–20.9 V input window [S, ASRock N100DC-ITX manual] excludes the bus. FR-3 (runtime over 6 hours) was written for the HA Green load; on 2026-09-15 the pack reached LVD 1 h 30 m 08 s after onset, with the host shut down part-way [M, same report]. The verification matrix's Pending entries have not been updated.
+
 This document formalizes the engineering requirements, design decisions, and verification methods for the DIY LiFePO4 UPS system.
 
 ---

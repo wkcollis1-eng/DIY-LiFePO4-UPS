@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - recharge "tapering to CV float over approximately 10–15 minutes". On 2026-09-15 the bus took 39 min 25 s to re-cross 13.15 V [D, 11:00:13.67 → 11:39:39], and 0.792 A [M] was still flowing at the report cutoff, 51 min 49 s after charge current was first seen [D, 11:00:13.67 → 11:52:03];
   - the 10–20 year battery lifespan in Key Specifications, a calendar-aging projection made before the shortfall;
   - graceful shutdown described as "< 12.2V for 1 min". It fires on the first of `cliff_imminent`, the 12.40 V warning or runtime < 8 min. 12.20 V is the critical-shutdown fallback.
+- The 13 `docs/*.md` files each open with a dated currency note. It says the document describes the March 2026 HA Green build, gives what has changed since (the INA260 monitor, the N100DC host on the 18 V boost, today's load and the 2026-09-15 capacity result), and names what in that document no longer holds. Their bodies are unchanged. `docs/UPS_Final_Report.pdf` and `docs/ups_full_discharge_cycle_r6400.html`, charts of the March commissioning cycle, were linked from nowhere; the README now lists them.
 
 ### Removed
 - `boost-subsystem-design.md` at the repo root. It was a byte-identical second copy of `UPS-Monitor/boost-subsystem-design.md`, which the top-off design and the 2026-08-31 report cite. The README's three links now point there.
