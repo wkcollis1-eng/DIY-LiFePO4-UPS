@@ -1,0 +1,1016 @@
+# ============================================================================
+# Top-Off Charger V0.1 — DRAFT, NOT VALIDATED
+#   No config, codegen, host g++ or real compile has been run (owner's call,
+#   2026-10-16: "no validation at this point"). It is NOT flash-ready: it must
+#   pass the esp-firmware-validation gate (design §9: real compile,
+#   src/main.cpp.o 0 errors) and T1–T15 (design §11) first.
+#   Spec: ../top-off-charger-design.md rev 0.9, §9: FW-1, FW-3 to FW-13.
+#   Source-level read against ESPHome 2026.9.1 (ina2xx_base, ina2xx_i2c,
+#   globals, preferences, esp32 gpio, ota). The Device Builder add-on's ESPHome
+#   version governs; re-read those components on it before the gate (O4).
+# ============================================================================
+# Purpose : Supervisor for the bench top-balance HOLD of the UPS's Cyclenbatt
+#           12 V 10 Ah pack, after a full charge on the Dylannet P20 (§4.3).
+#           The HDR-30-15, trimmed to 14.40 V (FW-7, T0), does all the
+#           regulating. This firmware only opens and closes the path through
+#           the Pololu #2814, times the hold, enforces the hard stops,
+#           publishes the session, and drives the status LED.
+#
+# Hardware: Top Off Charger PCB rev 0.8 (design §7).
+#   U1 XIAO ESP32-C3. U2 Adafruit INA228 #5832, onboard 15 mΩ shunt KEPT,
+#   VBUS jumper CLOSED (high-side), I2C 0x40. U4 Pololu #2814, slide LOCKED
+#   OFF (§7.2). U5 #5382 ideal diode (holds I >= 0 through the shunt). U3
+#   D24V7F3 fed from BATT_RAW, upstream of the switch (board alive whenever AC
+#   is on, dark when it is off).
+#     D1 GPIO3 -> R1 1 kΩ -> status LED, active-high ................ FW-11
+#     D2 GPIO4 -> #2814 ON, direct. NO pull-up anywhere: the #2814's own
+#                 R4 + R5 (20 kΩ to GND) hold it OFF through every reset .. FW-1
+#     D4 GPIO6 / D5 GPIO7 -> INA228 SDA / SCL
+#
+# Flashing: first flash by USB with AC OFF (cord out of the countdown timer),
+#   OTA after that, NEVER USB with AC on: U3's 3.3 V sits straight on the
+#   XIAO's 3V3 pin (§5.4). logger baud_rate 0 for the same reason.
+#
+# ---------------------------------------------------------------------------
+# HOW A TICK WORKS (read this before changing the interval blocks)
+# ---------------------------------------------------------------------------
+# Two facts from the ESPHome 2026.9.1 INA2xx driver shape everything [M, source
+# read 2026-10-16, components/ina2xx_base/ina2xx_base.cpp]:
+#   (a) update() only arms a read (lines 81-88). The read itself runs in
+#       loop(), one register per loop pass: shunt, bus, die temp, current,
+#       power, energy, charge, then status (lines 90-190). So nothing is read
+#       when update() returns.
+#   (b) A failed read publishes 0, not NaN (e.g. lines 109-113: the value
+#       starts at 0 and is published whether or not the read succeeded). The
+#       failure shows only as the component's warning flag, set at the end of
+#       the cycle (lines 176-181). NaN appears only before the first cycle, or
+#       if the chip failed at setup (then no cycle ever runs).
+# So the INA228 has update_interval: never, and ONE 500 ms interval (the
+# control tick) does, in this order:
+#   1. consume the cycle it armed on the previous tick: fresh only if that
+#      cycle reached its last publish (charge on_value sets cyc_seen), the
+#      warning flag is clear, the component is not failed, and V, I are not
+#      NaN. One stale or failed cycle = FAULT "sensor" (FW-4, N = 1).
+#   2. run the state machine on that one (V, I) pair;
+#   3. arm the next cycle.
+# Margin: a cycle takes ~8 loop passes, ~128 ms at ESPHome's default 16 ms
+# loop interval [D: 8 x 16 ms; core/application.h:525], against 500 ms
+# [I: slower under Wi-Fi/API load; falsifier: FAULT "sensor" in T4's silent
+# direction, a full warm session].
+# Ceiling latency, worst case: a crossing just after a read is read on the
+# next tick's cycle and acted on one tick later: <= 500 + 128 + 500 - 128 =
+# 1000 ms from the crossing, plus up to one bus window and one cycle for it to
+# show in the result register (<= 67.3 + 202 ms) [D] -> <= ~1.27 s.
+# FW-12 edge pairs: the "before" pair is the one consumed on the tick that
+# moves the switch (it was read before the edge). The "after" pair is consumed
+# two ticks later: its cycle was armed one tick (500 ms) after the edge, and
+# any INA228 result read >= 270 ms after an edge comes only from conversions
+# that started after it [D: the latest bus result ended <= 202 ms before the
+# read, and its 67.3 ms window began <= 269.3 ms before the read].
+#
+# ---------------------------------------------------------------------------
+# LED (FW-11, rev 0.9). On/off only; R1 sets ~1.2 mA and its brightness is
+# unverified (§5.5), so no PWM dimming.
+#   dark ............ no AC, or firmware not running (dark > ~10 s, §5.4)
+#   Waiting ......... 100 ms blip every 3 s     IDLE, Start would be refused
+#   Ready to charge . 1 s on, 2 s off           IDLE, FW-3 met: press Start
+#   Charging ........ 500 ms on / 500 ms off    switch ON
+#   Final minute .... 150 on,150 off,150 on, 550 off (1 s)
+#                     switch ON, T_hold - time-at-voltage <= final_lead_s
+#   Done ............ 2 x 100 ms blips every 3 s (latched)
+#   Fault ........... 4 Hz, 125/125 ms (latched; every reason, incl. FW-13)
+# Precedence: Fault > Done > Final minute > Charging > Ready > Waiting.
+# Every powered state moves, so a STEADY LED means a hung CPU (L3 then resets
+# it, and the LED goes dark). The renderer only displays the tick's state.
+# Its one other job: if the tick stops running for > 2 s while the loop is
+# alive, it turns the switch OFF and shows Fault (the L3 gap, "logic error
+# that keeps the loop alive", §8). OFF is the only action it may take.
+#
+# ---------------------------------------------------------------------------
+# PLACEHOLDERS: every value marked PLACEHOLDER below is TBD from T11 (O5) or
+# T0/T15 (FW-13). T11 is a SUPERVISED session. Do not run unattended on them.
+#
+# Changelog:
+#   V0.1 — 2026-10-16. First draft from design rev 0.9. Not validated.
+#          Same day: T11 start values T_hold 6 h, T_max 8 h (owner), up from
+#          1 h / 2 h placeholders. Counters are uint32 ms, so they are good to
+#          ~49.7 days [D: 2^32 ms / 86.4e6 ms per day]; 8 h = 28.8e6 ms.
+# ============================================================================
+
+substitutions:
+  device_name: top-off-charger
+  friendly_name: Top-Off Charger
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.1 DRAFT"
+
+  # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
+  # point ("10.0", not "10"), or "10f" will not compile.
+  # ---- Fixed by the design (rev 0.9 §3, §9)
+  v_ceiling: "14.60"     # FW-4: raw VBUS ceiling, one consumed sample
+  v_start_min: "10.0"    # FW-3: VBUS must exceed this (Cyclenbatt BMS UVP); also the
+                         #       charging floor below which VBUS means a failed read
+                         #       (published as 0, header (b)) or a collapsed bus
+  i_max: "5.0"           # FW-4 / RQ-1
+  i_overload: "2.0"      # FW-4 / RQ-12: HDR-30-15 rated current [S, HDR-30-SPEC p.2]
+  final_lead_s: "60"     # FW-11: final-minute cue lead time (owner, 2026-10-16)
+
+  # ---- PLACEHOLDERS, set from T11 (O5). Integers here are seconds.
+  v_hold: "14.30"        # PLACEHOLDER. FW-3/FW-6. Must sit below V_SET 14.40 V by more
+                         #   than the tail-current drops, and above the pack's rest voltage
+  t_hold_s: "21600"      # 6 h. T11 START VALUE (owner, 2026-10-16), FW-6 time at voltage.
+                         #   Long enough to see whether a balancer floor exists and holds
+                         #   (it should show within the first hour on a full pack), and to
+                         #   do real balancing if it does: 6 h x 50 mA = 0.30 Ah = 3 % of
+                         #   10 Ah [D; the bleed rate is an assumption until T11]. Size the
+                         #   later sessions from T11's floor: hold time = imbalance / floor.
+                         #   Still the owner's trade against the no-backup window (§10.2).
+  t_max_s: "28800"       # 8 h. T11 START VALUE, FW-4 session cap: T_hold plus 2 h for the
+                         #   pack to reach V_hold and margin. The L6 timer must be set above it
+                         #   (§10.1 step 5), so it must reach > 8 h.
+  t_ol_s: "300"          # PLACEHOLDER. FW-4 cumulative time with I > i_overload
+  bms_i_from: "0.100"    # PLACEHOLDER. FW-5: "charging" before the step (A)
+  bms_i_zero: "0.005"    # PLACEHOLDER. FW-5: "~0" after the step (A)
+  # ---- PLACEHOLDER, set from T0's idle reading and T15 (FW-13)
+  i_off_floor: "0.050"   # PLACEHOLDER. FW-13: current with the switch commanded OFF (A)
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  comment: ${device_description}
+  project:
+    name: "wkcollis1.top-off-charger"
+    version: "0.1"
+  on_boot:
+    - priority: -200
+      then:
+        - logger.log:
+            level: INFO
+            format: "Top-Off Charger V0.1 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
+
+esp32:
+  board: seeed_xiao_esp32c3
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+  baud_rate: 0   # USB must NOT be connected with AC on (§5.4)
+
+api:
+  encryption:
+    key: !secret api_key_top_off_charger
+  # FW-8: termination and stops are local; HA is not in the loop. A reboot
+  # mid-session is safe (FW-1) but loses the session. Recovery reboot is the
+  # IDLE-only interval below.
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+    # A reflash resets the CPU, which opens the switch anyway (FW-1). This
+    # ends a running session first so its record is written with an honest
+    # end reason. The record reaches flash through the shutdown path
+    # (globals on_shutdown store, then the preferences syncer's on_shutdown
+    # sync) [I: shutdown order not traced; falsifier: T2's record after an
+    # OTA mid-session reads "stopped: OTA update"].
+    on_begin:
+      - lambda: |-
+          if (id(chg_state) == 1) {          // 1 = CHARGING
+            id(charge_sw).turn_off();
+            id(rec_reason) = 10;             // 10 = R_STOP_OTA
+            id(rec_ah) = id(session_ah_live);
+            id(rec_t_at_v_s) = id(t_at_v_ms) / 1000.0f;
+            id(rec_elapsed_s) = (millis() - id(t_start_ms)) / 1000.0f;
+            id(rec_bms_v) = NAN;
+            id(rec_bms_i) = NAN;
+            id(chg_state) = 0;               // 0 = IDLE: state and switch agree
+            ESP_LOGW("charger", "OTA begin: session stopped, record kept");
+          }
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  reboot_timeout: 0s   # FW-8, as api
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# §10.1 step 6 reads VBUS and presses Start "in HA or on the ESPHome web page".
+web_server:
+  port: 80
+
+# Crash-loop recovery. Safe mode sets up only what OTA needs, so GPIO4 is never
+# driven and the #2814's pull-down holds the switch OFF; GPIO3 is never driven,
+# so the LED is dark (§5.4's "not running").
+safe_mode:
+  num_attempts: 10
+  reboot_timeout: 5min
+
+i2c:
+  sda: GPIO6
+  scl: GPIO7
+  scan: false
+  id: bus_a
+  frequency: 100kHz
+
+# ---------------------------------------------------------------------------
+# Charge enable (FW-1). Only the control tick turns it ON. It is internal: HA
+# cannot switch it. Two other paths may only turn it OFF: OTA on_begin, and
+# the LED renderer's tick watchdog.
+# ---------------------------------------------------------------------------
+switch:
+  - platform: gpio
+    id: charge_sw
+    internal: true
+    restore_mode: ALWAYS_OFF
+    pin:
+      number: GPIO4
+      # 5 / 10 / 20 (default) / 40 mA [M: esp32/gpio.py, 2026.9.1]. ON needs
+      # 0.17 mA [D: 3.3 V / 20 kΩ], so the weakest setting drives it fully.
+      drive_strength: 5mA
+
+output:
+  - platform: gpio
+    id: status_led
+    pin: GPIO3   # D1, active-high through R1 (§5.5). Not a strapping pin.
+
+globals:
+  # ---- State machine. Volatile on purpose: a reboot always lands in IDLE with
+  #      the switch OFF (RQ-4). The session RECORD is the restored set below.
+  - id: chg_state            # 0 IDLE, 1 CHARGING, 2 DONE (latched), 3 FAULT (latched)
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: cur_reason           # reason for the current latch; codes in the tick lambda
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: req_start            # set by buttons, consumed by the tick (FW-1)
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: req_stop
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: req_ack
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: ready_flag           # FW-3 met on this tick's pair (drives "Ready to charge")
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  # ---- INA228 cycle bookkeeping (header: HOW A TICK WORKS)
+  - id: cyc_seen             # set by the charge sensor's on_value, the cycle's last publish
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: cyc_primed           # a cycle has been armed at least once
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  # ---- Session timing
+  - id: tick_n
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: last_tick_ms         # also the LED renderer's tick watchdog
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: t_start_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: t_at_v_ms            # FW-6 accumulator: time with VBUS >= V_hold
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: t_ol_ms              # FW-4 accumulator: time with I > i_overload (cumulative)
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: prev_v               # FW-5: the last charging sample before this one
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: prev_i
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: session_ah_live      # INA228 CHARGE register, zeroed at Start (FW-9)
+    type: float
+    restore_value: no
+    initial_value: '0.0f'
+
+  # ---- FW-12 edge capture
+  - id: on_edge_tick
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: off_edge_tick        # also FW-13's settle reference
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: on_pending
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: off_pending
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: on_vb
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: on_ib
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: off_vb
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: off_ib
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+
+  # ---- LED (FW-11): 0 Waiting, 1 Ready, 2 Charging, 3 Final minute, 4 Done, 5 Fault
+  - id: led_mode
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: led_t0               # pattern phase origin, reset on every mode change
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  # ---- Housekeeping
+  - id: last_api_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: sync_due_tick        # 0 = none pending
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  # ---- Session record (FW-9): written once when a session ends, then flushed
+  #      to flash on purpose. Restoring globals copy their value to the
+  #      preference cache on their own 1 s poll [M: globals_component.h:29,
+  #      PollingComponent(1000)], and the cache reaches flash only every 60 s
+  #      by default [M: preferences/__init__.py, flash_write_interval]. The
+  #      L6 timer goes OFF right after DONE (§10.1 step 7), so without the
+  #      tick's explicit sync the record could be lost.
+  - id: rec_reason
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: rec_ah
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_t_at_v_s
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_elapsed_s
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_bms_v            # FW-5 pre-step pair; NAN unless the session ended in a BMS trip
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_bms_i
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+
+sensor:
+  # -------------------------------------------------------------------------
+  # INA228: CORE. Internal and unfiltered: the tick reads .state, which is the
+  # post-filter value, so a filter here would sit in the safety path. HA gets
+  # the template copies below.
+  # -------------------------------------------------------------------------
+  - platform: ina2xx_i2c
+    id: ina
+    i2c_id: bus_a
+    model: INA228
+    address: 0x40
+    shunt_resistance: 0.015 ohm
+    # CURRENT_LSB = max_current / 2^19 = 10 / 524288 = 19.07 µA; SHUNT_CAL =
+    # 13107.2e6 x 19.07e-6 x 0.015 = 3750, inside 15 bits [D: formulas from
+    # ina2xx_base.cpp:355-356]. Range 0 spans ±163.84 mV / 0.015 Ω = ±10.92 A
+    # [D], and the ADC's own step is 20.8 µA [D: 312.5 nV / 0.015 Ω].
+    max_current: 10 A
+    adc_range: 0
+    # FW-10: 1052 µs x 64 = 67.3 ms per channel (> one 8.3 ms ripple period,
+    # FW-8); bus + shunt + temp = 202 ms per cycle [D].
+    adc_time: 1052us
+    adc_averaging: 64
+    reset_on_boot: true      # an INA228 reset ends the session anyway (FW-1)
+    update_interval: never   # armed by the control tick only
+    bus_voltage:
+      id: vbus_raw
+      internal: true
+    current:
+      id: ibat_raw
+      internal: true
+    temperature:             # die temperature (FW-10)
+      id: die_t_raw
+      internal: true
+    charge:                  # Ah from the hardware CHARGE register (FW-9)
+      id: hw_charge_ah
+      internal: true
+      on_value:
+        - lambda: 'id(cyc_seen) = true;'   # last publish of the cycle
+
+  # -------------------------------------------------------------------------
+  # HA-facing copies (OBSERVABILITY). Published by the tick at 1 Hz, and NaN
+  # when the tick's pair is not valid. Nothing reads these back.
+  # -------------------------------------------------------------------------
+  - platform: template
+    id: vbus_ha
+    name: "VBUS"
+    unit_of_measurement: V
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: ibat_ha
+    name: "Charge Current"
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: pbat_ha
+    name: "Charge Power"       # signed V x I, not the INA228's unsigned POWER register
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: never
+  - platform: template
+    id: die_t_ha
+    name: "INA228 Die Temperature"   # enclosure proxy, report-only (FW-10)
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: session_ah
+    name: "Session Charge"
+    unit_of_measurement: Ah
+    state_class: measurement
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: t_at_v_ha
+    name: "Time at Voltage"
+    unit_of_measurement: s
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: t_remain_ha
+    name: "Time Remaining at Voltage"
+    unit_of_measurement: s
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: t_elapsed_ha
+    name: "Session Elapsed"
+    unit_of_measurement: s
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+  # ---- Session record, restored at boot (FW-9)
+  - platform: template
+    id: last_ah
+    name: "Last Session Charge"
+    unit_of_measurement: Ah
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: last_t_at_v
+    name: "Last Session Time at Voltage"
+    unit_of_measurement: s
+    device_class: duration
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: last_elapsed
+    name: "Last Session Elapsed"
+    unit_of_measurement: s
+    device_class: duration
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: bms_pre_v
+    name: "BMS Trip Pre-Step VBUS"   # FW-5; NaN unless the last session ended in a trip
+    unit_of_measurement: V
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: bms_pre_i
+    name: "BMS Trip Pre-Step Current"
+    unit_of_measurement: A
+    accuracy_decimals: 4
+    update_interval: never
+
+  # ---- FW-12 edge pairs: all four of an edge are published in the same tick.
+  #      R_edge = dV/dI is computed downstream, not here.
+  - platform: template
+    id: edge_on_vb
+    name: "Edge ON VBUS Before"
+    unit_of_measurement: V
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: edge_on_ib
+    name: "Edge ON Current Before"
+    unit_of_measurement: A
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: edge_on_va
+    name: "Edge ON VBUS After"
+    unit_of_measurement: V
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: edge_on_ia
+    name: "Edge ON Current After"
+    unit_of_measurement: A
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: edge_off_vb
+    name: "Edge OFF VBUS Before"
+    unit_of_measurement: V
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: edge_off_ib
+    name: "Edge OFF Current Before"
+    unit_of_measurement: A
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: edge_off_va
+    name: "Edge OFF VBUS After"
+    unit_of_measurement: V
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: edge_off_ia
+    name: "Edge OFF Current After"
+    unit_of_measurement: A
+    accuracy_decimals: 4
+    update_interval: never
+
+text_sensor:
+  - platform: template
+    id: state_txt
+    name: "Charger State"
+    update_interval: never
+  - platform: template
+    id: reason_txt
+    name: "Fault Reason"
+    update_interval: never
+  - platform: template
+    id: led_txt
+    name: "LED Mode"              # lets HA check "LED pattern matches state" in every test
+    update_interval: never
+  - platform: template
+    id: last_reason_txt
+    name: "Last Session End"
+    update_interval: never
+
+binary_sensor:
+  - platform: template
+    id: start_ok_bin
+    name: "Start Permitted"
+  - platform: template
+    id: sw_bin
+    name: "Charge Switch"         # commanded state, read-only
+
+button:
+  - platform: template
+    name: "Start"
+    on_press:
+      - lambda: 'id(req_start) = true;'
+  - platform: template
+    name: "Stop"
+    on_press:
+      - lambda: 'id(req_stop) = true;'
+  - platform: template
+    name: "Acknowledge"
+    on_press:
+      - lambda: 'id(req_ack) = true;'
+
+interval:
+  # =========================================================================
+  # CONTROL TICK (CORE). The only place the switch is turned ON (FW-1).
+  # 500 ms is load-bearing: FW-12's after-edge rule needs >= 270 ms per tick,
+  # and the cycle margin above needs it well above ~128 ms.
+  # =========================================================================
+  - interval: 500ms
+    then:
+      - lambda: |-
+          static const char *const TAG = "charger";
+          enum { ST_IDLE = 0, ST_CHARGING = 1, ST_DONE = 2, ST_FAULT = 3 };
+          enum { R_NONE = 0, R_DONE, R_OVERVOLTAGE, R_OVERCURRENT, R_OVERLOAD, R_TMAX,
+                 R_SENSOR, R_BMS_TRIP, R_SWITCH_ON, R_STOP_USER, R_STOP_OTA, R_INTERNAL };
+          static const char *const REASON[] = {
+            "none",
+            "done: time at voltage reached",
+            "over-voltage: VBUS above ceiling",
+            "over-current: I above I_max",
+            "overload: pack not pre-charged",
+            "T_max reached",
+            "sensor: INA228 read failed, stale, or VBUS collapsed",
+            "BMS trip (or fuse / QD open)",
+            "switch conducting while commanded OFF - cut AC",
+            "stopped: user",
+            "stopped: OTA update",
+            "internal: state and switch disagree"};
+          enum { LED_WAITING = 0, LED_READY, LED_CHARGING, LED_FINAL, LED_DONE, LED_FAULT };
+          static const char *const LED_TXT[] = {
+            "Waiting", "Ready to charge", "Charging", "Final minute", "Done", "Fault"};
+          static const char *const ST_TXT[] = {"IDLE", "CHARGING", "DONE", "FAULT"};
+          auto rtxt = [&](int r) -> const char * {
+            return (r >= R_NONE && r <= R_INTERNAL) ? REASON[r] : "unknown";
+          };
+
+          const float V_CEIL = ${v_ceiling}f;
+          const float V_START_MIN = ${v_start_min}f;
+          const float V_HOLD = ${v_hold}f;
+          const float I_MAX = ${i_max}f;
+          const float I_OL = ${i_overload}f;
+          const float BMS_I_FROM = ${bms_i_from}f;
+          const float BMS_I_ZERO = ${bms_i_zero}f;
+          const float I_OFF_FLOOR = ${i_off_floor}f;
+          const uint32_t T_HOLD_MS = ${t_hold_s}u * 1000u;
+          const uint32_t T_MAX_MS = ${t_max_s}u * 1000u;
+          const uint32_t T_OL_MS = ${t_ol_s}u * 1000u;
+          const uint32_t FINAL_LEAD_MS = ${final_lead_s}u * 1000u;
+
+          // ---- 0. timing. dt is capped: a stalled loop never earns hold time
+          //         it cannot vouch for (safe direction: the hold runs longer).
+          //         T_max uses absolute time, so the cap never extends it.
+          const uint32_t now = millis();
+          uint32_t dt = (id(last_tick_ms) == 0u) ? 0u : (now - id(last_tick_ms));
+          if (dt > 2000u) dt = 2000u;
+          id(last_tick_ms) = now;
+          const uint32_t tk = ++id(tick_n);
+
+          // ---- 1. consume the cycle armed on the previous tick
+          const float v = id(vbus_raw).state;
+          const float i = id(ibat_raw).state;
+          const bool seen = id(cyc_seen);
+          id(cyc_seen) = false;
+          const bool have_data = id(cyc_primed);   // false only on the first tick
+          const bool fresh = have_data && seen && !id(ina).status_has_warning() &&
+                             !id(ina).is_failed() && !std::isnan(v) && !std::isnan(i);
+
+          int st = id(chg_state);
+          const int st_at_entry = st;
+
+          // ---- helpers. Both leave the switch OFF; only end_session writes the record.
+          auto end_session = [&](int reason) {
+            if (id(charge_sw).state) {
+              id(charge_sw).turn_off();
+              id(off_edge_tick) = tk;              // FW-12 "before" = this tick's pair
+              id(off_vb) = fresh ? v : NAN;
+              id(off_ib) = fresh ? i : NAN;
+              id(off_pending) = true;
+            }
+            id(rec_reason) = reason;
+            id(rec_ah) = id(session_ah_live);
+            id(rec_t_at_v_s) = id(t_at_v_ms) / 1000.0f;
+            id(rec_elapsed_s) = (now - id(t_start_ms)) / 1000.0f;
+            if (reason == R_BMS_TRIP) {
+              id(rec_bms_v) = id(prev_v);           // FW-5: last sample before the step
+              id(rec_bms_i) = id(prev_i);
+            } else {
+              id(rec_bms_v) = NAN;
+              id(rec_bms_i) = NAN;
+            }
+            id(sync_due_tick) = tk + 3u;            // >= 1 s: globals store first (see globals)
+            if (reason == R_DONE) st = ST_DONE;
+            else if (reason == R_STOP_USER || reason == R_STOP_OTA) st = ST_IDLE;
+            else st = ST_FAULT;
+            id(cur_reason) = (st == ST_IDLE) ? R_NONE : reason;
+            if (st == ST_FAULT)
+              ESP_LOGE(TAG, "Session FAULT: %s (VBUS %.4f V, I %.4f A)", rtxt(reason), v, i);
+            else
+              ESP_LOGI(TAG, "Session end: %s", rtxt(reason));
+            ESP_LOGI(TAG, "  record: %.5f Ah, %.0f s at voltage, %.0f s elapsed",
+                     id(rec_ah), id(rec_t_at_v_s), id(rec_elapsed_s));
+            id(session_ah).publish_state(id(rec_ah));
+            id(t_at_v_ha).publish_state(id(rec_t_at_v_s));
+            id(t_elapsed_ha).publish_state(id(rec_elapsed_s));
+            id(last_reason_txt).publish_state(rtxt(id(rec_reason)));
+            id(last_ah).publish_state(id(rec_ah));
+            id(last_t_at_v).publish_state(id(rec_t_at_v_s));
+            id(last_elapsed).publish_state(id(rec_elapsed_s));
+            id(bms_pre_v).publish_state(id(rec_bms_v));
+            id(bms_pre_i).publish_state(id(rec_bms_i));
+          };
+          auto latch_fault = [&](int reason) {      // outside a session: no record
+            if (id(charge_sw).state) id(charge_sw).turn_off();
+            if (st == ST_FAULT && id(cur_reason) != R_NONE)
+              ESP_LOGW(TAG, "  supersedes latched reason: %s", rtxt(id(cur_reason)));
+            st = ST_FAULT;
+            id(cur_reason) = reason;
+            ESP_LOGE(TAG, "FAULT: %s (VBUS %.4f V, I %.4f A)", rtxt(reason), v, i);
+          };
+
+          // ---- 2. operator requests. Consumed here, so this tick is the only
+          //         writer of the switch (FW-1).
+          const bool want_start = id(req_start);
+          const bool want_stop = id(req_stop);
+          const bool want_ack = id(req_ack);
+          id(req_start) = false;
+          id(req_stop) = false;
+          id(req_ack) = false;
+          if (want_ack) {
+            if (st == ST_DONE || st == ST_FAULT) {
+              ESP_LOGI(TAG, "Acknowledged %s (%s)", ST_TXT[st], rtxt(id(cur_reason)));
+              st = ST_IDLE;
+              id(cur_reason) = R_NONE;   // a condition that persists re-latches below, this tick
+            } else {
+              ESP_LOGW(TAG, "Acknowledge ignored: nothing latched (%s)", ST_TXT[st]);
+            }
+          }
+
+          // ---- 3. invariant: the switch is ON exactly when the state is CHARGING.
+          //         The LED shows the state, so this keeps it honest about the switch.
+          if (st != ST_CHARGING && id(charge_sw).state) {
+            latch_fault(R_INTERNAL);
+          } else if (st == ST_CHARGING && !id(charge_sw).state) {
+            end_session(R_INTERNAL);      // e.g. the LED renderer's tick watchdog opened it
+          }
+
+          // ---- 4. sensor validity (FW-4), in EVERY state (rev 0.9). In IDLE this
+          //         latches FAULT too, so the LED never shows Waiting on a pack it
+          //         cannot read. While charging, VBUS below v_start_min is either a
+          //         failed read (published as 0, header (b)) or a collapsed bus.
+          const bool valid = fresh && !(st == ST_CHARGING && v < V_START_MIN);
+          if (have_data && !valid) {
+            if (!fresh)
+              ESP_LOGE(TAG, "INA228 cycle not valid: seen=%d warning=%d failed=%d V=%.4f I=%.4f",
+                       (int) seen, (int) id(ina).status_has_warning(), (int) id(ina).is_failed(), v, i);
+            else
+              ESP_LOGE(TAG, "VBUS %.4f V below %.1f V while charging", v, V_START_MIN);
+            if (st == ST_CHARGING) end_session(R_SENSOR);
+            else if (st != ST_FAULT) latch_fault(R_SENSOR);
+          }
+
+          // ---- 5. FW-13: current with the switch commanded OFF. Settled = two
+          //         ticks after the last OFF edge (the after-edge rule, header), and
+          //         at boot the switch has been OFF since reset. The firmware cannot
+          //         open a shorted #2814; it announces it, and L6 ends it.
+          const bool off_settled = !id(charge_sw).state && (tk - id(off_edge_tick) >= 2u);
+          if (valid && off_settled && i > I_OFF_FLOOR && id(cur_reason) != R_SWITCH_ON) {
+            ESP_LOGE(TAG, "FW-13: %.4f A with the switch commanded OFF", i);
+            latch_fault(R_SWITCH_ON);
+          }
+
+          // ---- 6. IDLE: the start gate (FW-3), on this tick's pair only.
+          //         NaN cannot pass: every comparison with NaN is false.
+          id(ready_flag) = (st == ST_IDLE) && valid && (v > V_START_MIN) && (v < V_HOLD);
+          bool just_started = false;
+          if (want_start) {
+            if (st != ST_IDLE) {
+              ESP_LOGW(TAG, "Start ignored: state %s", ST_TXT[st]);
+            } else if (!id(ready_flag)) {
+              if (!valid)
+                ESP_LOGW(TAG, "Start refused: no valid INA228 reading");
+              else if (!(v > V_START_MIN))
+                ESP_LOGW(TAG, "Start refused: VBUS %.3f V <= %.1f V (pack absent, reversed, or below UVP)",
+                         v, V_START_MIN);
+              else
+                ESP_LOGW(TAG, "Start refused: VBUS %.3f V >= V_hold %.3f V (pack still resting above V_hold)",
+                         v, V_HOLD);
+            } else if (!id(ina).reset_energy_counters()) {
+              ESP_LOGE(TAG, "Start refused: CHARGE register reset failed (I2C write)");
+            } else {
+              id(on_edge_tick) = tk;                // FW-12 "before" = this tick's pair
+              id(on_vb) = v;
+              id(on_ib) = i;
+              id(on_pending) = true;
+              id(t_start_ms) = now;
+              id(t_at_v_ms) = 0u;
+              id(t_ol_ms) = 0u;
+              id(prev_v) = NAN;
+              id(prev_i) = NAN;
+              id(session_ah_live) = 0.0f;
+              id(charge_sw).turn_on();
+              st = ST_CHARGING;
+              id(cur_reason) = R_NONE;
+              just_started = true;
+              ESP_LOGI(TAG, "Session START: VBUS %.4f V, I %.4f A, V_hold %.3f V, T_hold %u s",
+                       v, i, V_HOLD, (unsigned) (T_HOLD_MS / 1000u));
+            }
+          }
+          if (want_stop && !(st == ST_CHARGING && !just_started))
+            ESP_LOGW(TAG, "Stop ignored: no session running");
+
+          // ---- 7. CHARGING: hard stops (FW-4), BMS trip (FW-5), normal end (FW-6).
+          //         Hard stops come first, so a stop that coincides with a fault
+          //         keeps the fault's reason.
+          if (st == ST_CHARGING && !just_started && valid) {
+            const uint32_t elapsed = now - id(t_start_ms);
+            const float q = id(hw_charge_ah).state;   // same cycle as v, i
+            if (!std::isnan(q)) id(session_ah_live) = q;
+            if (i > I_OL) id(t_ol_ms) += dt;          // cumulative, rev 0.9
+            const bool bms_step = !std::isnan(id(prev_i)) && id(prev_i) >= BMS_I_FROM &&
+                                  i <= BMS_I_ZERO && v >= V_HOLD;
+            if (v > V_CEIL) end_session(R_OVERVOLTAGE);
+            else if (i > I_MAX) end_session(R_OVERCURRENT);
+            else if (id(t_ol_ms) > T_OL_MS) end_session(R_OVERLOAD);
+            else if (elapsed > T_MAX_MS) end_session(R_TMAX);
+            else if (bms_step) end_session(R_BMS_TRIP);
+            else {
+              if (v >= V_HOLD) id(t_at_v_ms) += dt;   // current logged, never acted on (FW-6)
+              if (id(t_at_v_ms) >= T_HOLD_MS) end_session(R_DONE);
+              else if (want_stop) end_session(R_STOP_USER);
+            }
+            if (st == ST_CHARGING) {
+              id(prev_v) = v;
+              id(prev_i) = i;
+            }
+          }
+
+          // ---- 8. FW-12 after-edge pairs, two ticks after each edge. An edge in
+          //         the other direction on an EARLIER tick voids the "after" pair:
+          //         this tick's pair was read after it. One on THIS tick does not:
+          //         the pair was consumed before step 7 moved the switch.
+          if (id(on_pending) && tk >= id(on_edge_tick) + 2u) {
+            const bool ok = valid && !(id(off_edge_tick) > id(on_edge_tick) && id(off_edge_tick) < tk);
+            id(edge_on_vb).publish_state(id(on_vb));
+            id(edge_on_ib).publish_state(id(on_ib));
+            id(edge_on_va).publish_state(ok ? v : NAN);
+            id(edge_on_ia).publish_state(ok ? i : NAN);
+            id(on_pending) = false;
+          }
+          if (id(off_pending) && tk >= id(off_edge_tick) + 2u) {
+            const bool ok = valid && !(id(on_edge_tick) > id(off_edge_tick) && id(on_edge_tick) < tk);
+            id(edge_off_vb).publish_state(id(off_vb));
+            id(edge_off_ib).publish_state(id(off_ib));
+            id(edge_off_va).publish_state(ok ? v : NAN);
+            id(edge_off_ia).publish_state(ok ? i : NAN);
+            id(off_pending) = false;
+          }
+
+          // ---- 9. flush the session record to flash (see globals)
+          if (id(sync_due_tick) != 0u && tk >= id(sync_due_tick)) {
+            id(sync_due_tick) = 0u;
+            if (global_preferences->sync())
+              ESP_LOGI(TAG, "Session record flushed to flash");
+            else
+              ESP_LOGW(TAG, "Session record flush FAILED");
+          }
+
+          // ---- 10. LED mode (FW-11), in precedence order
+          int mode;
+          if (st == ST_FAULT) mode = LED_FAULT;
+          else if (st == ST_DONE) mode = LED_DONE;
+          else if (st == ST_CHARGING) {
+            const uint32_t rem = (id(t_at_v_ms) >= T_HOLD_MS) ? 0u : (T_HOLD_MS - id(t_at_v_ms));
+            mode = (rem <= FINAL_LEAD_MS) ? LED_FINAL : LED_CHARGING;
+          } else {
+            mode = id(ready_flag) ? LED_READY : LED_WAITING;
+          }
+          if (mode != id(led_mode)) {
+            id(led_mode) = mode;
+            id(led_t0) = now;
+          }
+          id(chg_state) = st;
+
+          // ---- 11. publish (changes now; telemetry at 1 Hz)
+          static int pub_st = -1, pub_reason = -1, pub_led = -1, pub_ready = -1, pub_sw = -1;
+          if (st != pub_st) { id(state_txt).publish_state(ST_TXT[st]); pub_st = st; }
+          if (id(cur_reason) != pub_reason) {
+            id(reason_txt).publish_state(rtxt(id(cur_reason)));
+            pub_reason = id(cur_reason);
+          }
+          if (mode != pub_led) { id(led_txt).publish_state(LED_TXT[mode]); pub_led = mode; }
+          if ((int) id(ready_flag) != pub_ready) {
+            id(start_ok_bin).publish_state(id(ready_flag));
+            pub_ready = id(ready_flag);
+          }
+          if ((int) id(charge_sw).state != pub_sw) {
+            id(sw_bin).publish_state(id(charge_sw).state);
+            pub_sw = id(charge_sw).state;
+          }
+          if (tk == 1u) {   // the restored record, once per boot
+            id(last_reason_txt).publish_state(rtxt(id(rec_reason)));
+            id(last_ah).publish_state(id(rec_ah));
+            id(last_t_at_v).publish_state(id(rec_t_at_v_s));
+            id(last_elapsed).publish_state(id(rec_elapsed_s));
+            id(bms_pre_v).publish_state(id(rec_bms_v));
+            id(bms_pre_i).publish_state(id(rec_bms_i));
+          }
+          if ((tk & 1u) == 0u) {
+            id(vbus_ha).publish_state(valid ? v : NAN);
+            id(ibat_ha).publish_state(valid ? i : NAN);
+            id(pbat_ha).publish_state(valid ? v * i : NAN);
+            id(die_t_ha).publish_state(valid ? id(die_t_raw).state : NAN);
+            if (st == ST_CHARGING) {
+              id(session_ah).publish_state(id(session_ah_live));
+              id(t_at_v_ha).publish_state(id(t_at_v_ms) / 1000.0f);
+              const uint32_t rem = (id(t_at_v_ms) >= T_HOLD_MS) ? 0u : (T_HOLD_MS - id(t_at_v_ms));
+              id(t_remain_ha).publish_state(rem / 1000.0f);
+              id(t_elapsed_ha).publish_state((now - id(t_start_ms)) / 1000.0f);
+            }
+          }
+          if (st != st_at_entry)
+            ESP_LOGI(TAG, "State %s -> %s", ST_TXT[st_at_entry], ST_TXT[st]);
+
+          // ---- 12. arm the next INA228 cycle; the next tick consumes it
+          id(cyc_primed) = true;
+          id(ina).update();
+
+  # =========================================================================
+  # LED RENDERER (FW-11). Displays led_mode; phase from millis(), so a late
+  # pass never stretches a pattern. Tick watchdog: if the control tick has not
+  # run for > 2 s WHILE this renderer has kept running, open the switch and
+  # show Fault (the tick then ends the session as FAULT "internal" through its
+  # invariant, step 3, if it ever runs again). A stall of the whole loop stops
+  # both intervals and is not this case: when the loop resumes, the renderer's
+  # own gap is long too, so it does not trip [I: the scheduler runs both
+  # overdue intervals before the renderer's next pass; falsifier: FAULT
+  # "internal" in T4's silent run]. A hung loop is L3's (§8).
+  # =========================================================================
+  - interval: 25ms
+    then:
+      - lambda: |-
+          static int last_on = -1;
+          static uint32_t last_render = 0;
+          const uint32_t now = millis();
+          const bool renderer_alive = (last_render != 0u) && (now - last_render) < 500u;
+          last_render = now;
+          int mode = id(led_mode);
+          if (renderer_alive && id(last_tick_ms) != 0u && (now - id(last_tick_ms)) > 2000u) {
+            if (id(charge_sw).state) {
+              id(charge_sw).turn_off();
+              ESP_LOGE("charger", "Control tick stalled > 2 s: switch OFF");
+            }
+            mode = 5;   // Fault pattern
+          }
+          const uint32_t ph = now - id(led_t0);
+          bool on;
+          switch (mode) {
+            case 0: on = (ph % 3000u) < 100u; break;                        // Waiting
+            case 1: on = (ph % 3000u) < 1000u; break;                       // Ready to charge
+            case 2: on = (ph % 1000u) < 500u; break;                        // Charging
+            case 3: { const uint32_t p = ph % 1000u;                        // Final minute
+                      on = (p < 150u) || (p >= 300u && p < 450u); break; }
+            case 4: { const uint32_t p = ph % 3000u;                        // Done
+                      on = (p < 100u) || (p >= 300u && p < 400u); break; }
+            case 5: on = (ph % 250u) < 125u; break;                         // Fault, 4 Hz
+            default: on = false; break;
+          }
+          if ((int) on != last_on) {
+            last_on = on;
+            if (on) id(status_led).turn_on();
+            else id(status_led).turn_off();
+          }
+
+  # =========================================================================
+  # IDLE-only recovery reboot (FW-8): reboot_timeout is 0s on api and wifi,
+  # and ESPHome notes a full reboot is sometimes needed to recover Wi-Fi.
+  # Never in CHARGING, and never with a latch showing (DONE / FAULT).
+  # =========================================================================
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            api.connected:
+          then:
+            - lambda: 'id(last_api_ms) = millis();'
+      - lambda: |-
+          if (id(chg_state) == 0 && (millis() - id(last_api_ms)) > 15u * 60u * 1000u) {
+            ESP_LOGW("charger", "No API client for 15 min while IDLE: rebooting to recover Wi-Fi");
+            App.safe_reboot();
+          }
