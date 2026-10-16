@@ -9,9 +9,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Pending
-- Physical build and assembly
-- Home Assistant automation documentation
-- Runtime validation testing
+- Open Item 14a (09-15 report): full discharge at May's load, host shut down first. This is the decisive capacity test
+- Open Item 16 (09-15 report): coulomb-counted recharge to termination
+- Boost EN shed (BOOST-DS-r1 DR-1/OP-2), closing the unattended-recovery gap, and the BOOST-DS-r1 §10 scope gate
+- Top-off charger: fabrication (O11), firmware validation (O4), tests T0–T15
+- INA260 ALERT input: the firmware reads GPIO3 (D1), but the THT Rev 1 PCB routes ALERT to GPIO5 (D3)
+- Home Assistant automation documentation for the `ups_*_v3` chain (`HA Automation/` describes the March 2026 chain)
+
+---
+
+## [2026-10-16] — 2026-10-16
+
+### Changed
+- `README.md` rewritten for the system as it now runs. That means the N100DC host on the 18 V U3V70A boost (since 2026-08-29), the UPS-Monitor-THT Rev 1 PCB with firmware V1.20, the 2026-08-31 and 2026-09-15 reports, and the planned top-off charger (rev 0.10). It now opens with the 2026-09-15 capacity shortfall, 2.5331 Ah / 31.821 Wh onset to LVD [M], and the unattended-recovery gap. Figures are tagged [M]/[S]/[D]/[I], with a legend at the top. Documents from before August 2026 are labelled as describing the HA Green build. Claims retired:
+  - the "Runtime 3.6 hours" and "Status Complete" badges, and the text's "~3.6 hours" at 14.9 W. These were May 2026 figures on the pre-boost load;
+  - "Accessible capacity 4.18 Ah / 53.3 Wh" and the capacity-zone table, also May 2026;
+  - "No DC-DC converter is used", false since the boost was fitted;
+  - recharge "tapering to CV float over approximately 10–15 minutes". On 2026-09-15 the bus took 39 min 25 s to re-cross 13.15 V [D, 11:00:13.67 → 11:39:39], and 0.792 A [M] was still flowing at the report cutoff, 51 min 49 s after charge current was first seen [D, 11:00:13.67 → 11:52:03];
+  - the 10–20 year battery lifespan in Key Specifications, a calendar-aging projection made before the shortfall;
+  - graceful shutdown described as "< 12.2V for 1 min". It fires on the first of `cliff_imminent`, the 12.40 V warning or runtime < 8 min. 12.20 V is the critical-shutdown fallback.
+
+### Fixed
+- `README.md`: the 2026-04-05 and 2026-05-06 report links pointed into `docs/`; the reports are in `reports/`. The 06-18, 08-31 and 09-15 reports, the boost design, the monitor firmware and PCB, and the 09-15 data set were not linked at all. All relative links and anchors now resolve [M, checked against `git ls-files`].
+- `README.md`: the "<1 ms" switchover is labelled as the ideal diode's design value. The 5 s telemetry cannot measure it.
 
 ---
 
