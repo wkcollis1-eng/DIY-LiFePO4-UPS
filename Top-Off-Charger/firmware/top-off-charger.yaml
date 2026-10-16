@@ -1,10 +1,10 @@
 # ============================================================================
-# Top-Off Charger V0.1 — DRAFT, NOT VALIDATED
+# Top-Off Charger V0.2 — DRAFT, NOT VALIDATED
 #   No config, codegen, host g++ or real compile has been run (owner's call,
 #   2026-10-16: "no validation at this point"). It is NOT flash-ready: it must
 #   pass the esp-firmware-validation gate (design §9: real compile,
 #   src/main.cpp.o 0 errors) and T1–T15 (design §11) first.
-#   Spec: ../top-off-charger-design.md rev 0.9, §9: FW-1, FW-3 to FW-13.
+#   Spec: ../top-off-charger-design.md rev 0.10, §9: FW-1, FW-3 to FW-14.
 #   Source-level read against ESPHome 2026.9.1 (ina2xx_base, ina2xx_i2c,
 #   globals, preferences, esp32 gpio, ota). The Device Builder add-on's ESPHome
 #   version governs; re-read those components on it before the gate (O4).
@@ -87,6 +87,26 @@
 # that keeps the loop alive", §8). OFF is the only action it may take.
 #
 # ---------------------------------------------------------------------------
+# TAIL FLOOR (FW-14, rev 0.10): OBSERVATION ONLY. Nothing in tick steps 1-7's
+# decisions reads these values, so they cannot end, extend or start a session.
+#   settle ...... the first tail_settle_s of TIME AT VOLTAGE (not of the session)
+#   window ...... tail_window_s blocks of valid at-voltage ticks; each block's
+#                 mean is one "Tail Window Mean"
+#   floor ....... the lowest window mean after settle. A minimum of means, not
+#                 of samples: one sample is one noise draw (20.8 µA ADC step),
+#                 so a sample minimum is biased low. No "non-zero" test: exact 0
+#                 is a failed read, and those ticks are already invalid.
+#   charge after settle .. CHARGE register at the end minus at settle: the most
+#                 the balancer could have moved this session (it also holds the
+#                 BMS's own draw and self-discharge)
+#   idle offset . EWMA (~60 s) of the current in IDLE with the switch settled
+#                 OFF, where the true current is 0 (FW-13's argument). Published,
+#                 snapshotted at Start, and subtracted DOWNSTREAM, not here.
+# A "balancer activity" flag is deliberately absent: the floor is bleed + BMS
+# draw + self-discharge on a sealed pack, and the residual only shows across
+# sessions. Define the flag after T11 (design FW-14).
+#
+# ---------------------------------------------------------------------------
 # PLACEHOLDERS: every value marked PLACEHOLDER below is TBD from T11 (O5) or
 # T0/T15 (FW-13). T11 is a SUPERVISED session. Do not run unattended on them.
 #
@@ -95,12 +115,15 @@
 #          Same day: T11 start values T_hold 6 h, T_max 8 h (owner), up from
 #          1 h / 2 h placeholders. Counters are uint32 ms, so they are good to
 #          ~49.7 days [D: 2^32 ms / 86.4e6 ms per day]; 8 h = 28.8e6 ms.
+#   V0.2 — 2026-10-16. FW-14 tail-floor observation (design rev 0.10): window
+#          means, floor, charge after settle, idle offset, all in the session
+#          record. Report-only. Not validated.
 # ============================================================================
 
 substitutions:
   device_name: top-off-charger
   friendly_name: Top-Off Charger
-  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.1 DRAFT"
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.2 DRAFT"
 
   # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
   # point ("10.0", not "10"), or "10f" will not compile.
@@ -129,6 +152,11 @@ substitutions:
   t_ol_s: "300"          # PLACEHOLDER. FW-4 cumulative time with I > i_overload
   bms_i_from: "0.100"    # PLACEHOLDER. FW-5: "charging" before the step (A)
   bms_i_zero: "0.005"    # PLACEHOLDER. FW-5: "~0" after the step (A)
+  # ---- FW-14 tail floor (report-only). Integers are seconds.
+  tail_settle_s: "1800"  # PLACEHOLDER (T11): time at voltage before the floor counts.
+                         #   T11 shows how long the absorption tail takes to flatten.
+                         #   Must stay well under t_hold_s
+  tail_window_s: "600"   # 10-min window means (1200 ticks at 2 Hz)
   # ---- PLACEHOLDER, set from T0's idle reading and T15 (FW-13)
   i_off_floor: "0.050"   # PLACEHOLDER. FW-13: current with the switch commanded OFF (A)
 
@@ -138,13 +166,13 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.top-off-charger"
-    version: "0.1"
+    version: "0.2"
   on_boot:
     - priority: -200
       then:
         - logger.log:
             level: INFO
-            format: "Top-Off Charger V0.1 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
+            format: "Top-Off Charger V0.2 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -182,6 +210,10 @@ ota:
             id(rec_elapsed_s) = (millis() - id(t_start_ms)) / 1000.0f;
             id(rec_bms_v) = NAN;
             id(rec_bms_i) = NAN;
+            id(rec_tail_floor) = id(tail_floor);       // FW-14
+            id(rec_tail_last) = id(tail_last);
+            id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
+            id(rec_idle_off) = id(idle_off_start);
             id(chg_state) = 0;               // 0 = IDLE: state and switch agree
             ESP_LOGW("charger", "OTA begin: session stopped, record kept");
           }
@@ -308,6 +340,36 @@ globals:
     restore_value: no
     initial_value: '0.0f'
 
+  # ---- FW-14 tail floor (report-only; no decision reads these)
+  - id: tail_sum             # sum of at-voltage currents in the open window
+    type: double
+    restore_value: no
+    initial_value: '0.0'
+  - id: tail_n
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: tail_floor           # lowest window mean after settle
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: tail_last            # last completed window mean
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: q_at_settle          # CHARGE register (Ah) when settle was reached
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: idle_off             # live idle-current EWMA (~60 s), switch settled OFF
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: idle_off_start       # idle_off snapshotted at Start
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+
   # ---- FW-12 edge capture
   - id: on_edge_tick
     type: uint32_t
@@ -390,6 +452,22 @@ globals:
     restore_value: yes
     initial_value: 'NAN'
   - id: rec_bms_i
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_tail_floor       # FW-14; NAN if settle was never reached
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_tail_last
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_q_settle_ah
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_idle_off
     type: float
     restore_value: yes
     initial_value: 'NAN'
@@ -535,6 +613,71 @@ sensor:
     accuracy_decimals: 4
     update_interval: never
 
+  # ---- FW-14 tail floor (report-only). Raw values: subtract the idle offset
+  #      downstream, as V_batt and R_edge are computed downstream (§6.4).
+  - platform: template
+    id: tail_mean_ha
+    name: "Tail Window Mean"
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: tail_floor_ha
+    name: "Tail Floor"
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: q_settle_ha
+    name: "Charge After Settle"
+    unit_of_measurement: Ah
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: idle_off_ha
+    name: "Idle Current Offset"       # live, in IDLE, every 10 s
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: sess_idle_off_ha
+    name: "Session Idle Offset"       # the offset snapshotted at Start
+    unit_of_measurement: A
+    device_class: current
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: last_tail_floor
+    name: "Last Session Tail Floor"
+    unit_of_measurement: A
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: last_tail_last
+    name: "Last Session Final Window Mean"
+    unit_of_measurement: A
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: last_q_settle
+    name: "Last Session Charge After Settle"
+    unit_of_measurement: Ah
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: last_idle_off
+    name: "Last Session Idle Offset"
+    unit_of_measurement: A
+    accuracy_decimals: 5
+    update_interval: never
+
   # ---- FW-12 edge pairs: all four of an edge are published in the same tick.
   #      R_edge = dV/dI is computed downstream, not here.
   - platform: template
@@ -672,6 +815,8 @@ interval:
           const uint32_t T_MAX_MS = ${t_max_s}u * 1000u;
           const uint32_t T_OL_MS = ${t_ol_s}u * 1000u;
           const uint32_t FINAL_LEAD_MS = ${final_lead_s}u * 1000u;
+          const uint32_t TAIL_SETTLE_MS = ${tail_settle_s}u * 1000u;
+          const uint32_t TAIL_WINDOW_TICKS = ${tail_window_s}u * 2u;   // 2 ticks per second
 
           // ---- 0. timing. dt is capped: a stalled loop never earns hold time
           //         it cannot vouch for (safe direction: the hold runs longer).
@@ -714,6 +859,10 @@ interval:
               id(rec_bms_v) = NAN;
               id(rec_bms_i) = NAN;
             }
+            id(rec_tail_floor) = id(tail_floor);    // FW-14; NAN if settle never reached
+            id(rec_tail_last) = id(tail_last);
+            id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
+            id(rec_idle_off) = id(idle_off_start);
             id(sync_due_tick) = tk + 3u;            // >= 1 s: globals store first (see globals)
             if (reason == R_DONE) st = ST_DONE;
             else if (reason == R_STOP_USER || reason == R_STOP_OTA) st = ST_IDLE;
@@ -734,6 +883,13 @@ interval:
             id(last_elapsed).publish_state(id(rec_elapsed_s));
             id(bms_pre_v).publish_state(id(rec_bms_v));
             id(bms_pre_i).publish_state(id(rec_bms_i));
+            id(last_tail_floor).publish_state(id(rec_tail_floor));
+            id(last_tail_last).publish_state(id(rec_tail_last));
+            id(last_q_settle).publish_state(id(rec_q_settle_ah));
+            id(last_idle_off).publish_state(id(rec_idle_off));
+            if (!std::isnan(id(rec_q_settle_ah))) id(q_settle_ha).publish_state(id(rec_q_settle_ah));
+            ESP_LOGI(TAG, "  tail: floor %.5f A, final window %.5f A, %.5f Ah after settle, idle offset %.5f A",
+                     id(rec_tail_floor), id(rec_tail_last), id(rec_q_settle_ah), id(rec_idle_off));
           };
           auto latch_fault = [&](int reason) {      // outside a session: no record
             if (id(charge_sw).state) id(charge_sw).turn_off();
@@ -795,6 +951,13 @@ interval:
             latch_fault(R_SWITCH_ON);
           }
 
+          // ---- 5b. FW-14 idle offset (report-only). IDLE with the switch settled
+          //          OFF, so the true current is 0 (FW-13's argument). EWMA with a
+          //          120-tick (~60 s) time constant.
+          if (st == ST_IDLE && valid && off_settled) {
+            id(idle_off) = std::isnan(id(idle_off)) ? i : id(idle_off) + (i - id(idle_off)) / 120.0f;
+          }
+
           // ---- 6. IDLE: the start gate (FW-3), on this tick's pair only.
           //         NaN cannot pass: every comparison with NaN is false.
           id(ready_flag) = (st == ST_IDLE) && valid && (v > V_START_MIN) && (v < V_HOLD);
@@ -824,6 +987,16 @@ interval:
               id(prev_v) = NAN;
               id(prev_i) = NAN;
               id(session_ah_live) = 0.0f;
+              id(tail_sum) = 0.0;                   // FW-14
+              id(tail_n) = 0u;
+              id(tail_floor) = NAN;
+              id(tail_last) = NAN;
+              id(q_at_settle) = NAN;
+              id(idle_off_start) = id(idle_off);
+              id(sess_idle_off_ha).publish_state(id(idle_off_start));
+              id(tail_mean_ha).publish_state(NAN);
+              id(tail_floor_ha).publish_state(NAN);
+              id(q_settle_ha).publish_state(NAN);
               id(charge_sw).turn_on();
               st = ST_CHARGING;
               id(cur_reason) = R_NONE;
@@ -843,6 +1016,24 @@ interval:
             const float q = id(hw_charge_ah).state;   // same cycle as v, i
             if (!std::isnan(q)) id(session_ah_live) = q;
             if (i > I_OL) id(t_ol_ms) += dt;          // cumulative, rev 0.9
+            // ---- 7a. FW-14 tail floor: OBSERVATION ONLY. It sits before the
+            //          decisions only so a session ending on this tick records
+            //          this tick's sample; no decision below reads tail_*.
+            if (v >= V_HOLD && id(t_at_v_ms) >= TAIL_SETTLE_MS) {
+              if (std::isnan(id(q_at_settle))) id(q_at_settle) = id(session_ah_live);
+              id(tail_sum) += (double) i;
+              id(tail_n)++;
+              if (id(tail_n) >= TAIL_WINDOW_TICKS) {
+                const float m = (float) (id(tail_sum) / (double) id(tail_n));
+                id(tail_last) = m;
+                if (std::isnan(id(tail_floor)) || m < id(tail_floor)) id(tail_floor) = m;
+                id(tail_sum) = 0.0;
+                id(tail_n) = 0u;
+                id(tail_mean_ha).publish_state(m);
+                id(tail_floor_ha).publish_state(id(tail_floor));
+                ESP_LOGI(TAG, "Tail window mean %.5f A, floor %.5f A", m, id(tail_floor));
+              }
+            }
             const bool bms_step = !std::isnan(id(prev_i)) && id(prev_i) >= BMS_I_FROM &&
                                   i <= BMS_I_ZERO && v >= V_HOLD;
             if (v > V_CEIL) end_session(R_OVERVOLTAGE);
@@ -930,6 +1121,10 @@ interval:
             id(last_elapsed).publish_state(id(rec_elapsed_s));
             id(bms_pre_v).publish_state(id(rec_bms_v));
             id(bms_pre_i).publish_state(id(rec_bms_i));
+            id(last_tail_floor).publish_state(id(rec_tail_floor));
+            id(last_tail_last).publish_state(id(rec_tail_last));
+            id(last_q_settle).publish_state(id(rec_q_settle_ah));
+            id(last_idle_off).publish_state(id(rec_idle_off));
           }
           if ((tk & 1u) == 0u) {
             id(vbus_ha).publish_state(valid ? v : NAN);
@@ -942,6 +1137,10 @@ interval:
               const uint32_t rem = (id(t_at_v_ms) >= T_HOLD_MS) ? 0u : (T_HOLD_MS - id(t_at_v_ms));
               id(t_remain_ha).publish_state(rem / 1000.0f);
               id(t_elapsed_ha).publish_state((now - id(t_start_ms)) / 1000.0f);
+              if (!std::isnan(id(q_at_settle)))
+                id(q_settle_ha).publish_state(id(session_ah_live) - id(q_at_settle));
+            } else if (st == ST_IDLE && (tk % 20u) == 0u) {
+              id(idle_off_ha).publish_state(id(idle_off));
             }
           }
           if (st != st_at_entry)
