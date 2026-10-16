@@ -176,10 +176,6 @@ The survival-sleep design is documented in [`UPS_SurvivalSleep_Design_Summary_v1
 > [!NOTE]
 > **Known issue: the `INA260 Alert` entity cannot fire.** The Rev 1 PCB routes the INA260's ALERT (socket pin 5, R2 pull-up) to XIAO D3 = GPIO5. The firmware, and its header pin map, read GPIO3 (D1), which is unconnected [M, KiCad pad positions; owner-confirmed 2026-10-01]. Nothing depends on it: the firmware arms no alert condition and no automation reads the entity. A one-pin fix is written and held until it can be bench-tested.
 
-### Not deployed: UPS-MONITOR-V2
-
-[`UPS-Monitor-Design-Brief-Rev3.1.md`](UPS-Monitor/UPS-Monitor-Design-Brief-Rev3.1.md), the `UPS-MONITOR-V2-*` KiCad, BOM and CPL files, [`Firmware_README.md`](UPS-Monitor/Firmware_README.md) and [`Test_Spec_UPS_Monitor.txt`](UPS-Monitor/Test_Spec_UPS_Monitor.txt) describe a different board. It is an SMD design: ESP32-C3-MINI-1, TI INA228, AP63203 buck, 65 × 50 mm, for PCBWay and JLCPCB [S, design brief Rev 3.1]. **It is not the monitor in service.** The brief, dated 2026-04-11, lists Rev 3.1 fabrication as pending. If you build it, note its USB backfeed warning: VBUS is tied to LOAD_OUT.
-
 ---
 
 ## Test History

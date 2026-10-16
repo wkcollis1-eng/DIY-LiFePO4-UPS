@@ -1094,8 +1094,7 @@ candidate — GPIO2 is a boot strap pin and is best avoided. With it, the surviv
 logic can cross-check or replace the INA reading, so a dead INA degrades to reduced
 accuracy rather than to a bounded-drain ride-out. This is a **board change** (a
 divider + a routed ADC pin), out of scope for V1.13 firmware, and is the recommended
-content of the next PCB revision (it also aligns with the INA228/V2 direction, where
-the ALERT/ADC pin map is being reconsidered anyway).
+content of the next PCB revision.
 
 **Net effect (V1.14):** survival is the validated ~15-day timer-wake design at the
 0.41 Ah floor (§6.2), the safety case rests on the deterministic fail-safe core
