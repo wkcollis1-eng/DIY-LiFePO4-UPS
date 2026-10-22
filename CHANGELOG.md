@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2026-10-22] — 2026-10-22
 
+### Added
+- `Top-Off-Charger/firmware/top-off-charger.yaml` V0.4, still a draft and **not validated**. It builds items #1, #2 and #6 of the 2026-10-22 robustness review (owner); #4, web_server authentication, is not built. Design doc rev 0.11.
+  - **#1, lost session.** An AC loss, the L6 timer, a watchdog or a crash mid-session used to boot to Waiting with the previous session's record showing. A restored "session open" flag is now set and flushed at Start, and cleared when the record is written. If it is still set at boot, the board latches FAULT "reset during a session" and records that reason with Ah and times unknown (NaN). Blind spot: a reset in the ~1.5 s before the Start flush.
+  - **#2, INA228 reset.** Every tick reads ADC_CONFIG and SHUNT_CAL back against the chip's own first read (not a copy of the firmware settings, R10). While charging, the CHARGE register must not fall below half its session peak. Either failure latches FAULT "INA228 reset", in every state for the read-back, and only an AC cycle clears it. R13 correction at the INA228 block and in the design doc: "an INA228 reset ends the session anyway" held only when the ESP reset too.
+  - **#6, diagnostics.** "Reset Reason" (ESPHome `debug`) and "Uptime".
+  - Design: FW-4, FW-9, States, O4, T9 and the revision history; **T16 added**, joining the list re-run after any firmware edit. The new ESPHome facts were read at 2026.10.0, the add-on's version.
+
 ### Fixed
 - `Top-Off-Charger/firmware/top-off-charger.yaml` V0.3, still a draft and **not validated**. If Start and Stop reached the control tick together, V0.2 started the session and dropped the Stop, logging "Stop ignored: no session running" for a session that had just begun. Stop now wins: the Start is cancelled and the switch never closes (R13 note at the site). The HA controls stay three separate buttons, Start, Stop and Acknowledge (owner). Stop ends the session with its record kept as "stopped: user"; there is no pause/resume. Design doc O4 and its status line updated; no spec change.
 

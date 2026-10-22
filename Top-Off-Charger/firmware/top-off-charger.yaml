@@ -1,13 +1,15 @@
 # ============================================================================
-# Top-Off Charger V0.3 — DRAFT, NOT VALIDATED
+# Top-Off Charger V0.4 — DRAFT, NOT VALIDATED
 #   No config, codegen, host g++ or real compile has been run (owner's call,
 #   2026-10-16: "no validation at this point"). It is NOT flash-ready: it must
 #   pass the esp-firmware-validation gate (design §9: real compile,
-#   src/main.cpp.o 0 errors) and T1–T15 (design §11) first.
-#   Spec: ../top-off-charger-design.md rev 0.10, §9: FW-1, FW-3 to FW-14.
+#   src/main.cpp.o 0 errors) and T1–T16 (design §11) first.
+#   Spec: ../top-off-charger-design.md rev 0.11, §9: FW-1, FW-3 to FW-14.
 #   Source-level read against ESPHome 2026.9.1 (ina2xx_base, ina2xx_i2c,
 #   globals, preferences, esp32 gpio, ota). The Device Builder add-on's ESPHome
 #   version governs; re-read those components on it before the gate (O4).
+#   V0.4's additions were read at 2026.10.0, the add-on's version (debug,
+#   uptime, i2c, ina2xx_base, ina2xx_i2c, globals).
 # ============================================================================
 # Purpose : Supervisor for the bench top-balance HOLD of the UPS's Cyclenbatt
 #           12 V 10 Ah pack, after a full charge on the Dylannet P20 (§4.3).
@@ -121,12 +123,20 @@
 #   V0.3 — 2026-10-22. Stop beats Start: a Stop on the same tick as a Start
 #          cancels it (V0.2 started the session and dropped the Stop). The
 #          HA controls stay three separate buttons (owner). Not validated.
+#   V0.4 — 2026-10-22. Robustness review #1, #2, #6 (owner; #4 web_server auth
+#          not built). #1: a reset that cuts a session (AC loss, L6 timer,
+#          watchdog, crash) boots to FAULT "reset during a session", and the
+#          record says so instead of keeping the previous session's. #2: the
+#          INA228's ADC_CONFIG and SHUNT_CAL are read back every tick and the
+#          CHARGE register must not fall while charging, so an INA228 that
+#          resets alone latches FAULT "INA228 reset". #6: ESP reset reason and
+#          uptime published. Design rev 0.11. Not validated.
 # ============================================================================
 
 substitutions:
   device_name: top-off-charger
   friendly_name: Top-Off Charger
-  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.3 DRAFT"
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.4 DRAFT"
 
   # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
   # point ("10.0", not "10"), or "10f" will not compile.
@@ -169,13 +179,13 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.top-off-charger"
-    version: "0.3"
+    version: "0.4"
   on_boot:
     - priority: -200
       then:
         - logger.log:
             level: INFO
-            format: "Top-Off Charger V0.3 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
+            format: "Top-Off Charger V0.4 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -217,6 +227,10 @@ ota:
             id(rec_tail_last) = id(tail_last);
             id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
             id(rec_idle_off) = id(idle_off_start);
+            id(sess_open) = false;           // V0.4. If the shutdown path never flushes,
+                                             // flash still holds it set and the next boot
+                                             // reads FAULT "reset during a session": the
+                                             // [I] above fails loud, not silent
             id(chg_state) = 0;               // 0 = IDLE: state and switch agree
             ESP_LOGW("charger", "OTA begin: session stopped, record kept");
           }
@@ -242,6 +256,11 @@ web_server:
 safe_mode:
   num_attempts: 10
   reboot_timeout: 5min
+
+# V0.4 (#6): hub for the "Reset Reason" text sensor. It publishes the reason
+# once, from dump_config at boot [M: debug_component.cpp:52-56, 2026.10.0].
+# The session record does not copy it (R10): this entity owns the reason.
+debug:
 
 i2c:
   sda: GPIO6
@@ -274,6 +293,9 @@ output:
 globals:
   # ---- State machine. Volatile on purpose: a reboot always lands in IDLE with
   #      the switch OFF (RQ-4). The session RECORD is the restored set below.
+  #      V0.4: except a reboot that cut a session (sess_open below), which lands
+  #      in FAULT "reset during a session" (tick step 1b). The switch is OFF
+  #      either way.
   - id: chg_state            # 0 IDLE, 1 CHARGING, 2 DONE (latched), 3 FAULT (latched)
     type: int
     restore_value: no
@@ -339,6 +361,10 @@ globals:
     restore_value: no
     initial_value: 'NAN'
   - id: session_ah_live      # INA228 CHARGE register, zeroed at Start (FW-9)
+    type: float
+    restore_value: no
+    initial_value: '0.0f'
+  - id: sess_ah_peak         # V0.4 (#2): highest CHARGE this session (tick step 7)
     type: float
     restore_value: no
     initial_value: '0.0f'
@@ -474,6 +500,16 @@ globals:
     type: float
     restore_value: yes
     initial_value: 'NAN'
+  # ---- V0.4 (#1): a session is open. Set and flushed at Start, cleared when
+  #      end_session writes the record (or OTA on_begin). Set at boot means a
+  #      reset cut the session before it could write its record. A restored
+  #      global is keyed by its name's hash [M: globals_component.h:42,
+  #      2026.10.0], so adding one moves no other global's stored value.
+  #      Blind spot: a reset in the ~1.5 s between Start and the flush.
+  - id: sess_open
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
 
 sensor:
   # -------------------------------------------------------------------------
@@ -498,6 +534,13 @@ sensor:
     adc_time: 1052us
     adc_averaging: 64
     reset_on_boot: true      # an INA228 reset ends the session anyway (FW-1)
+    # R13, 2026-10-22: that comment is wrong when the INA228 resets ALONE (a VS
+    # dropout at its socket, a transient) and the ESP runs on. Its registers
+    # return to power-on defaults, CHARGE restarts at 0, and setup() is the
+    # only writer of ADC_CONFIG and SHUNT_CAL [M: ina2xx_base.cpp:51-79,
+    # 2026.10.0], so V0.1-V0.3 charged on with averaging and current scale
+    # wrong and never knew. reset_on_boot resets the chip at the ESP's boot
+    # only. V0.4 catches it: tick steps 1 and 7.
     update_interval: never   # armed by the control tick only
     bus_voltage:
       id: vbus_raw
@@ -732,6 +775,10 @@ sensor:
     accuracy_decimals: 4
     update_interval: never
 
+  # V0.4 (#6): with "Reset Reason", tells a reset from a long Wi-Fi gap.
+  - platform: uptime
+    name: "Uptime"             # seconds since boot, every 60 s (component defaults)
+
 text_sensor:
   - platform: template
     id: state_txt
@@ -749,6 +796,9 @@ text_sensor:
     id: last_reason_txt
     name: "Last Session End"
     update_interval: never
+  - platform: debug              # V0.4 (#6): e.g. "power-on event", "task
+    reset_reason:                # watchdog", "brownout" [M: debug_esp32.cpp:26-43,
+      name: "Reset Reason"       # 2026.10.0]. Which one an AC cut gives is T9's [I]
 
 binary_sensor:
   - platform: template
@@ -784,7 +834,8 @@ interval:
           static const char *const TAG = "charger";
           enum { ST_IDLE = 0, ST_CHARGING = 1, ST_DONE = 2, ST_FAULT = 3 };
           enum { R_NONE = 0, R_DONE, R_OVERVOLTAGE, R_OVERCURRENT, R_OVERLOAD, R_TMAX,
-                 R_SENSOR, R_BMS_TRIP, R_SWITCH_ON, R_STOP_USER, R_STOP_OTA, R_INTERNAL };
+                 R_SENSOR, R_BMS_TRIP, R_SWITCH_ON, R_STOP_USER, R_STOP_OTA, R_INTERNAL,
+                 R_LOST_RESET, R_INA_RESET };   // V0.4. rec_reason is restored: append, never renumber
           static const char *const REASON[] = {
             "none",
             "done: time at voltage reached",
@@ -797,13 +848,15 @@ interval:
             "switch conducting while commanded OFF - cut AC",
             "stopped: user",
             "stopped: OTA update",
-            "internal: state and switch disagree"};
+            "internal: state and switch disagree",
+            "reset during a session: record incomplete (see Reset Reason)",
+            "INA228 reset: configuration or CHARGE lost - cycle AC"};
           enum { LED_WAITING = 0, LED_READY, LED_CHARGING, LED_FINAL, LED_DONE, LED_FAULT };
           static const char *const LED_TXT[] = {
             "Waiting", "Ready to charge", "Charging", "Final minute", "Done", "Fault"};
           static const char *const ST_TXT[] = {"IDLE", "CHARGING", "DONE", "FAULT"};
           auto rtxt = [&](int r) -> const char * {
-            return (r >= R_NONE && r <= R_INTERNAL) ? REASON[r] : "unknown";
+            return (r >= R_NONE && r <= R_INA_RESET) ? REASON[r] : "unknown";
           };
 
           const float V_CEIL = ${v_ceiling}f;
@@ -838,6 +891,28 @@ interval:
           const bool have_data = id(cyc_primed);   // false only on the first tick
           const bool fresh = have_data && seen && !id(ina).status_has_warning() &&
                              !id(ina).is_failed() && !std::isnan(v) && !std::isnan(i);
+          // V0.4 (#2): read ADC_CONFIG and SHUNT_CAL back. Only the component's
+          // setup() writes them [M: ina2xx_base.cpp:51-79, 2026.10.0], so after
+          // the first good read they must never change: a change is the chip
+          // resetting under a running ESP (power-on defaults). The reference is
+          // the chip's own value, not a copy of the ina2xx_i2c block (R10); T16
+          // checks once that it is 0xFB6B / 3750 [D, see that block].
+          static uint32_t cfg_ref = 0u;             // 0 = not yet read (MODE 0xF: never 0)
+          uint16_t adc_cfg = 0, shunt_cal = 0;
+          bool cfg_read = true, cfg_ok = true;
+          if (fresh) {
+            cfg_read = id(ina).read_byte_16(ina2xx_base::REG_ADC_CONFIG, &adc_cfg) &&
+                       id(ina).read_byte_16(ina2xx_base::REG_SHUNT_CAL, &shunt_cal);
+            if (cfg_read) {
+              const uint32_t cfg = ((uint32_t) adc_cfg << 16) | shunt_cal;
+              if (cfg_ref == 0u) {
+                cfg_ref = cfg;
+                ESP_LOGI(TAG, "INA228 configuration: ADC_CONFIG 0x%04X, SHUNT_CAL %u (T16: 0xFB6B, 3750)",
+                         (unsigned) adc_cfg, (unsigned) shunt_cal);
+              }
+              cfg_ok = (cfg == cfg_ref);
+            }
+          }
 
           int st = id(chg_state);
           const int st_at_entry = st;
@@ -852,9 +927,14 @@ interval:
               id(off_pending) = true;
             }
             id(rec_reason) = reason;
-            id(rec_ah) = id(session_ah_live);
-            id(rec_t_at_v_s) = id(t_at_v_ms) / 1000.0f;
-            id(rec_elapsed_s) = (now - id(t_start_ms)) / 1000.0f;
+            // V0.4 (#1): after a reset the live values are boot values (0), not
+            // the lost session's, so the record says unknown. The FW-14 fields
+            // are NAN after a boot already.
+            const bool lost = (reason == R_LOST_RESET);
+            id(rec_ah) = lost ? NAN : id(session_ah_live);
+            id(rec_t_at_v_s) = lost ? NAN : id(t_at_v_ms) / 1000.0f;
+            id(rec_elapsed_s) = lost ? NAN : (now - id(t_start_ms)) / 1000.0f;
+            id(sess_open) = false;                  // flushed with the record, below
             if (reason == R_BMS_TRIP) {
               id(rec_bms_v) = id(prev_v);           // FW-5: last sample before the step
               id(rec_bms_i) = id(prev_i);
@@ -903,6 +983,12 @@ interval:
             ESP_LOGE(TAG, "FAULT: %s (VBUS %.4f V, I %.4f A)", rtxt(reason), v, i);
           };
 
+          // ---- 1b. V0.4 (#1): a session still open in flash at boot was cut by
+          //          a reset (AC loss, the L6 timer, a watchdog, a crash) before it
+          //          wrote its record. Latch FAULT and record that, instead of
+          //          booting to Waiting with the previous session's record showing.
+          if (tk == 1u && id(sess_open)) end_session(R_LOST_RESET);
+
           // ---- 2. operator requests. Consumed here, so this tick is the only
           //         writer of the switch (FW-1).
           const bool want_start = id(req_start);
@@ -933,15 +1019,24 @@ interval:
           //         latches FAULT too, so the LED never shows Waiting on a pack it
           //         cannot read. While charging, VBUS below v_start_min is either a
           //         failed read (published as 0, header (b)) or a collapsed bus.
-          const bool valid = fresh && !(st == ST_CHARGING && v < V_START_MIN);
+          //         V0.4 (#2): so is a failed configuration read-back (step 1),
+          //         and a changed configuration is FAULT "INA228 reset". Only an
+          //         AC cycle clears that: the next boot's setup() rewrites it.
+          const bool valid = fresh && cfg_ok && !(st == ST_CHARGING && v < V_START_MIN);
           if (have_data && !valid) {
             if (!fresh)
               ESP_LOGE(TAG, "INA228 cycle not valid: seen=%d warning=%d failed=%d V=%.4f I=%.4f",
                        (int) seen, (int) id(ina).status_has_warning(), (int) id(ina).is_failed(), v, i);
+            else if (!cfg_read)
+              ESP_LOGE(TAG, "INA228 configuration read-back failed (I2C)");
+            else if (!cfg_ok)
+              ESP_LOGE(TAG, "INA228 configuration changed: ADC_CONFIG 0x%04X, SHUNT_CAL %u (was 0x%04X, %u)",
+                       (unsigned) adc_cfg, (unsigned) shunt_cal, (unsigned) (cfg_ref >> 16), (unsigned) (cfg_ref & 0xFFFFu));
             else
               ESP_LOGE(TAG, "VBUS %.4f V below %.1f V while charging", v, V_START_MIN);
-            if (st == ST_CHARGING) end_session(R_SENSOR);
-            else if (st != ST_FAULT) latch_fault(R_SENSOR);
+            const int r = (fresh && cfg_read && !cfg_ok) ? R_INA_RESET : R_SENSOR;
+            if (st == ST_CHARGING) end_session(r);
+            else if (st != ST_FAULT) latch_fault(r);
           }
 
           // ---- 5. FW-13: current with the switch commanded OFF. Settled = two
@@ -995,6 +1090,9 @@ interval:
               id(prev_v) = NAN;
               id(prev_i) = NAN;
               id(session_ah_live) = 0.0f;
+              id(sess_ah_peak) = 0.0f;              // V0.4 (#2)
+              id(sess_open) = true;                 // V0.4 (#1): flushed ~1.5 s from now;
+              id(sync_due_tick) = tk + 3u;          //   a reset before then is not caught
               id(tail_sum) = 0.0;                   // FW-14
               id(tail_n) = 0u;
               id(tail_floor) = NAN;
@@ -1022,7 +1120,15 @@ interval:
           if (st == ST_CHARGING && !just_started && valid) {
             const uint32_t elapsed = now - id(t_start_ms);
             const float q = id(hw_charge_ah).state;   // same cycle as v, i
-            if (!std::isnan(q)) id(session_ah_live) = q;
+            // V0.4 (#2): CHARGE only rises while charging (I >= 0 behind the
+            // ideal diode, design §5), so a fall below half its session peak is
+            // a cleared register: an INA228 reset the read-back (step 1) did not
+            // see, or a stray accumulator reset. The record keeps the last good value.
+            const bool q_fell = !std::isnan(q) && id(sess_ah_peak) > 0.0f && q < 0.5f * id(sess_ah_peak);
+            if (!std::isnan(q) && !q_fell) {
+              id(session_ah_live) = q;
+              if (q > id(sess_ah_peak)) id(sess_ah_peak) = q;
+            }
             if (i > I_OL) id(t_ol_ms) += dt;          // cumulative, rev 0.9
             // ---- 7a. FW-14 tail floor: OBSERVATION ONLY. It sits before the
             //          decisions only so a session ending on this tick records
@@ -1044,7 +1150,8 @@ interval:
             }
             const bool bms_step = !std::isnan(id(prev_i)) && id(prev_i) >= BMS_I_FROM &&
                                   i <= BMS_I_ZERO && v >= V_HOLD;
-            if (v > V_CEIL) end_session(R_OVERVOLTAGE);
+            if (v > V_CEIL) end_session(R_OVERVOLTAGE);         // raw VBUS: no calibration in it
+            else if (q_fell) end_session(R_INA_RESET);          // V0.4: i below may be mis-scaled
             else if (i > I_MAX) end_session(R_OVERCURRENT);
             else if (id(t_ol_ms) > T_OL_MS) end_session(R_OVERLOAD);
             else if (elapsed > T_MAX_MS) end_session(R_TMAX);
