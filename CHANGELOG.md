@@ -17,6 +17,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-10-22] — 2026-10-22
+
+### Fixed
+- `Top-Off-Charger/firmware/top-off-charger.yaml` V0.3, still a draft and **not validated**. If Start and Stop reached the control tick together, V0.2 started the session and dropped the Stop, logging "Stop ignored: no session running" for a session that had just begun. Stop now wins: the Start is cancelled and the switch never closes (R13 note at the site). The HA controls stay three separate buttons, Start, Stop and Acknowledge (owner). Stop ends the session with its record kept as "stopped: user"; there is no pause/resume. Design doc O4 and its status line updated; no spec change.
+
+---
+
 ## [2026-10-16] — 2026-10-16
 
 ### Changed

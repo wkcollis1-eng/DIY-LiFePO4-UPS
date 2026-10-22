@@ -1,5 +1,5 @@
 # ============================================================================
-# Top-Off Charger V0.2 — DRAFT, NOT VALIDATED
+# Top-Off Charger V0.3 — DRAFT, NOT VALIDATED
 #   No config, codegen, host g++ or real compile has been run (owner's call,
 #   2026-10-16: "no validation at this point"). It is NOT flash-ready: it must
 #   pass the esp-firmware-validation gate (design §9: real compile,
@@ -118,12 +118,15 @@
 #   V0.2 — 2026-10-16. FW-14 tail-floor observation (design rev 0.10): window
 #          means, floor, charge after settle, idle offset, all in the session
 #          record. Report-only. Not validated.
+#   V0.3 — 2026-10-22. Stop beats Start: a Stop on the same tick as a Start
+#          cancels it (V0.2 started the session and dropped the Stop). The
+#          HA controls stay three separate buttons (owner). Not validated.
 # ============================================================================
 
 substitutions:
   device_name: top-off-charger
   friendly_name: Top-Off Charger
-  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.2 DRAFT"
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.3 DRAFT"
 
   # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
   # point ("10.0", not "10"), or "10f" will not compile.
@@ -166,13 +169,13 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.top-off-charger"
-    version: "0.2"
+    version: "0.3"
   on_boot:
     - priority: -200
       then:
         - logger.log:
             level: INFO
-            format: "Top-Off Charger V0.2 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
+            format: "Top-Off Charger V0.3 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -962,7 +965,12 @@ interval:
           //         NaN cannot pass: every comparison with NaN is false.
           id(ready_flag) = (st == ST_IDLE) && valid && (v > V_START_MIN) && (v < V_HOLD);
           bool just_started = false;
-          if (want_start) {
+          // V0.3 (2026-10-22): Stop beats Start. V0.2 tested want_start alone, so a
+          // Stop pressed on the same tick was dropped and the session started
+          // [source read, R13]. Cancelling is the safe direction.
+          if (want_start && want_stop) {
+            ESP_LOGW(TAG, "Start cancelled: Stop pressed on the same tick");
+          } else if (want_start) {
             if (st != ST_IDLE) {
               ESP_LOGW(TAG, "Start ignored: state %s", ST_TXT[st]);
             } else if (!id(ready_flag)) {
@@ -1005,7 +1013,7 @@ interval:
                        v, i, V_HOLD, (unsigned) (T_HOLD_MS / 1000u));
             }
           }
-          if (want_stop && !(st == ST_CHARGING && !just_started))
+          if (want_stop && !want_start && st != ST_CHARGING)
             ESP_LOGW(TAG, "Stop ignored: no session running");
 
           // ---- 7. CHARGING: hard stops (FW-4), BMS trip (FW-5), normal end (FW-6).
