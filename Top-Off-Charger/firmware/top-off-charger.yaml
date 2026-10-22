@@ -1,9 +1,10 @@
 # ============================================================================
-# Top-Off Charger V0.4 — DRAFT, NOT VALIDATED
-#   No config, codegen, host g++ or real compile has been run (owner's call,
-#   2026-10-16: "no validation at this point"). It is NOT flash-ready: it must
-#   pass the esp-firmware-validation gate (design §9: real compile,
-#   src/main.cpp.o 0 errors) and T1–T16 (design §11) first.
+# Top-Off Charger V0.4 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
+#   Unvalidated until 2026-10-22 (owner's call, 2026-10-16: "no validation at
+#   this point"). On 2026-10-22 the owner asked for it, and V0.4 passed the
+#   esp-firmware-validation gate (design §9) on ESPHome 2026.10.0, the add-on's
+#   version: config valid, real compile, main.cpp.obj 0 errors. It is still NOT
+#   flash-ready: T1–T16 (design §11) have not been run.
 #   Spec: ../top-off-charger-design.md rev 0.11, §9: FW-1, FW-3 to FW-14.
 #   Source-level read against ESPHome 2026.9.1 (ina2xx_base, ina2xx_i2c,
 #   globals, preferences, esp32 gpio, ota). The Device Builder add-on's ESPHome
@@ -131,6 +132,10 @@
 #          CHARGE register must not fall while charging, so an INA228 that
 #          resets alone latches FAULT "INA228 reset". #6: ESP reset reason and
 #          uptime published. Design rev 0.11. Not validated.
+#          Then validated, same day (owner): the four INA228 sub-sensors got the
+#          name: that `esphome config` had rejected them without since V0.1
+#          (R13 note at the INA228 block). Compiles on 2026.10.0: main.cpp.obj
+#          0 errors, 0 warnings; a planted lambda fault failed the same build.
 # ============================================================================
 
 substitutions:
@@ -542,16 +547,26 @@ sensor:
     # wrong and never knew. reset_on_boot resets the chip at the ESP's boot
     # only. V0.4 catches it: tick steps 1 and 7.
     update_interval: never   # armed by the control tick only
+    # R13, 2026-10-22: V0.1-V0.4 gave these four no name:, and `esphome config`
+    # failed on all four ("string value cannot be dictionary or list"). Each is
+    # cv.maybe_simple_value(key=CONF_NAME), which reads a dict WITHOUT name: as
+    # the name itself [M: ina2xx_base/__init__.py and config_validation.py, both
+    # 2026.10.0 and 2026.8.2]. Found by the first config run. internal: true
+    # keeps them out of HA; "Raw" keeps them distinct from the template copies.
     bus_voltage:
+      name: "INA228 Bus Voltage Raw"
       id: vbus_raw
       internal: true
     current:
+      name: "INA228 Current Raw"
       id: ibat_raw
       internal: true
     temperature:             # die temperature (FW-10)
+      name: "INA228 Die Temperature Raw"
       id: die_t_raw
       internal: true
     charge:                  # Ah from the hardware CHARGE register (FW-9)
+      name: "INA228 Charge Raw"
       id: hw_charge_ah
       internal: true
       on_value:
