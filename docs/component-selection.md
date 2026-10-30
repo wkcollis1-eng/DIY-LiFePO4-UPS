@@ -45,6 +45,8 @@ The 10Ah capacity provides approximately 7.8 hours runtime at the measured 14.5W
 
 A MOSFET-based ideal diode rather than a conventional Schottky diode eliminates the 0.6–0.7V forward voltage drop that would otherwise reduce the PSU-to-battery charging voltage. The MOSFET approach has approximately 5mΩ effective resistance at operating current — contributing only ~5mV drop at 1A vs. 600–700mV for a Schottky.
 
+> **Correction (2026-10-29).** The 5 mΩ model above does not fit this part. The #5382 is built on TI's LM74700-Q1 controller, with a MOSFET of "< 10 mΩ" [S, Pololu #5382 product page]. The LM74700-Q1 regulates its forward drop to 13 / 20 / 29 mV (min / typ / max) while I × R_on is below that [S, TI SNOSD17G §6.5 p.6], which for this MOSFET holds up to about 2 A [D: 20 mV ÷ 10 mΩ]. So the drop is ~20 mV at 1 A and at float, not ~5 mV, and still far below a Schottky's 0.6–0.7 V. The top-off charger's #5382, a different unit, reads ~18 mV from its PSU to VBUS at milliamps [D, Top-Off-Charger design §11.1]. The paragraph above is left as first written.
+
 Function: blocks reverse current from battery to PSU during AC failure. Without this, the battery would attempt to back-power the PSU through its output terminals (PSU has no reverse protection).
 
 10A rating provides 8× margin over 1.2A typical load (5× over 2A worst-case design current). Two units purchased; one installed, one spare.

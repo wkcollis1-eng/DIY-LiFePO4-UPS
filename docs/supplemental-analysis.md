@@ -37,6 +37,8 @@ Heat dissipation at typical 14.5W DC combined load (XB7 12.9W + HA Green 1.1W + 
 
 > Wire resistance (~47mΩ round trip) is consistent with the stated device voltage envelope of 11.71–13.11V, which implies 0.057V drop at 1.2A typical.
 
+> **Correction (2026-10-29).** The Pololu Ideal Diode row uses 5 mV. Below about 2 A the #5382 regulates its forward drop to 13–29 mV, typ 20 mV [S, TI SNOSD17G §6.5 p.6; see component-selection.md], so at 1.2 A it dissipates 0.016–0.035 W, typ 0.024 W [D: 0.013–0.029 V × 1.2 A], not 0.006 W. The total stays ~3.5 W. The table is left as first written.
+
 ### A.2 Enclosure Thermal Model
 
 Enclosure: LeMotech ABS, 9.6″×7.6″×4.5″. Passive convection, no fans. Six ¼″ ventilation holes drilled: 3 low on the PSU wall (intake), 3 high on the BP-65 wall (exhaust), creating a thermal chimney geometry. Installation: second-floor bedroom, climate-controlled, 63–75°F year-round.

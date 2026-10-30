@@ -15,7 +15,7 @@ Detailed wiring resistance and voltage drop calculations for the two current pat
 - Round-trip resistance per segment: 4.016 mΩ (accounts for both positive and negative conductors: 2 × (4.016 mΩ/ft × 0.5 ft) = 4.016 mΩ)
 - Design current: 2A (conservative worst-case)
 - Actual typical current: 1.2A (derived from Kill-a-Watt measurement at 88% XB7 adapter efficiency)
-- Contact resistances: 2 mΩ per crimp terminal, 5 mΩ per ATM fuse, 1 mΩ per Wago lever nut traversal, 3 mΩ BP-65 MOSFET Rds(on), 5 mΩ ideal diode MOSFET (charging path)
+- Contact resistances: 2 mΩ per crimp terminal, 5 mΩ per ATM fuse, 1 mΩ per Wago lever nut traversal, 3 mΩ BP-65 MOSFET Rds(on), 5 mΩ ideal diode MOSFET (charging path; see the 2026-10-29 correction under Path 2: below ~2 A it is a regulated ~20 mV drop, not 5 mΩ)
 - Battery avg voltage: 12.5V during discharge (midpoint of 13.3–11.8V; LiFePO4 flat plateau)
 
 ---
@@ -70,6 +70,8 @@ Current path: PSU → F1 → Ideal Diode → BP-65 IN stud → Wago tap → F2 �
 | 1.2A (actual typical) | 0.060V | 13.24V |
 
 > At true float equilibrium the charging current is very low (milliamps, not amps). The 1.2A figure reflects bulk charge, not float. At true float the battery terminal voltage approaches the PSU setpoint of 13.3V.
+
+> **Correction (2026-10-29).** The ideal diode is not a 5 mΩ resistor. Below about 2 A the #5382's LM74700-Q1 holds a regulated forward drop of 13–29 mV, typ 20 mV [S, TI SNOSD17G §6.5 p.6; see component-selection.md]. With the path's other 45.10 mΩ, the drop is 0.110 V at 2.0 A (battery 13.19 V) and 0.074 V at 1.2 A (13.23 V) [D: 45.10 mΩ × I + 20 mV, from 13.3 V]. At float, at milliamps, the battery sits 13–29 mV under the setpoint, at 13.27–13.29 V rather than 13.3 V [D]. The tables above are left as first written.
 
 ---
 
