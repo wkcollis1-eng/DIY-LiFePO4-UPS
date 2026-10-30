@@ -12,8 +12,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Open Item 14a (09-15 report): full discharge at May's load, host shut down first. This is the decisive capacity test
 - Open Item 16 (09-15 report): coulomb-counted recharge to termination
 - Boost EN shed (BOOST-DS-r1 DR-1/OP-2), closing the unattended-recovery gap, and the BOOST-DS-r1 §10 scope gate
-- Top-off charger: fabrication (O11), firmware validation (O4), tests T0–T15
+- Top-off charger: tests T0–T16 (none run as numbered tests), the FW-5/FW-6 fix (O18), the next board revision (O19), firmware validation (O4), and which file went to fab (O11)
 - INA260 ALERT input: the firmware reads GPIO3 (D1), but the THT Rev 1 PCB routes ALERT to GPIO5 (D3)
+
+---
+
+## [2026-10-29] — 2026-10-29
+
+### Fixed
+- **Top-off charger: the #2814's control pin** (design rev 0.12, R13). The board puts GPIO4_SW on U4 pad 1, which is the module's SW pin; ON is pad 8, which has no net [S, Pololu 0J1071 schematic; M, board file]. On the built board the switch was on whenever AC was on, whatever the firmware or the slide said [M, owner's DMM, 2026-10-28], and FW-13 did not see it: 1.66 mA against its 0.050 A placeholder floor. The owner reworked the board (SW clipped, pad 1 wired to pad 8), and the firmware has switched it on and off correctly since. Corrected in design §5, §5.2, §5.4, §7, §7.1 and §7.2, with a correction record in §7.2 that also names the commissioning session's own wrong diagnoses. The footprint is unchanged: the next board revision moves the net (O19).
+- **Top-off charger: the INA228 VBUS-jumper build step** (design §5.4). §7 specified the jumper closed, but no build step said to close it, and it was found open before the first session.
+- **UPS docs: the #5382's forward drop.** `docs/component-selection.md`, `docs/voltage-drop-analysis.md` and `docs/supplemental-analysis.md` modelled it as 5 mΩ. Its LM74700-Q1 regulates the drop to 13–29 mV, typ 20 mV, below about 2 A [S, TI SNOSD17G §6.5 p.6], so the battery floats at 13.27–13.29 V rather than 13.3 V [D]. Correction notes added; the original tables stand.
+
+### Added
+- **Top-off charger design §11.1, the first bench results:** five sessions on V0.4 and a second, new Cyclenbatt pack (not the UPS's, so not T11). Stop and the normal DONE proven; three BMS cuts at 14.310–14.315 V and 0.95–1.30 A, one of which FW-5 missed; hold floors of 0.16–0.34 mA at 14.30–14.40 V, against FW-6's assumed 30–50 mA balancer bleed.
+- **Design O18–O21:** FW-5's single-tick test, and FW-6 counting time at voltage with no current (the fix waits for the owner); the U4 footprint; an ESP reset on each pack connect made with AC on; S5's 28 s current dropout.
+
+### Changed
+- `Top-Off-Charger/firmware/top-off-charger.yaml`: `use_address: 10.0.0.116`, so the Device Builder, which has no mDNS, can reach it for OTA. The firmware logic is unchanged; the flashed file is sha1 `95430a93a668`.
+- `README.md`: the top-off charger's status, from pre-build to built and commissioning; the acceptance-test range corrected to T0–T16.
 
 ---
 
