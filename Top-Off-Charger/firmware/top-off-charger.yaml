@@ -241,6 +241,17 @@ ota:
           }
 
 wifi:
+  # Where the TOOLING finds this device. The Device Builder add-on runs in a
+  # container with no mDNS resolver, so top-off-charger.local never resolves
+  # there; every node in H:/esphome carries this key for that reason.
+  # 10.0.0.116 is the address HA's config entry for this MAC
+  # (1c:db:d4:ec:e1:98) connects to [M: core.config_entries, 2026-10-28], and
+  # the API answered there as top-off-charger [M, 2026-10-28]. It changes
+  # nothing the device does: compiled in only as the "Address:" line of the
+  # API, OTA and web server config dumps [M: generated api_server.cpp:373,
+  # ota_esphome.cpp:137, web_server.cpp:433, ESPHome 2026.10.1]. Pair with a
+  # DHCP reservation, or this goes stale when the lease moves.
+  use_address: 10.0.0.116
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   fast_connect: true
