@@ -1,16 +1,18 @@
 # ============================================================================
-# Top-Off Charger V0.4 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
+# Top-Off Charger V0.5 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
 #   Unvalidated until 2026-10-22 (owner's call, 2026-10-16: "no validation at
 #   this point"). On 2026-10-22 the owner asked for it, and V0.4 passed the
 #   esp-firmware-validation gate (design §9) on ESPHome 2026.10.0, the add-on's
 #   version: config valid, real compile, main.cpp.obj 0 errors. It is still NOT
 #   flash-ready: T1–T16 (design §11) have not been run.
-#   Spec: ../top-off-charger-design.md rev 0.11, §9: FW-1, FW-3 to FW-14.
+#   Spec: ../top-off-charger-design.md rev 0.13, §9: FW-1, FW-3 to FW-14.
 #   Source-level read against ESPHome 2026.9.1 (ina2xx_base, ina2xx_i2c,
 #   globals, preferences, esp32 gpio, ota). The Device Builder add-on's ESPHome
 #   version governs; re-read those components on it before the gate (O4).
 #   V0.4's additions were read at 2026.10.0, the add-on's version (debug,
-#   uptime, i2c, ina2xx_base, ina2xx_i2c, globals).
+#   uptime, i2c, ina2xx_base, ina2xx_i2c, globals). V0.5's at 2026.10.1, the
+#   add-on's version (globals, esp32 preferences, core/time, time, text_sensor,
+#   debug, wifi_signal, internal_temperature).
 # ============================================================================
 # Purpose : Supervisor for the bench top-balance HOLD of the UPS's Cyclenbatt
 #           12 V 10 Ah pack, after a full charge on the Dylannet P20 (§4.3).
@@ -75,14 +77,19 @@
 # LED (FW-11, rev 0.9). On/off only; R1 sets ~1.2 mA and its brightness is
 # unverified (§5.5), so no PWM dimming.
 #   dark ............ no AC, or firmware not running (dark > ~10 s, §5.4)
-#   Waiting ......... 100 ms blip every 3 s     IDLE, Start would be refused
+#   Waiting ......... on, 100 ms wink every 3 s IDLE, Start would be refused
 #   Ready to charge . 1 s on, 2 s off           IDLE, FW-3 met: press Start
 #   Charging ........ 500 ms on / 500 ms off    switch ON
 #   Final minute .... 150 on,150 off,150 on, 550 off (1 s)
 #                     switch ON, T_hold - time-at-voltage <= final_lead_s
-#   Done ............ 2 x 100 ms blips every 3 s (latched)
+#   Done ............ on, two 100 ms winks every 3 s (latched)
 #   Fault ........... 4 Hz, 125/125 ms (latched; every reason, incl. FW-13)
 # Precedence: Fault > Done > Final minute > Charging > Ready > Waiting.
+# V0.5 (owner, 2026-10-30: "turn on the esp32 led when powered for a sign of
+# life"): Waiting and Done were 3.3 % and 6.7 % on [D: 100/3000, 200/3000], so a
+# healthy idle board read as dead. Inverted, they are 96.7 % and 93.3 % on [D].
+# This LED is the only one firmware can drive: the XIAO ESP32-C3 has no user
+# LED, only CHG-LED [S: Seeed wiki, XIAO_ESP32C3_Getting_Started, pin map].
 # Every powered state moves, so a STEADY LED means a hung CPU (L3 then resets
 # it, and the LED goes dark). The renderer only displays the tick's state.
 # Its one other job: if the tick stops running for > 2 s while the loop is
@@ -94,7 +101,9 @@
 # decisions reads these values, so they cannot end, extend or start a session.
 #   settle ...... the first tail_settle_s of TIME AT VOLTAGE (not of the session)
 #   window ...... tail_window_s blocks of valid at-voltage ticks; each block's
-#                 mean is one "Tail Window Mean"
+#                 mean is one "Tail Window Mean". V0.5: ticks enter in whole
+#                 credited blocks (BMS OPEN, below), so a low block's ticks are
+#                 in no window
 #   floor ....... the lowest window mean after settle. A minimum of means, not
 #                 of samples: one sample is one noise draw (20.8 µA ADC step),
 #                 so a sample minimum is biased low. No "non-zero" test: exact 0
@@ -108,6 +117,34 @@
 # A "balancer activity" flag is deliberately absent: the floor is bleed + BMS
 # draw + self-discharge on a sealed pack, and the residual only shows across
 # sessions. Define the flag after T11 (design FW-14).
+#
+# ---------------------------------------------------------------------------
+# BMS OPEN (FW-5, O18, rev 0.13). A BMS that opens at the tail leaves nothing
+# one tick can see: S5's last hour had sd 0.109 mA and min -0.134 mA against an
+# idle -0.100 mA [M, HA rows, n=3406], so single tail samples reach the open
+# level. Every valid CHARGING tick, at ANY voltage, feeds a bms_block_s block of
+#     i_net = I - the idle offset snapshotted at Start
+# and the test is on the block's mean:
+#   low ........ mean < bms_i_open, AND one of the last two non-low means is
+#                >= twice bms_i_open. The second half is FW-3's "a balanced pack
+#                legitimately decays toward 0": a tail that decays there is
+#                credited, and an open from there is not seen. No such tail has
+#                been measured; S5's lowest 10 s block was 0.129 mA at one block
+#                phase [M, n=1299] and 0.079 mA at another [M, replay, +5.64 h]:
+#                near-zero samples among 0.25-0.46 mA, longest run 2 s, no open.
+#   BMS trip ... low, and one of those means >= bms_i_from: ends the session at
+#                the first low block, <= 19.5 s after the cut [D: 39 ticks],
+#                before the ~30 s reconnect [M, n=2].
+#   tail cut ... low, below bms_i_from. The block earns no time at voltage and
+#                enters no tail window. Two in a row are one cut: counted, its
+#                pair kept. One alone may be noise, and costs 10 s of credit:
+#                the safe direction. bms_open_max_s of them in a row end the
+#                session in FAULT "BMS open".
+# Time at voltage therefore moves in bms_block_s steps, DONE lands up to that
+# much late, and a partial last block is never credited. prev_v/prev_i hold the
+# last sample with i_net >= twice bms_i_open: the step can be 19.5 s old by the
+# time it is detected, and no open sample came near that [M: corrected max
+# 0.0414 mA, n=21 samples, one event].
 #
 # ---------------------------------------------------------------------------
 # PLACEHOLDERS: every value marked PLACEHOLDER below is TBD from T11 (O5) or
@@ -136,12 +173,28 @@
 #          name: that `esphome config` had rejected them without since V0.1
 #          (R13 note at the INA228 block). Compiles on 2026.10.0: main.cpp.obj
 #          0 errors, 0 warnings; a planted lambda fault failed the same build.
+#   V0.5 — 2026-10-30. Owner's six changes, design rev 0.13. Not validated by
+#          T1-T16. (1) Start gate v_start_max 14.40, separate from V_hold: Ack
+#          07:01:01 and Start 07:01:09 EDT on 10-30 were refused at a 14.354 V
+#          rest [M]. The gate does NOT raise the charge voltage: the PSU trimpot
+#          sets that. V_hold is now 14.38, the threshold time at voltage counts
+#          above: S5 held 14.4021-14.4035 [M, n=12103], so a count at 14.40 had
+#          2.1 mV of margin [D]. (2) T_hold 8 h, T_max 10 h. (3) What survives
+#          an unplug: the edge pairs, the end time, BMS cuts, a lifetime session
+#          count, and a 10-min checkpoint of the record, so a cut session keeps
+#          its last figures. The boot re-seeds the Session card from the record.
+#          (4) Node health: RSSI, heap, loop time, CPU temperature, firmware
+#          version, IP, connectivity, flash flush time. (5) O18: BMS OPEN, above.
+#          New end reason "BMS open". (6) LED on when powered (LED, above).
+#          R13: the CHARGE guard's "only rises" ignored the INA228's offset, so
+#          a healthy small session could end in FAULT "INA228 reset" (step 7).
+#          Found by the V0.5 replay, never seen on the device.
 # ============================================================================
 
 substitutions:
   device_name: top-off-charger
   friendly_name: Top-Off Charger
-  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.4 DRAFT"
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.5 DRAFT"
 
   # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
   # point ("10.0", not "10"), or "10f" will not compile.
@@ -155,26 +208,53 @@ substitutions:
   final_lead_s: "60"     # FW-11: final-minute cue lead time (owner, 2026-10-16)
 
   # ---- PLACEHOLDERS, set from T11 (O5). Integers here are seconds.
-  v_hold: "14.30"        # PLACEHOLDER. FW-3/FW-6. Must sit below V_SET 14.40 V by more
-                         #   than the tail-current drops, and above the pack's rest voltage
-  t_hold_s: "21600"      # 6 h. T11 START VALUE (owner, 2026-10-16), FW-6 time at voltage.
+  v_start_max: "14.40"   # V0.5, FW-3 (owner, 2026-10-30): Start needs VBUS below this. Was
+                         #   V_hold until the two jobs split: the pack rested at 14.354 V after
+                         #   14 h [M] and Start was refused. Only 2.7 mV under VBUS at the
+                         #   trimmed PSU [D: S5 mean 14.4027], so FW-13's current test, not
+                         #   this gate, is what catches a shorted switch
+  v_hold: "14.38"        # PLACEHOLDER. FW-6, was 14.30 and FW-3 too. Must sit below V_SET 14.40 V
+                         #   by more than the tail-current drops, and above the pack's rest voltage
+                         #   V0.5: 22.1 mV under S5's lowest hold reading 14.4021 [M, n=12103],
+                         #   ~5.1 degC at the design's 4.32 mV/degC [D]; reached 6 s after Start
+                         #   [M, n=1]. "Above rest" no longer holds and no longer matters: FW-3
+                         #   has its own threshold, and a rest above this only starts the count
+  t_hold_s: "28800"      # 8 h (owner, 2026-10-30): the tail shows no plateau [D: log-log slope
+                         #   -0.80, -1.18, n=33 windows each], so this is a longer MEASUREMENT.
+                         #   6 to 8 h moved 0.48-0.62 mAh, ~0.005 % of 10 Ah [D, extrapolated].
+                         #   Was 21600:
+                         #   6 h. T11 START VALUE (owner, 2026-10-16), FW-6 time at voltage.
                          #   Long enough to see whether a balancer floor exists and holds
                          #   (it should show within the first hour on a full pack), and to
                          #   do real balancing if it does: 6 h x 50 mA = 0.30 Ah = 3 % of
                          #   10 Ah [D; the bleed rate is an assumption until T11]. Size the
                          #   later sessions from T11's floor: hold time = imbalance / floor.
                          #   Still the owner's trade against the no-backup window (§10.2).
-  t_max_s: "28800"       # 8 h. T11 START VALUE, FW-4 session cap: T_hold plus 2 h for the
+  t_max_s: "36000"       # 10 h (V0.5; 8 h until then). T11 START VALUE, FW-4 session cap: T_hold plus 2 h for the
                          #   pack to reach V_hold and margin. The L6 timer must be set above it
-                         #   (§10.1 step 5), so it must reach > 8 h.
+                         #   (§10.1 step 5), so it must reach > 10 h.
   t_ol_s: "300"          # PLACEHOLDER. FW-4 cumulative time with I > i_overload
   bms_i_from: "0.100"    # PLACEHOLDER. FW-5: "charging" before the step (A)
-  bms_i_zero: "0.005"    # PLACEHOLDER. FW-5: "~0" after the step (A)
+  # R13, 2026-10-30: V0.1-V0.4 had bms_i_zero 0.005 here (A, "~0" after the step)
+  # and tested one tick against the tick before. Under 5 mA is every tail tick,
+  # so it could not see a tail cut (O21), and S2's first cut went unseen with
+  # V0.4 running [M]; the 1 Hz history does not show why [I: a sample in the odd
+  # tick between 0.95 A and 0; R18]. Removed with the one-tick test (O18).
+  bms_i_open: "0.00007"  # PLACEHOLDER. FW-5: a block mean below this is "no current" (A).
+                         #   0.07 mA: open blocks reached +0.0185 mA [M, 4 blocks, 2 events];
+                         #   the lowest tail block was 0.129 mA [M, S5 2-6 h, n=1299],
+                         #   0.079 mA at another block phase [M, replay]: a thin margin,
+                         #   and a lone low block costs 10 s of credit, not the session
+  bms_block_s: "10"      # FW-5 block. 10 s puts at least one whole block inside a 28 s open
+                         #   [D: needs >= 2 x block]. Must be a whole number of seconds
+  bms_open_max_s: "120"  # PLACEHOLDER. FW-5: low blocks this long in a row end the session.
+                         #   ~4 x the ~30 s the BMS has stayed open [M, n=2]
   # ---- FW-14 tail floor (report-only). Integers are seconds.
   tail_settle_s: "1800"  # PLACEHOLDER (T11): time at voltage before the floor counts.
                          #   T11 shows how long the absorption tail takes to flatten.
                          #   Must stay well under t_hold_s
   tail_window_s: "600"   # 10-min window means (1200 ticks at 2 Hz)
+  ckpt_s: "600"          # V0.5, FW-9: record checkpoint while charging (1200 ticks at 2 Hz)
   # ---- PLACEHOLDER, set from T0's idle reading and T15 (FW-13)
   i_off_floor: "0.050"   # PLACEHOLDER. FW-13: current with the switch commanded OFF (A)
 
@@ -184,13 +264,13 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.top-off-charger"
-    version: "0.4"
+    version: "0.5"
   on_boot:
     - priority: -200
       then:
         - logger.log:
             level: INFO
-            format: "Top-Off Charger V0.4 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
+            format: "Top-Off Charger V0.5 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -226,12 +306,19 @@ ota:
             id(rec_ah) = id(session_ah_live);
             id(rec_t_at_v_s) = id(t_at_v_ms) / 1000.0f;
             id(rec_elapsed_s) = (millis() - id(t_start_ms)) / 1000.0f;
-            id(rec_bms_v) = NAN;
-            id(rec_bms_i) = NAN;
+            id(rec_bms_v) = id(cut_v);       // V0.5: the last cut's pair, NAN if none
+            id(rec_bms_i) = id(cut_i);
+            id(rec_cuts) = id(bms_cuts);
             id(rec_tail_floor) = id(tail_floor);       // FW-14
             id(rec_tail_last) = id(tail_last);
             id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
             id(rec_idle_off) = id(idle_off_start);
+            const ESPTime t = id(ha_time).utcnow();    // V0.5; 0 = no clock
+            id(rec_end_epoch) = t.is_valid() ? (uint32_t) t.timestamp : 0u;
+            id(rec_edge_off_vb) = NAN;       // V0.5: this edge is not captured
+            id(rec_edge_off_ib) = NAN;
+            id(rec_edge_off_va) = NAN;
+            id(rec_edge_off_ia) = NAN;
             id(sess_open) = false;           // V0.4. If the shutdown path never flushes,
                                              // flash still holds it set and the next boot
                                              // reads FAULT "reset during a session": the
@@ -277,6 +364,14 @@ safe_mode:
 # once, from dump_config at boot [M: debug_component.cpp:52-56, 2026.10.0].
 # The session record does not copy it (R10): this entity owns the reason.
 debug:
+
+# V0.5, FW-9: the wall clock for "Last Session End Time", and nothing else. It
+# comes from HA over the API and free-runs after that, so HA down at the end of
+# a session still stamps it; never synced since boot stamps 0, which reads
+# unknown. A float cannot hold an epoch: 128 s spacing at 1.7e9 [D: 2^7].
+time:
+  - platform: homeassistant
+    id: ha_time
 
 i2c:
   sda: GPIO6
@@ -360,7 +455,7 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: '0'
-  - id: t_at_v_ms            # FW-6 accumulator: time with VBUS >= V_hold
+  - id: t_at_v_ms            # FW-6 accumulator: time with VBUS >= V_hold, in credited blocks (V0.5)
     type: uint32_t
     restore_value: no
     initial_value: '0'
@@ -368,11 +463,56 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: '0'
-  - id: prev_v               # FW-5: the last charging sample before this one
+  - id: prev_v               # FW-5: the last sample with current (V0.5; was the last sample)
     type: float
     restore_value: no
     initial_value: 'NAN'
   - id: prev_i
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  # ---- V0.5, O18: the open block (header: BMS OPEN)
+  - id: blk_sum              # sum of i_net, every valid CHARGING tick
+    type: double
+    restore_value: no
+    initial_value: '0.0'
+  - id: blk_n
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: blk_t_at_v           # at-voltage ms, moved to t_at_v_ms only if the block is not low
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: blk_tail_sum         # at-voltage raw currents, moved to tail_sum on the same test
+    type: double
+    restore_value: no
+    initial_value: '0.0'
+  - id: blk_tail_n
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: bms_ref_a            # the last two non-low block means. INFINITY at Start, so a
+    type: float              # BMS already open at Start fires
+    restore_value: no
+    initial_value: 'INFINITY'
+  - id: bms_ref_b
+    type: float
+    restore_value: no
+    initial_value: 'INFINITY'
+  - id: bms_low_n            # consecutive low blocks
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: bms_cuts             # cuts this session (header: BMS OPEN)
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: cut_v                # the last cut's prev_v / prev_i; NAN if none
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: cut_i
     type: float
     restore_value: no
     initial_value: 'NAN'
@@ -476,6 +616,10 @@ globals:
   #      by default [M: preferences/__init__.py, flash_write_interval]. The
   #      L6 timer goes OFF right after DONE (§10.1 step 7), so without the
   #      tick's explicit sync the record could be lost.
+  #      V0.5: also written every ckpt_s while charging, so a cut session keeps
+  #      its last figures, and cleared at Start. A checkpoint changes ~8 values,
+  #      each one NVS blob write; sync() skips the rest [M: esp32/preferences.cpp
+  #      :232-233, is_changed_, 2026.10.1].
   - id: rec_reason
     type: int
     restore_value: yes
@@ -492,7 +636,7 @@ globals:
     type: float
     restore_value: yes
     initial_value: 'NAN'
-  - id: rec_bms_v            # FW-5 pre-step pair; NAN unless the session ended in a BMS trip
+  - id: rec_bms_v            # FW-5 pre-step pair of the last cut (V0.5); NAN if none. Until V0.5: NAN unless the session ended in a BMS trip
     type: float
     restore_value: yes
     initial_value: 'NAN'
@@ -513,6 +657,53 @@ globals:
     restore_value: yes
     initial_value: 'NAN'
   - id: rec_idle_off
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  # ---- V0.5: the rest of what an unplug used to lose. Keyed by name hash like
+  #      sess_open below, so adding these moves nothing. Edge pairs are written
+  #      when published (tick step 8).
+  - id: rec_cuts             # BMS cuts in the session
+    type: uint32_t
+    restore_value: yes
+    initial_value: '0'
+  - id: rec_end_epoch        # UTC seconds; the last checkpoint's if the session was cut;
+    type: uint32_t           # 0 = no clock
+    restore_value: yes
+    initial_value: '0'
+  - id: rec_sessions         # lifetime count of Starts
+    type: uint32_t
+    restore_value: yes
+    initial_value: '0'
+  - id: rec_edge_on_vb
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_edge_on_ib
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_edge_on_va
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_edge_on_ia
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_edge_off_vb
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_edge_off_ib
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_edge_off_va
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_edge_off_ia
     type: float
     restore_value: yes
     initial_value: 'NAN'
@@ -673,8 +864,13 @@ sensor:
     accuracy_decimals: 0
     update_interval: never
   - platform: template
+    id: last_cuts
+    name: "Last Session BMS Cuts"    # V0.5 (O18)
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
     id: bms_pre_v
-    name: "BMS Trip Pre-Step VBUS"   # FW-5; NaN unless the last session ended in a trip
+    name: "BMS Trip Pre-Step VBUS"   # FW-5; the last cut's pair (V0.5), NaN if none. Until V0.5: NaN unless the last session ended in a trip
     unit_of_measurement: V
     accuracy_decimals: 4
     update_interval: never
@@ -683,6 +879,12 @@ sensor:
     name: "BMS Trip Pre-Step Current"
     unit_of_measurement: A
     accuracy_decimals: 4
+    update_interval: never
+
+  - platform: template
+    id: bms_cuts_ha
+    name: "BMS Cuts"                 # V0.5 (O18): this session, 0 at Start
+    accuracy_decimals: 0
     update_interval: never
 
   # ---- FW-14 tail floor (report-only). Raw values: subtract the idle offset
@@ -805,6 +1007,38 @@ sensor:
   - platform: uptime
     name: "Uptime"             # seconds since boot, every 60 s (component defaults)
 
+  # ---- V0.5: node health (owner, 2026-10-30), the same set as the other nodes
+  - platform: wifi_signal
+    name: "WiFi Signal"        # RSSI
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: debug
+    free:
+      name: "Free Heap"
+      entity_category: diagnostic
+    loop_time:
+      name: "Loop Time"        # the longest loop pass; the tick's cycle margin depends on it
+      entity_category: diagnostic
+  - platform: internal_temperature
+    name: "CPU Temperature"    # node health only. FW-10 rejects it as the enclosure proxy
+    entity_category: diagnostic
+  - platform: template
+    id: sessions_ha
+    name: "Sessions Started"   # lifetime, from flash
+    state_class: total_increasing
+    accuracy_decimals: 0
+    update_interval: never
+    entity_category: diagnostic
+  - platform: template
+    id: flush_ms_ha
+    name: "Flash Flush Time"   # blocks the tick: must stay well under ~372 ms [D: 500 - 128]
+    unit_of_measurement: ms
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+    entity_category: diagnostic
+
 text_sensor:
   - platform: template
     id: state_txt
@@ -822,6 +1056,18 @@ text_sensor:
     id: last_reason_txt
     name: "Last Session End"
     update_interval: never
+  - platform: template
+    id: last_end_time_txt
+    name: "Last Session End Time"  # V0.5. A cut session: the last checkpoint's time
+    device_class: timestamp        # ISO 8601 with Z. "" reads unknown in HA [M:
+    update_interval: never         # esphome/sensor.py:141-142, util/dt.py:230-238, 2026.10.4]
+  - platform: version              # V0.5: node health
+    name: "ESPHome Version"
+    entity_category: diagnostic
+  - platform: wifi_info            # V0.5: node health
+    ip_address:
+      name: "IP Address"
+      entity_category: diagnostic
   - platform: debug              # V0.4 (#6): e.g. "power-on event", "task
     reset_reason:                # watchdog", "brownout" [M: debug_esp32.cpp:26-43,
       name: "Reset Reason"       # 2026.10.0]. Which one an AC cut gives is T9's [I]
@@ -833,6 +1079,9 @@ binary_sensor:
   - platform: template
     id: sw_bin
     name: "Charge Switch"         # commanded state, read-only
+  - platform: status              # V0.5: node health
+    name: "Status"
+    entity_category: diagnostic
 
 button:
   - platform: template
@@ -861,7 +1110,8 @@ interval:
           enum { ST_IDLE = 0, ST_CHARGING = 1, ST_DONE = 2, ST_FAULT = 3 };
           enum { R_NONE = 0, R_DONE, R_OVERVOLTAGE, R_OVERCURRENT, R_OVERLOAD, R_TMAX,
                  R_SENSOR, R_BMS_TRIP, R_SWITCH_ON, R_STOP_USER, R_STOP_OTA, R_INTERNAL,
-                 R_LOST_RESET, R_INA_RESET };   // V0.4. rec_reason is restored: append, never renumber
+                 R_LOST_RESET, R_INA_RESET,     // V0.4. rec_reason is restored: append, never renumber
+                 R_BMS_OPEN };                  // V0.5
           static const char *const REASON[] = {
             "none",
             "done: time at voltage reached",
@@ -876,22 +1126,26 @@ interval:
             "stopped: OTA update",
             "internal: state and switch disagree",
             "reset during a session: record incomplete (see Reset Reason)",
-            "INA228 reset: configuration or CHARGE lost - cycle AC"};
+            "INA228 reset: configuration or CHARGE lost - cycle AC",
+            "BMS open too long (or fuse / QD open): no current at the tail"};
           enum { LED_WAITING = 0, LED_READY, LED_CHARGING, LED_FINAL, LED_DONE, LED_FAULT };
           static const char *const LED_TXT[] = {
             "Waiting", "Ready to charge", "Charging", "Final minute", "Done", "Fault"};
           static const char *const ST_TXT[] = {"IDLE", "CHARGING", "DONE", "FAULT"};
           auto rtxt = [&](int r) -> const char * {
-            return (r >= R_NONE && r <= R_INA_RESET) ? REASON[r] : "unknown";
+            return (r >= R_NONE && r <= R_BMS_OPEN) ? REASON[r] : "unknown";
           };
 
           const float V_CEIL = ${v_ceiling}f;
           const float V_START_MIN = ${v_start_min}f;
+          const float V_START_MAX = ${v_start_max}f;
           const float V_HOLD = ${v_hold}f;
           const float I_MAX = ${i_max}f;
           const float I_OL = ${i_overload}f;
           const float BMS_I_FROM = ${bms_i_from}f;
-          const float BMS_I_ZERO = ${bms_i_zero}f;
+          const float BMS_I_OPEN = ${bms_i_open}f;
+          const uint32_t BMS_BLOCK_TICKS = ${bms_block_s}u * 2u;       // 2 ticks per second
+          const uint32_t BMS_OPEN_BLOCKS = ${bms_open_max_s}u / ${bms_block_s}u;
           const float I_OFF_FLOOR = ${i_off_floor}f;
           const uint32_t T_HOLD_MS = ${t_hold_s}u * 1000u;
           const uint32_t T_MAX_MS = ${t_max_s}u * 1000u;
@@ -899,6 +1153,7 @@ interval:
           const uint32_t FINAL_LEAD_MS = ${final_lead_s}u * 1000u;
           const uint32_t TAIL_SETTLE_MS = ${tail_settle_s}u * 1000u;
           const uint32_t TAIL_WINDOW_TICKS = ${tail_window_s}u * 2u;   // 2 ticks per second
+          const uint32_t CKPT_TICKS = ${ckpt_s}u * 2u;
 
           // ---- 0. timing. dt is capped: a stalled loop never earns hold time
           //         it cannot vouch for (safe direction: the hold runs longer).
@@ -944,6 +1199,33 @@ interval:
           const int st_at_entry = st;
 
           // ---- helpers. Both leave the switch OFF; only end_session writes the record.
+          // V0.5: and the checkpoint (step 7b), through this one writer, so the
+          // two cannot drift (R10). OTA on_begin keeps its own copy, as before.
+          auto fill_record = [&]() {
+            id(rec_ah) = id(session_ah_live);
+            id(rec_t_at_v_s) = id(t_at_v_ms) / 1000.0f;
+            id(rec_elapsed_s) = (now - id(t_start_ms)) / 1000.0f;
+            id(rec_bms_v) = id(cut_v);              // FW-5: the last cut's pair, NAN if none
+            id(rec_bms_i) = id(cut_i);
+            id(rec_cuts) = id(bms_cuts);
+            id(rec_tail_floor) = id(tail_floor);    // FW-14; NAN if settle never reached
+            id(rec_tail_last) = id(tail_last);
+            id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
+            id(rec_idle_off) = id(idle_off_start);
+            const ESPTime t = id(ha_time).utcnow();
+            id(rec_end_epoch) = t.is_valid() ? (uint32_t) t.timestamp : 0u;   // 0 = no clock
+          };
+          auto publish_end_time = [&]() {
+            const uint32_t e = id(rec_end_epoch);
+            if (e == 0u) {
+              id(last_end_time_txt).publish_state("");   // HA: unknown
+              return;
+            }
+            ESPTime t = ESPTime::from_epoch_utc((time_t) e);
+            char buf[ESPTime::STRFTIME_BUFFER_SIZE];
+            t.strftime_to(std::span<char, ESPTime::STRFTIME_BUFFER_SIZE>(buf), "%Y-%m-%dT%H:%M:%SZ");
+            id(last_end_time_txt).publish_state(buf);
+          };
           auto end_session = [&](int reason) {
             if (id(charge_sw).state) {
               id(charge_sw).turn_off();
@@ -956,22 +1238,11 @@ interval:
             // V0.4 (#1): after a reset the live values are boot values (0), not
             // the lost session's, so the record says unknown. The FW-14 fields
             // are NAN after a boot already.
+            // V0.5: the record says what the last checkpoint wrote (Start cleared
+            // it, so "unknown" now means cut before the first checkpoint).
             const bool lost = (reason == R_LOST_RESET);
-            id(rec_ah) = lost ? NAN : id(session_ah_live);
-            id(rec_t_at_v_s) = lost ? NAN : id(t_at_v_ms) / 1000.0f;
-            id(rec_elapsed_s) = lost ? NAN : (now - id(t_start_ms)) / 1000.0f;
+            if (!lost) fill_record();
             id(sess_open) = false;                  // flushed with the record, below
-            if (reason == R_BMS_TRIP) {
-              id(rec_bms_v) = id(prev_v);           // FW-5: last sample before the step
-              id(rec_bms_i) = id(prev_i);
-            } else {
-              id(rec_bms_v) = NAN;
-              id(rec_bms_i) = NAN;
-            }
-            id(rec_tail_floor) = id(tail_floor);    // FW-14; NAN if settle never reached
-            id(rec_tail_last) = id(tail_last);
-            id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
-            id(rec_idle_off) = id(idle_off_start);
             id(sync_due_tick) = tk + 3u;            // >= 1 s: globals store first (see globals)
             if (reason == R_DONE) st = ST_DONE;
             else if (reason == R_STOP_USER || reason == R_STOP_OTA) st = ST_IDLE;
@@ -981,8 +1252,8 @@ interval:
               ESP_LOGE(TAG, "Session FAULT: %s (VBUS %.4f V, I %.4f A)", rtxt(reason), v, i);
             else
               ESP_LOGI(TAG, "Session end: %s", rtxt(reason));
-            ESP_LOGI(TAG, "  record: %.5f Ah, %.0f s at voltage, %.0f s elapsed",
-                     id(rec_ah), id(rec_t_at_v_s), id(rec_elapsed_s));
+            ESP_LOGI(TAG, "  record: %.5f Ah, %.0f s at voltage, %.0f s elapsed, %u BMS cuts",
+                     id(rec_ah), id(rec_t_at_v_s), id(rec_elapsed_s), (unsigned) id(rec_cuts));
             id(session_ah).publish_state(id(rec_ah));
             id(t_at_v_ha).publish_state(id(rec_t_at_v_s));
             id(t_elapsed_ha).publish_state(id(rec_elapsed_s));
@@ -996,6 +1267,8 @@ interval:
             id(last_tail_last).publish_state(id(rec_tail_last));
             id(last_q_settle).publish_state(id(rec_q_settle_ah));
             id(last_idle_off).publish_state(id(rec_idle_off));
+            id(last_cuts).publish_state(id(rec_cuts));
+            publish_end_time();
             if (!std::isnan(id(rec_q_settle_ah))) id(q_settle_ha).publish_state(id(rec_q_settle_ah));
             ESP_LOGI(TAG, "  tail: floor %.5f A, final window %.5f A, %.5f Ah after settle, idle offset %.5f A",
                      id(rec_tail_floor), id(rec_tail_last), id(rec_q_settle_ah), id(rec_idle_off));
@@ -1084,7 +1357,7 @@ interval:
 
           // ---- 6. IDLE: the start gate (FW-3), on this tick's pair only.
           //         NaN cannot pass: every comparison with NaN is false.
-          id(ready_flag) = (st == ST_IDLE) && valid && (v > V_START_MIN) && (v < V_HOLD);
+          id(ready_flag) = (st == ST_IDLE) && valid && (v > V_START_MIN) && (v < V_START_MAX);
           bool just_started = false;
           // V0.3 (2026-10-22): Stop beats Start. V0.2 tested want_start alone, so a
           // Stop pressed on the same tick was dropped and the session started
@@ -1101,8 +1374,8 @@ interval:
                 ESP_LOGW(TAG, "Start refused: VBUS %.3f V <= %.1f V (pack absent, reversed, or below UVP)",
                          v, V_START_MIN);
               else
-                ESP_LOGW(TAG, "Start refused: VBUS %.3f V >= V_hold %.3f V (pack still resting above V_hold)",
-                         v, V_HOLD);
+                ESP_LOGW(TAG, "Start refused: VBUS %.3f V >= V_start_max %.3f V (pack still resting above the gate)",
+                         v, V_START_MAX);
             } else if (!id(ina).reset_energy_counters()) {
               ESP_LOGE(TAG, "Start refused: CHARGE register reset failed (I2C write)");
             } else {
@@ -1119,6 +1392,42 @@ interval:
               id(sess_ah_peak) = 0.0f;              // V0.4 (#2)
               id(sess_open) = true;                 // V0.4 (#1): flushed ~1.5 s from now;
               id(sync_due_tick) = tk + 3u;          //   a reset before then is not caught
+              id(blk_sum) = 0.0;                    // V0.5 (O18)
+              id(blk_n) = 0u;
+              id(blk_t_at_v) = 0u;
+              id(blk_tail_sum) = 0.0;
+              id(blk_tail_n) = 0u;
+              id(bms_ref_a) = INFINITY;
+              id(bms_ref_b) = INFINITY;
+              id(bms_low_n) = 0u;
+              id(bms_cuts) = 0u;
+              id(cut_v) = NAN;
+              id(cut_i) = NAN;
+              id(bms_cuts_ha).publish_state(0);
+              // V0.5: the record now belongs to this session. Cleared here and
+              // flushed with sess_open, so a cut before the first checkpoint
+              // reads unknown, never the previous session's figures.
+              id(rec_ah) = NAN;
+              id(rec_t_at_v_s) = NAN;
+              id(rec_elapsed_s) = NAN;
+              id(rec_bms_v) = NAN;
+              id(rec_bms_i) = NAN;
+              id(rec_cuts) = 0u;
+              id(rec_tail_floor) = NAN;
+              id(rec_tail_last) = NAN;
+              id(rec_q_settle_ah) = NAN;
+              id(rec_idle_off) = NAN;
+              id(rec_end_epoch) = 0u;
+              id(rec_edge_on_vb) = NAN;
+              id(rec_edge_on_ib) = NAN;
+              id(rec_edge_on_va) = NAN;
+              id(rec_edge_on_ia) = NAN;
+              id(rec_edge_off_vb) = NAN;
+              id(rec_edge_off_ib) = NAN;
+              id(rec_edge_off_va) = NAN;
+              id(rec_edge_off_ia) = NAN;
+              id(rec_sessions)++;
+              id(sessions_ha).publish_state(id(rec_sessions));
               id(tail_sum) = 0.0;                   // FW-14
               id(tail_n) = 0u;
               id(tail_floor) = NAN;
@@ -1150,46 +1459,102 @@ interval:
             // ideal diode, design §5), so a fall below half its session peak is
             // a cleared register: an INA228 reset the read-back (step 1) did not
             // see, or a stray accumulator reset. The record keeps the last good value.
-            const bool q_fell = !std::isnan(q) && id(sess_ah_peak) > 0.0f && q < 0.5f * id(sess_ah_peak);
+            // R13, 2026-10-30: "only rises" ignored the INA228's own offset, -0.0986 mA
+            // [M, S5]. CHARGE integrates it, so a tail under about 0.1 mA makes the
+            // register FALL, and a small session on a nearly full pack can drop below
+            // half its peak: FAULT "INA228 reset" on a healthy chip. Found by the V0.5
+            // replay, never seen on the device. q_slack is what the offset can take
+            // off CHARGE by now, x 1.25: the idle 10 s blocks reach -0.118 mA [M,
+            // n=2880], 1.2 x the mean [D]. Limit: with slack about 1 mAh at 8 h [D], a
+            // cleared register goes unseen in a session that peaked under about 2 mAh;
+            // the read-back (step 1) still sees a chip reset.
+            const float q_slack = std::isnan(id(idle_off_start)) ? 0.0f :
+                                  1.25f * std::fabs(id(idle_off_start)) * (elapsed / 3600000.0f);
+            const bool q_fell = !std::isnan(q) && id(sess_ah_peak) > 0.0f &&
+                                q < 0.5f * id(sess_ah_peak) - q_slack;
             if (!std::isnan(q) && !q_fell) {
               id(session_ah_live) = q;
               if (q > id(sess_ah_peak)) id(sess_ah_peak) = q;
             }
             if (i > I_OL) id(t_ol_ms) += dt;          // cumulative, rev 0.9
-            // ---- 7a. FW-14 tail floor: OBSERVATION ONLY. It sits before the
-            //          decisions only so a session ending on this tick records
-            //          this tick's sample; no decision below reads tail_*.
-            if (v >= V_HOLD && id(t_at_v_ms) >= TAIL_SETTLE_MS) {
-              if (std::isnan(id(q_at_settle))) id(q_at_settle) = id(session_ah_live);
-              id(tail_sum) += (double) i;
-              id(tail_n)++;
-              if (id(tail_n) >= TAIL_WINDOW_TICKS) {
-                const float m = (float) (id(tail_sum) / (double) id(tail_n));
-                id(tail_last) = m;
-                if (std::isnan(id(tail_floor)) || m < id(tail_floor)) id(tail_floor) = m;
-                id(tail_sum) = 0.0;
-                id(tail_n) = 0u;
-                id(tail_mean_ha).publish_state(m);
-                id(tail_floor_ha).publish_state(id(tail_floor));
-                ESP_LOGI(TAG, "Tail window mean %.5f A, floor %.5f A", m, id(tail_floor));
-              }
+            // ---- 7a. V0.5 (O18): the block (header: BMS OPEN). No voltage gate:
+            //          a gate at V_hold would blind it to every cut below V_hold.
+            const float i_net = i - (std::isnan(id(idle_off_start)) ? 0.0f : id(idle_off_start));
+            id(blk_sum) += (double) i_net;
+            id(blk_n)++;
+            if (v >= V_HOLD) {
+              id(blk_t_at_v) += dt;
+              id(blk_tail_sum) += (double) i;
+              id(blk_tail_n)++;
             }
-            const bool bms_step = !std::isnan(id(prev_i)) && id(prev_i) >= BMS_I_FROM &&
-                                  i <= BMS_I_ZERO && v >= V_HOLD;
+            if (i_net >= 2.0f * BMS_I_OPEN) {
+              id(prev_v) = v;
+              id(prev_i) = i;
+            }
+            bool bms_trip = false, bms_open = false;
+            if (id(blk_n) >= BMS_BLOCK_TICKS) {
+              const float bm = (float) (id(blk_sum) / (double) id(blk_n));
+              const float ref = std::max(id(bms_ref_a), id(bms_ref_b));
+              if (bm < BMS_I_OPEN && ref >= 2.0f * BMS_I_OPEN) {
+                id(bms_low_n)++;
+                bms_trip = (ref >= BMS_I_FROM);
+                if (bms_trip || id(bms_low_n) == 2u) {
+                  id(bms_cuts)++;
+                  id(cut_v) = id(prev_v);
+                  id(cut_i) = id(prev_i);
+                  id(bms_cuts_ha).publish_state(id(bms_cuts));
+                  ESP_LOGW(TAG, "BMS cut %u: block mean %.6f A, last sample with current %.4f V, %.6f A",
+                           (unsigned) id(bms_cuts), bm, id(cut_v), id(cut_i));
+                }
+                bms_open = (id(bms_low_n) >= BMS_OPEN_BLOCKS);
+              } else {
+                id(bms_ref_b) = std::isinf(id(bms_ref_a)) ? bm : id(bms_ref_a);
+                id(bms_ref_a) = bm;
+                id(bms_low_n) = 0u;
+                id(t_at_v_ms) += id(blk_t_at_v);
+                // ---- FW-14 tail floor: OBSERVATION ONLY. It sits before the
+                //      decisions only so a session ending on this tick records
+                //      this block's samples; no decision below reads tail_*.
+                if (id(blk_tail_n) > 0u && id(t_at_v_ms) >= TAIL_SETTLE_MS) {
+                  if (std::isnan(id(q_at_settle))) id(q_at_settle) = id(session_ah_live);
+                  id(tail_sum) += id(blk_tail_sum);
+                  id(tail_n) += id(blk_tail_n);
+                  if (id(tail_n) >= TAIL_WINDOW_TICKS) {
+                    const float m = (float) (id(tail_sum) / (double) id(tail_n));
+                    id(tail_last) = m;
+                    if (std::isnan(id(tail_floor)) || m < id(tail_floor)) id(tail_floor) = m;
+                    id(tail_sum) = 0.0;
+                    id(tail_n) = 0u;
+                    id(tail_mean_ha).publish_state(m);
+                    id(tail_floor_ha).publish_state(id(tail_floor));
+                    ESP_LOGI(TAG, "Tail window mean %.5f A, floor %.5f A", m, id(tail_floor));
+                  }
+                }
+              }
+              id(blk_sum) = 0.0;
+              id(blk_n) = 0u;
+              id(blk_t_at_v) = 0u;
+              id(blk_tail_sum) = 0.0;
+              id(blk_tail_n) = 0u;
+            }
             if (v > V_CEIL) end_session(R_OVERVOLTAGE);         // raw VBUS: no calibration in it
             else if (q_fell) end_session(R_INA_RESET);          // V0.4: i below may be mis-scaled
             else if (i > I_MAX) end_session(R_OVERCURRENT);
             else if (id(t_ol_ms) > T_OL_MS) end_session(R_OVERLOAD);
             else if (elapsed > T_MAX_MS) end_session(R_TMAX);
-            else if (bms_step) end_session(R_BMS_TRIP);
+            else if (bms_trip) end_session(R_BMS_TRIP);
+            else if (bms_open) end_session(R_BMS_OPEN);
             else {
-              if (v >= V_HOLD) id(t_at_v_ms) += dt;   // current logged, never acted on (FW-6)
+              // R13, 2026-10-30: V0.1-V0.4 added dt here on every tick with
+              // v >= V_HOLD, "current logged, never acted on (FW-6)". O21's 28 s
+              // with the BMS open counted as hold time. Step 7a credits it now.
               if (id(t_at_v_ms) >= T_HOLD_MS) end_session(R_DONE);
               else if (want_stop) end_session(R_STOP_USER);
             }
-            if (st == ST_CHARGING) {
-              id(prev_v) = v;
-              id(prev_i) = i;
+            // ---- 7b. V0.5 (FW-9): checkpoint, so a cut session keeps its figures
+            if (st == ST_CHARGING && ((tk - id(on_edge_tick)) % CKPT_TICKS) == 0u) {
+              fill_record();
+              id(sync_due_tick) = tk + 3u;          // >= 1 s: globals store first
             }
           }
 
@@ -1203,6 +1568,10 @@ interval:
             id(edge_on_ib).publish_state(id(on_ib));
             id(edge_on_va).publish_state(ok ? v : NAN);
             id(edge_on_ia).publish_state(ok ? i : NAN);
+            id(rec_edge_on_vb) = id(on_vb);         // V0.5: flash by the 60 s auto-sync
+            id(rec_edge_on_ib) = id(on_ib);         //   or the first checkpoint
+            id(rec_edge_on_va) = ok ? v : NAN;
+            id(rec_edge_on_ia) = ok ? i : NAN;
             id(on_pending) = false;
           }
           if (id(off_pending) && tk >= id(off_edge_tick) + 2u) {
@@ -1211,16 +1580,25 @@ interval:
             id(edge_off_ib).publish_state(id(off_ib));
             id(edge_off_va).publish_state(ok ? v : NAN);
             id(edge_off_ia).publish_state(ok ? i : NAN);
+            id(rec_edge_off_vb) = id(off_vb);       // V0.5
+            id(rec_edge_off_ib) = id(off_ib);
+            id(rec_edge_off_va) = ok ? v : NAN;
+            id(rec_edge_off_ia) = ok ? i : NAN;
+            id(sync_due_tick) = tk + 3u;            // one flush, with the record: end + 5 ticks
             id(off_pending) = false;
           }
 
           // ---- 9. flush the session record to flash (see globals)
           if (id(sync_due_tick) != 0u && tk >= id(sync_due_tick)) {
             id(sync_due_tick) = 0u;
-            if (global_preferences->sync())
-              ESP_LOGI(TAG, "Session record flushed to flash");
+            const uint32_t fl0 = millis();          // V0.5: this stalls the tick
+            const bool fl_ok = global_preferences->sync();
+            const uint32_t fl_ms = millis() - fl0;
+            id(flush_ms_ha).publish_state(fl_ms);
+            if (fl_ok)
+              ESP_LOGI(TAG, "Session record flushed to flash (%u ms)", (unsigned) fl_ms);
             else
-              ESP_LOGW(TAG, "Session record flush FAILED");
+              ESP_LOGW(TAG, "Session record flush FAILED (%u ms)", (unsigned) fl_ms);
           }
 
           // ---- 10. LED mode (FW-11), in precedence order
@@ -1266,6 +1644,29 @@ interval:
             id(last_tail_last).publish_state(id(rec_tail_last));
             id(last_q_settle).publish_state(id(rec_q_settle_ah));
             id(last_idle_off).publish_state(id(rec_idle_off));
+            // V0.5: the Session card and the edge pairs, which HA otherwise shows
+            // unknown after an unplug [M, 2026-10-29 07:44:18]. No flash write.
+            const float rem_s = (T_HOLD_MS / 1000.0f) - id(rec_t_at_v_s);
+            id(last_cuts).publish_state(id(rec_cuts));
+            publish_end_time();
+            id(sessions_ha).publish_state(id(rec_sessions));
+            id(bms_cuts_ha).publish_state(id(rec_cuts));
+            id(session_ah).publish_state(id(rec_ah));
+            id(t_at_v_ha).publish_state(id(rec_t_at_v_s));
+            id(t_remain_ha).publish_state(std::isnan(rem_s) ? NAN : (rem_s < 0.0f ? 0.0f : rem_s));
+            id(t_elapsed_ha).publish_state(id(rec_elapsed_s));
+            id(q_settle_ha).publish_state(id(rec_q_settle_ah));
+            id(tail_mean_ha).publish_state(id(rec_tail_last));
+            id(tail_floor_ha).publish_state(id(rec_tail_floor));
+            id(sess_idle_off_ha).publish_state(id(rec_idle_off));
+            id(edge_on_vb).publish_state(id(rec_edge_on_vb));
+            id(edge_on_ib).publish_state(id(rec_edge_on_ib));
+            id(edge_on_va).publish_state(id(rec_edge_on_va));
+            id(edge_on_ia).publish_state(id(rec_edge_on_ia));
+            id(edge_off_vb).publish_state(id(rec_edge_off_vb));
+            id(edge_off_ib).publish_state(id(rec_edge_off_ib));
+            id(edge_off_va).publish_state(id(rec_edge_off_va));
+            id(edge_off_ia).publish_state(id(rec_edge_off_ia));
           }
           if ((tk & 1u) == 0u) {
             id(vbus_ha).publish_state(valid ? v : NAN);
@@ -1321,13 +1722,13 @@ interval:
           const uint32_t ph = now - id(led_t0);
           bool on;
           switch (mode) {
-            case 0: on = (ph % 3000u) < 100u; break;                        // Waiting
+            case 0: on = (ph % 3000u) >= 100u; break;                       // Waiting (V0.5: inverted)
             case 1: on = (ph % 3000u) < 1000u; break;                       // Ready to charge
             case 2: on = (ph % 1000u) < 500u; break;                        // Charging
             case 3: { const uint32_t p = ph % 1000u;                        // Final minute
                       on = (p < 150u) || (p >= 300u && p < 450u); break; }
-            case 4: { const uint32_t p = ph % 3000u;                        // Done
-                      on = (p < 100u) || (p >= 300u && p < 400u); break; }
+            case 4: { const uint32_t p = ph % 3000u;                        // Done (V0.5: inverted)
+                      on = !((p < 100u) || (p >= 300u && p < 400u)); break; }
             case 5: on = (ph % 250u) < 125u; break;                         // Fault, 4 Hz
             default: on = false; break;
           }
