@@ -12,8 +12,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Open Item 14a (09-15 report): full discharge at May's load, host shut down first. This is the decisive capacity test
 - Open Item 16 (09-15 report): coulomb-counted recharge to termination
 - Boost EN shed (BOOST-DS-r1 DR-1/OP-2), closing the unattended-recovery gap, and the BOOST-DS-r1 §10 scope gate
-- Top-off charger: tests T0–T16 (none run as numbered tests), the FW-5/FW-6 fix (O18), the next board revision (O19), firmware validation (O4), and which file went to fab (O11)
+- Top-off charger: tests T0–T17 (none run as numbered tests), the next board revision (O19), firmware validation (O4), and which file went to fab (O11)
 - INA260 ALERT input: the firmware reads GPIO3 (D1), but the THT Rev 1 PCB routes ALERT to GPIO5 (D3)
+
+---
+
+## [2026-10-31] — 2026-10-31
+
+### Changed
+- **Top-off charger firmware V0.5 is flashed** (2026-10-30, 12:25:15 EDT), with design rev 0.15. S6 at PSU 14.52 V ended in FAULT on a BMS cut at +98 s. S7 at PSU 14.47 V, the first full 8 h hold, ended DONE with 12 BMS Cuts and no FAULT. Recommended, not built: `bms_open_max_s` 300 s.
+- **Top-off charger: the high rest is genuine.** A DMM on the pack's terminals read 14.42 V with the leads on and off, and VBUS read 14.4154 V, 11.15 h after DONE [M, n = 1]. The terminal does not float, and VBUS is the pack at rest. The reading carries no current, so it does not show whether the cells keep the tail or the BMS spends it.
+
+### Fixed
+- **Top-off charger design (R13).** Rev 0.13's "diffusion, not a drain" rested on one rest. On S7's rest a constant fall comes out with the right sign, 0.90 ± 0.09 mV/h, against S5's rise of 0.24 ± 0.03 mV/h, and the exponent differs, 0.659 ± 0.009 against 0.475 ± 0.015 [D, 639 1 min bins each]. The two are not separated until a rest past 48 h. Detail: design §11.1.
+
+---
+
+## [2026-10-30] — 2026-10-30
+
+### Changed
+- **Top-off charger firmware V0.5 and design rev 0.13: not flashed.** The owner's six changes; the board is unchanged. The start gate is now its own number, 14.40 V, because this pack read 14.354 V 14 h after a session and refused Start [M]. It does not raise the charge voltage. The hold is V_hold 14.38 V, T_hold 8 h and T_max 10 h, so the countdown timer must be settable above 10 h. The 8 h is a measurement, not balancing: hours 6 to 8 move about 0.5 mAh [D, extrapolated].
+- **Top-off charger LED:** Waiting and Done inverted, so a powered board reads as on. The XIAO ESP32-C3 has no user LED [S: Seeed wiki], so this is the board's LED on GPIO3.
+
+### Fixed
+- **Top-off charger FW-5 (O18).** A 10 s block test replaces the single-tick test, which missed a BMS opening at the tail and let time at voltage count through it. A long open now ends in a new FAULT.
+- **Top-off charger FW-4 (R13).** "The CHARGE register only rises" was false: the INA228's offset integrates, which could have read a healthy chip as cleared on a small session. Found by replay; the device never showed it.
+
+### Added
+- **Top-off charger persistence:** the edge pairs, cut count, end time and a lifetime session count survive an unplug, the boot re-seeds the Session card, and a 600 s checkpoint keeps a cut session's figures.
+- **Top-off charger node health:** WiFi Signal, Free Heap, Loop Time, CPU Temperature, Flash Flush Time, ESPHome Version, IP Address and Status.
+- **Top-off charger test T17,** a real QD pull on the tail. V0.5's replay against the five bench sessions passed 54 tests and caught all 29 planted faults [M], but replay is not a hardware test.
 
 ---
 

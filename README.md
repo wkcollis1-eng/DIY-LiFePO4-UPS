@@ -50,7 +50,7 @@ Figures in this README carry the repository's provenance tags: **[M]** measured,
 | Capacity | **Well below its May 2026 value, by more than the test conditions can explain; cause not yet identified** (below) |
 | Unattended recovery | Guaranteed only for outages that reach LVD, until the boost EN shed is fitted (below) |
 | Monitor | UPS-Monitor-THT Rev 1 PCB, ESPHome firmware V1.20 (deployed 2026-09-16) |
-| Top-off charger | Built and on the bench, design rev 0.12. Firmware V0.4 flashed; two normal sessions so far, and one BMS cut missed by FW-5 (O18). T0–T16 not yet run |
+| Top-off charger | Built and on the bench, design rev 0.15. Firmware V0.5 flashed 2026-10-30; three normal sessions so far, one session ended by a BMS cut at 14.52 V, and one BMS cut missed by FW-5 on V0.4, whose fix in V0.5 stays open until T17 (O18). T0–T17 not yet run |
 
 > [!IMPORTANT]
 > **Capacity shortfall.** On 2026-09-15 the pack delivered **2.5331 Ah / 31.821 Wh** from onset to LVD [M, firmware coulomb counter; independent HA-side integration agrees to +0.95 %]. Over the same voltage span at the same load, it delivered **42.4 % less charge than on 2026-09-01**, fourteen days earlier [D, [09-15 report](reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md) §4.3, n = 1 run each]. Measured LVD to LVD, it is 39.4 % below the 4.179 Ah of 2026-05-06 [D, same report]. Rate effects, Peukert, float droop and temperature together account for under 10 % of the LVD-to-LVD gap and none of the load-matched gap [D, §4.4].
@@ -221,14 +221,14 @@ In priority order, from the [09-15 report](reports/UPS_Report_2026-09-15_Full_Di
 
 ## Planned: Top-Off Charger
 
-[`Top-Off-Charger/top-off-charger-design.md`](Top-Off-Charger/top-off-charger-design.md) is the design, rev 0.12, dated 2026-10-29. The board is built, with one rework (its #2814 control pin, design §7.2), and §11.1 records the first bench sessions.
+[`Top-Off-Charger/top-off-charger-design.md`](Top-Off-Charger/top-off-charger-design.md) is the design, rev 0.15, dated 2026-10-31. The board is built, with one rework (its #2814 control pin, design §7.2), and §11.1 records the first bench sessions.
 
 The 13.3 V float never takes the cells to balancing voltage. The plan is to take the pack out of the UPS for each session, charge it to full on a Dylannet P20 at 5 A, and then hold it at 14.40 V on a Mean Well HDR-30-15 (worst case ≤ 3.64 A [D, design §4.1]). An ESPHome controller times the hold and logs the current tail.
 
 - **Controller board.** Top Off Charger PCB rev 0.8: KiCad 10, 2-layer, 29.5 × 78 mm, for OSH Park. It carries a XIAO ESP32-C3, an Adafruit INA228 (#5832) with a 15 mΩ shunt, a Pololu #2814 MOSFET switch, a Pololu #5382 ideal diode, a D24V7F3 regulator, a status LED and a Kelvin ground for the INA228. DRC: 0 errors / 34 warnings / 0 unconnected [M]. **Built** (2026-10-28; which file went to fab is not recorded, O11).
-- **Protection.** A protection ladder (L1–L8), firmware requirements (FW-1–FW-14) and acceptance tests (T0–T16). The design requires each session to end by itself within its time cap, and nothing to restart a charge after a reboot or an AC blip. Stop, the normal DONE and FW-5 have now worked on the bench, and FW-5 has also missed once (O18); the numbered tests have not run.
-- **Firmware.** [`firmware/top-off-charger.yaml`](Top-Off-Charger/firmware/top-off-charger.yaml) V0.4 compiles and is flashed, and has run five bench sessions; T0–T16 have not run (O4, O18).
-- **What it cannot do.** It cannot balance a pack whose BMS has no balancer, and nothing documents whether this one has one. The current tail at 14.40 V is the first direct look [I; falsifier: the logged current decays toward zero with no floor]. On 2026-10-29, on a second, new Cyclenbatt pack rather than the UPS's, it fell to 0.16–0.34 mA at 14.30–14.40 V, with no balancer-sized floor [M, design §11.1]. The success measure is Open Item 14a before and after. It does not serve Open Item 16, because the P20 does the bulk charge and counts nothing (O10).
+- **Protection.** A protection ladder (L1–L8), firmware requirements (FW-1–FW-14) and acceptance tests (T0–T17). The design requires each session to end by itself within its time cap, and nothing to restart a charge after a reboot or an AC blip. Stop, the normal DONE and FW-5 have now worked on the bench, and FW-5 has also missed once (O18); the numbered tests have not run.
+- **Firmware.** [`firmware/top-off-charger.yaml`](Top-Off-Charger/firmware/top-off-charger.yaml) V0.5 compiles, was replayed against the five sessions V0.4 ran, and has been flashed since 2026-10-30; it has run two more. T0–T17 have not run (O4, O18).
+- **What it cannot do.** It cannot balance a pack whose BMS has no balancer, and nothing documents whether this one has one. The current tail at 14.40 V is the first direct look [I; falsifier: the logged current decays toward zero with no floor]. On 2026-10-29, on a second, new Cyclenbatt pack rather than the UPS's, it fell to 0.16–0.34 mA at 14.30–14.40 V, with no balancer-sized floor [M, design §11.1], and to about 0.13 mA net after 8 h near 14.45 V on 2026-10-30 [D, design §11.1]. The success measure is Open Item 14a before and after. It does not serve Open Item 16, because the P20 does the bulk charge and counts nothing (O10).
 
 ---
 
@@ -258,7 +258,7 @@ The 13.3 V float never takes the cells to balancing voltage. The plan is to take
 | [UPS-Monitor/ups-monitor.yaml](UPS-Monitor/ups-monitor.yaml) | Monitor firmware V1.20 (header holds the pin map and full changelog) |
 | [UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v12.md](UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v12.md) | Survival-sleep engineering basis (tracks firmware through V1.14) |
 | [HA Automation/README_HA_UPS_Integration.md](HA%20Automation/README_HA_UPS_Integration.md) | Home Assistant side: the entities, the five `ups_*_v3` automations and their guards, and what the test record shows about them |
-| [Top-Off-Charger/top-off-charger-design.md](Top-Off-Charger/top-off-charger-design.md) | Top-off charger design, rev 0.12 (built; commissioning) |
+| [Top-Off-Charger/top-off-charger-design.md](Top-Off-Charger/top-off-charger-design.md) | Top-off charger design, rev 0.13 (built; commissioning) |
 | [CHANGELOG.md](CHANGELOG.md) | Repository changelog |
 
 **Earlier reports** (pre-boost load; figures predate the boost and the September capacity result)
