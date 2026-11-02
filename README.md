@@ -50,7 +50,7 @@ Figures in this README carry the repository's provenance tags: **[M]** measured,
 | Capacity | **Well below its May 2026 value, by more than the test conditions can explain; cause not yet identified** (below) |
 | Unattended recovery | Guaranteed only for outages that reach LVD, until the boost EN shed is fitted (below) |
 | Monitor | UPS-Monitor-THT Rev 1 PCB, ESPHome firmware V1.20 (deployed 2026-09-16) |
-| Top-off charger | Built and on the bench, design rev 0.15. Firmware V0.5 flashed 2026-10-30; three normal sessions so far, one session ended by a BMS cut at 14.52 V, and one BMS cut missed by FW-5 on V0.4, whose fix in V0.5 stays open until T17 (O18). T0–T17 not yet run |
+| Top-off charger | Built and on the bench, design rev 0.16. Firmware V0.5 flashed 2026-10-30; 17 sessions so far, five of them DONE and the last ten on the UPS's own pack, and one BMS cut missed by FW-5 on V0.4, whose fix in V0.5 stays open until T17 (O18). T0–T17 not yet run |
 
 > [!IMPORTANT]
 > **Capacity shortfall.** On 2026-09-15 the pack delivered **2.5331 Ah / 31.821 Wh** from onset to LVD [M, firmware coulomb counter; independent HA-side integration agrees to +0.95 %]. Over the same voltage span at the same load, it delivered **42.4 % less charge than on 2026-09-01**, fourteen days earlier [D, [09-15 report](reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md) §4.3, n = 1 run each]. Measured LVD to LVD, it is 39.4 % below the 4.179 Ah of 2026-05-06 [D, same report]. Rate effects, Peukert, float droop and temperature together account for under 10 % of the LVD-to-LVD gap and none of the load-matched gap [D, §4.4].
@@ -221,7 +221,7 @@ In priority order, from the [09-15 report](reports/UPS_Report_2026-09-15_Full_Di
 
 ## Planned: Top-Off Charger
 
-[`Top-Off-Charger/top-off-charger-design.md`](Top-Off-Charger/top-off-charger-design.md) is the design, rev 0.15, dated 2026-10-31. The board is built, with one rework (its #2814 control pin, design §7.2), and §11.1 records the first bench sessions.
+[`Top-Off-Charger/top-off-charger-design.md`](Top-Off-Charger/top-off-charger-design.md) is the design, rev 0.16, dated 2026-11-02. The board is built, with one rework (its #2814 control pin, design §7.2). §11.1 records the first bench sessions, and §11.2 the first on the UPS's own pack.
 
 The 13.3 V float never takes the cells to balancing voltage. The plan is to take the pack out of the UPS for each session, charge it to full on a Dylannet P20 at 5 A, and then hold it at 14.40 V on a Mean Well HDR-30-15 (worst case ≤ 3.64 A [D, design §4.1]). An ESPHome controller times the hold and logs the current tail.
 

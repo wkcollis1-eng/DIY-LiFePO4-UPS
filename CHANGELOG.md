@@ -17,6 +17,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-11-02] — 2026-11-02
+
+### Changed
+- **Top-off charger design rev 0.16: S8–S17, the first sessions on the UPS's own pack.** Bench record only; firmware and board unchanged. S8 was the first real overload stop, on a pack that had skipped the P20, and S13 the first real T_max end. S15 and S17 reached DONE, S17 at VBUS 14.4322 V with BMS Cuts 0. S9, S10, S14 and S16 ended on real BMS cuts at 0.116–0.310 A [M, n = 4].
+- **Top-off charger: the hold ceiling is a VBUS figure, 14.43 V.** The cut level rose about 50 mV between 10-31 and 11-01 [D, R_series unmeasured], and PSU setting minus VBUS went from about 31 mV to 12–18 mV [D], cause not established (O22).
+- **Top-off charger: 7.42 Ah past float** [D: 0.254 + 6.9 + 0.263; the 6.9 Ah is the owner's P20 figure]. With the 2.5331 Ah delivered on 09-15 that is 9.95 Ah [I; falsifier: Open Item 14a delivering well under it]. No UPS float change on an [I]. Recommended, not decided: stop sessions and run 14a (O23).
+- **Top-off charger O21 goes to n = 7,** and O20 gains two AC-on connects with no reset [M, n = 2].
+
+---
+
 ## [2026-10-31] — 2026-10-31
 
 ### Changed
