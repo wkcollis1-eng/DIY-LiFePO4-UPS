@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Top-off charger: 7.42 Ah past float** [D: 0.254 + 6.9 + 0.263; the 6.9 Ah is the owner's P20 figure]. With the 2.5331 Ah delivered on 09-15 that is 9.95 Ah [I; falsifier: Open Item 14a delivering well under it]. No UPS float change on an [I]. Recommended, not decided: stop sessions and run 14a (O23).
 - **Top-off charger O21 goes to n = 7,** and O20 gains two AC-on connects with no reset [M, n = 2].
 
+### Fixed
+- **Top-off charger design rev 0.17 (R13): the P20 has an Ah display.** The design had said since rev 0.5, and the README since 2026-10-16, that it counts nothing. It shows charging voltage, temperature, current and Ah and has no data port (owner, 2026-11-02), so the 6.9 Ah inside the 7.42 Ah past float is a display reading, accuracy unchecked. Open Item 16 stays unserved by this charger, because a P20 count is a different test from the UPS's own recharge (O10).
+
 ---
 
 ## [2026-10-31] — 2026-10-31
