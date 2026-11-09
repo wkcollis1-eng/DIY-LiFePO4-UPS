@@ -1,8 +1,11 @@
 # UPS Monitor Rev 4: design document
 
 **Status (2026-11-09):** layout in progress, not fabricated, no Rev 4 firmware yet.
-**Document revision:** 2 (2026-11-09). Section 1 now records the system the board serves: a UPS
-dedicated to the Xfinity XB7 modem. See the revision history at the end.
+**Document revision:** 3 (2026-11-09): revision 2 after peer review. See the revision history at
+the end.
+**Dates and times:** dates from revision 2 on are UTC. Clock times (the board's 19:43 save, the
+BOM's 16:09) and revision 1's dates are local, EST (UTC−5). Revisions 2 and 3 were written on the
+evening of 2026-11-08, local time.
 **Master file:** `UPS-Monitor-Rev 4.kicad_pcb` (not yet in this repository). The board is the
 master; the schematic was
 synced from it on 2026-11-08 and is checked against it with KiCad's schematic-parity DRC.
@@ -39,11 +42,16 @@ The board sits on the UPS's 12 V bus.
 A long overnight outage with nobody home. "Working" at that moment means all of the following:
 - The modem stays powered while the battery has margin.
 - The modem is shed only on battery, and only when the firmware asks.
-- No failure of the monitor itself (crash, reset, brown-out, XIAO unplugged) can turn the
-  modem off.
+- No loss of function in the monitor (crash, reset, brown-out, XIAO unplugged) can turn the
+  modem off. The firmware requirements in section 8 close the cases where the output is wrong.
 - When mains returns, the modem comes back on whatever the firmware is doing.
 
-The enable network in section 4.4 is built so that every one of those holds in hardware.
+The enable network in section 4.4 makes the second and fourth promises hold in hardware. It
+makes the third hold for any failure that leaves GPIO5 floating or low.
+
+Hardware cannot tell a correct HIGH on GPIO5 from a wrong one. A hold that is never released, or
+a shed on a bad reading, sheds the modem at the next outage with a full pack (section 5). Only
+the firmware and its commissioning test close those cases (section 8, open items 15 to 17).
 
 ### 1.3 Topology
 
@@ -88,6 +96,13 @@ The enable network in section 4.4 is built so that every one of those holds in h
 | Restart | About 3 to 5 min from power to a working Wi-Fi AP | [S: survival-sleep design v12, which gives ~3–4 min and ~4–5 min in two places] |
 | Network role | It is the gateway whose Wi-Fi the monitor uses. While the modem is shed, the monitor has no network and reports nothing | [S: firmware header, item ⑦; 09-15 report §5] |
 
+**The x 0.88 is a floor, not a measurement.** It is DoE Level VI's minimum efficiency, not the
+adapter's efficiency at about 13 W out of its 55 W. So the DC figures above may read low.
+- At 0.92, for example, the peak would be 18.7 W [D: 20.3 x 0.92].
+- The failed-shed peak current at the bus would then be 2.24 A instead of 2.15 A
+  [D: (18.7 ÷ 0.85 + 0.45) ÷ 10.0 V].
+- The first outage will measure bus power directly.
+
 **What Rev 4 changes for the modem:**
 - U4 holds the modem's input at 12 V ±4 %, which is 11.52 to 12.48 V [S: Pololu #4984; D]. It
   does so at any bus voltage from 2.8 to 22 V [S]. The XB7 no longer sees the bus.
@@ -107,7 +122,7 @@ The enable network in section 4.4 is built so that every one of those holds in h
 | Tolerance | ±1.0 %, including set-up, line and load regulation; ±0.03 %/°C | [S] |
 | Ripple and noise | 120 mVp-p max | [S] |
 | Over-voltage protection | 14.2 to 16.2 V. "Shut down o/p voltage, re-power on to recover." `docs/bom.md` and `docs/specifications.md` give 13.8 to 16.2 V, from a source revision they do not record | [S] |
-| Overload | 105 to 160 % of rated power, constant-current limiting, hiccup below 50 % output voltage; recovers automatically | [S] |
+| Overload | 105 to 160 % of rated power; hiccup below 50 % output voltage; recovers automatically. The protection type ("constant-current limiting" in revision 2) is not confirmed: the sheet as extracted says only "Hiccup mode when output voltage <50%" (open item 20) | [S; type unconfirmed] |
 | Efficiency | 88 % typical (230 VAC, rated load) | [S] |
 | Hold-up | 12 ms typical at 115 VAC, full load | [S] |
 | Set-up / rise | 500 ms / 50 ms at 115 VAC, full load | [S] |
@@ -144,8 +159,26 @@ The enable network in section 4.4 is built so that every one of those holds in h
   [D: 09-15 report §7.4]. It was a transient of minutes [S: Top-Off §4.1].
 - At the Rev 4 load, the same 77.66 W at an assumed 13.0 V bus would put 4.64 to 4.95 A into
   the pack [D: 77.66 W ÷ 13.0 V = 5.97 A, less 1.02 to 1.34 A of load].
-- That is just under the 5.0 A that the bench pack's "max charge .5c" label allows [S: Top-Off
+- **That is the bottom of the range, not a bound** (peer review, S1). The 143.8 % shows only
+  that the limit is at least that high. The datasheet allows up to 160 % [S]. At 160 % and a
+  13.0 V bus:
+  - read as current, 1.6 x 4.5 A = 7.20 A, which puts 5.86 to 6.18 A into the pack [D];
+  - read as power, 1.6 x 54 W = 86.4 W, and 86.4 W ÷ 13.0 V = 6.65 A, which puts 5.31 to
+    5.63 A into the pack [D].
+- **Both exceed the 5.0 A** that the bench pack's "max charge .5c" label allows [S: Top-Off
   §11.1; D: 0.5 x 10 Ah].
+- **Whether the pack draws enough to reach the PSU's limit is not measured** [I]. It depends on
+  two things:
+  - the headroom over the charge plateau, which the 13.6 V set point raises by 0.3 V;
+  - the resistance of the battery branch.
+  This is falsified if the first recharge's logged peak into the pack stays at or under 5.0 A
+  (open item 19).
+- **If the pack does reach the limit,** the PSU spends much of the recharge in its overload band.
+  The datasheet lists that band as a protection, not a rating [I].
+- **The BMS's charge over-current limit is not documented.** A trip there would drop the load
+  suddenly, and the PSU's latching OVP has only 0.302 V of margin [I].
+- **The #5382 can carry it.** It is rated 10 A, < 10 mΩ, on an LM74700-Q1 [S: Pololu #5382, as
+  read by the peer review], so 7.20 A is 72 % of its rating [D].
 
 ### 1.6 The battery: a new Cyclenbatt 12 V 10 Ah LiFePO4
 
@@ -154,7 +187,7 @@ The enable network in section 4.4 is built so that every one of those holds in h
 | Identity | New Cyclenbatt 12 V 10 Ah LiFePO4. Whether it is the "second, new Cyclenbatt 12.8 V 10 Ah" pack used on the top-off bench from 2026-10-28 is not recorded (open item 12) | Owner, 2026-11-09; [S: Top-Off §11.1] |
 | Build | 4S LiFePO4, sealed: no balance taps, no BMS telemetry | [S: README, for the previous pack of this model; I for this one] |
 | Label | The bench pack reads "12.8 V 10 Ah" and "max charge .5c 14.6v max". The previous pack's label gives a 14.4 to 14.6 V charge voltage and charging only above 32 °F, with no upper charge temperature | [S: Top-Off §11.1; §3, RQ-9 to RQ-11] |
-| BMS | 10 A discharge rating; under-voltage cutoff 10.0 V. The over-voltage cutoff is not documented | [S: `docs/component-selection.md`; `docs/specifications.md` and its 2026-10-16 correction] |
+| BMS | 10 A discharge rating; under-voltage cutoff 10.0 V. The over-voltage cutoff is not documented | [S: `docs/component-selection.md`; `docs/specifications.md` and its 2026-10-16 correction, for the previous pack; I for this one until open item 12 closes] |
 | BMS cuts seen | On the bench pack, three cuts on charge at VBUS 14.310 to 14.315 V and 0.95 to 1.30 A (2026-10-28) | [M: Top-Off §11.1] |
 | Capacity | Nameplate 10 Ah. Not measured on this pack (section 1.8, open item 14) | [S] |
 | Float | 13.6 V set point, 13.571 to 13.587 V at the bus (section 1.5). The SOC that holds is not measured | [D; I] |
@@ -166,9 +199,10 @@ The enable network in section 4.4 is built so that every one of those holds in h
 2. Over-voltage: the BMS, cutoff undocumented [S].
 3. Under-voltage: the firmware shed at 11.8 V, on battery only (section 8). It is not
    independent of the firmware.
-4. Under-voltage: the BMS at 10.0 V [S]. U4 runs down to 2.8 V input [S], so it adds no floor of
-   its own.
-5. Over-current: F1 for the board and the modem (section 4.1), and the BMS's 10 A [S].
+4. Under-voltage: the BMS at 10.0 V [S for the previous pack; I for this one, open item 12]. U4
+   runs down to 2.8 V input [S], so it adds no floor of its own.
+5. Over-current: F1 for the board and the modem (section 4.1), and the BMS's 10 A [S for the
+   previous pack; I for this one].
 
 ### 1.7 Load and current budget
 
@@ -220,7 +254,8 @@ The enable network in section 4.4 is built so that every one of those holds in h
 Runtime = usable Wh ÷ bus power, 13.29 to 17.39 W [D]:
 - At the 53.271 Wh the previous pack delivered in May 2026 from a 13.3 V float [M: 05-06
   report]: 3.06 to 4.01 h.
-- At the original design's 112.5 Wh (9 Ah x 12.5 V) [S: `docs/specifications.md`]: 6.47 to
+- At this pack's nameplate, 128 Wh (10 Ah x 12.8 V) [S: label; D]: 7.36 to 9.63 h. Revision 2
+  used the original 9 Ah design's 112.5 Wh here [S: `docs/specifications.md`], which gave 6.47 to
   8.46 h.
 
 Neither end is a bound. A new pack should beat the old pack's May figure, and a 13.6 V float
@@ -274,6 +309,11 @@ BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leave
   - Section 1.7 bounds it at 0.98 to 1.74 A continuous and 2.15 A peak [D].
 - The fuse is 2 to 2.5 A (owner, 2026-11-08). A time-lag, DC-rated link is advised (schematic
   note). Section 1.7 gives the margin at each end of that range.
+- **Use 2.5 A** (peer review, S4). A failed shed at the BMS cutoff runs a 2 A link at 87 % and a
+  2.5 A link at 70 %; down to the shed threshold the figures are 74 % and 59 % [D: 1.74 ÷ 2.0,
+  1.74 ÷ 2.5, 1.47 ÷ 2.0, 1.47 ÷ 2.5]. Only 2.5 A stays under the 75 % guidance in both cases.
+- **The BUS lead's own fuse must be rated above F1,** so that a fault on the board opens F1 and
+  not the lead. Its rating is not recorded here (open item 21).
 - Bulk decoupling on VIN: C4 47 µF 50 V aluminium electrolytic, plus C5 and C6 0.1 µF X7R.
   C6 sits at U4.
 
@@ -288,8 +328,12 @@ U4 is a Pololu #4984 S13V25F12, a 12 V ±4 % step-up/step-down regulator [S: Pol
 - It is mounted on the **bottom** side and uses only the module's 0.1 in row, in the order
   EN, VIN, GND, GND, VOUT [S: Pololu product picture + STEP hole positions, per schematic note].
   **Confirm that order on the module in hand before soldering.**
-- EN is active-low, with a 475 kΩ internal pull-up to VIN and a 1.0 to 1.2 V threshold
-  [S: Pololu #4984 page].
+- EN is an active-high enable. A 475 kΩ internal pull-up to VIN enables the module by default,
+  and driving EN low puts it to sleep. The rising threshold is 1.0 to 1.2 V and the falling
+  threshold typically 100 mV lower [S: Pololu #4984 page].
+  - **Correction (revision 3):** revisions 1 and 2 called EN "active-low". That was an error in
+    revision 1's text, found by the peer review. The circuit was never affected: Q1 pulls EN low
+    to turn the modem off, and the 475 kΩ pull-up holds it on, as section 4.4 always described.
 - Input 2.8 to 22 V, with reverse-voltage protection to 20 V. Output 12 V ±4 %, 2.5 A in the
   spec table [S: Pololu #4984 page].
 - It has soft-start, input under-voltage lockout, output over-voltage protection, over-current
@@ -301,6 +345,14 @@ U4 is a Pololu #4984 S13V25F12, a 12 V ±4 % step-up/step-down regulator [S: Pol
   3.5 mm-pitch holes carries VIN, GND and VOUT; this board does not use it.
 - Its output, loss and current are budgeted in section 1.7. What it does for the XB7 is in
   section 1.4.
+- **The 2.5 A is the spec table's figure, not the figure at this board's input** (peer review,
+  S6). A buck-boost's output limit falls as its input falls. Read Pololu's maximum-output-current
+  versus input-voltage curve at 10.0 V and 11.8 V, and check that each stays above the 1.49 A
+  peak (open item 23).
+- **Its temperature and floor clearance are unchecked.** It hangs from the bottom side and can
+  get hot enough to burn (section 1.7). At first power, measure its temperature at the XB7's
+  peak load, and check the clearance between the module and whatever the board stands on
+  (open item 23).
 
 ### 4.4 Modem-enable logic (Q1, Q2)
 Q1 and Q2 are 2N3904 transistors, formed-lead TO-92 (Diotec, 2.54 mm).
@@ -403,13 +455,19 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 |---|---|---|
 | ESP crashes, resets, browns out or is unplugged | Modem stays ON | 4.4 truth table |
 | Firmware asserts MODEM_OFF while mains is present | Modem stays ON | Q2 override |
-| PSU_SENSE wire comes off with mains present | No override, and the ADC reads "mains absent". The firmware sheds only if the battery is also ≤ 11.8 V, which it should not be while mains is charging it [I]. | Falsified by a float voltage at or below 11.8 V |
+| PSU_SENSE wire comes off with mains present | No override, and the ADC reads "mains absent". The firmware sheds only if the battery is also ≤ 11.8 V, which it should not be while mains is charging it [I]. Survival sleep could also start: see the survival-sleep row below | Falsified by a float voltage at or below 11.8 V |
 | Mains lost | Q2 keeps the override until the HDR output decays below about 3 V, so MODEM_OFF works only after that decay | **Decay time unmeasured** (open item 6) |
 | ESP deep-sleeps after shedding the modem | GPIO5 may float, and R3 then turns the modem back ON unless the pin is held | **Untested** (open item 7) |
-| F1 blows, or U4 fails | Modem off. Nothing on the board bypasses F1 or U4. | Design trade: the modem now depends on F1, U4 and this board |
-| Firmware never sheds on battery (down, or running with no INA260 reading) | Modem stays ON and the pack runs to the BMS's 10.0 V cutoff, where the next row applies. With the BP-65 removed, nothing else sheds it | Sections 1.1 and 1.6; F1 at that point in section 1.7 |
+| F1 blows, or U4 fails | Modem off. Nothing on the board bypasses F1 or U4. Recovery is to plug the XB7 into its OEM adapter (NBC56B120460VU) on mains: a one-plug bypass, if the adapter is kept beside the UPS | Design trade: the modem now depends on F1, U4 and this board; open item 22 |
+| Firmware never sheds on battery (down, or running with no INA260 reading) | Modem stays ON and the pack runs to the BMS's 10.0 V cutoff, where the next row applies. With the BP-65 removed, nothing else sheds it. With no valid reading this is the intended direction: an invalid reading never sheds (section 8) | Sections 1.1 and 1.6; F1 at that point in section 1.7 |
 | Pack hits BMS cutoff, then recovers | Everything restarts, and U4's EN pull-up brings the modem back without firmware | 4.3 |
 | HDR-60-12 OVP trips | The PSU shuts off with mains present. PSU_SENSE reads about 0 V, so the board sees an outage: the pack carries the modem, and the firmware sheds at 11.8 V. Nothing recovers until AC is cycled at the PSU | OVP latches [S: HDR-60 datasheet]; margin in section 1.5; open item 11 |
+| GPIO5 left HIGH after a shed: the deep-sleep hold never released | Hidden on mains, because Q2 holds the modem on. At the next outage the modem sheds as soon as the HDR output decays, **with a full pack** | Peer review, C1. Section 8: drive LOW, then release the hold, at every mains poll, plus a readback alert; open items 15 to 17 |
+| Shed on an invalid reading (NaN, a stale value, or 0 V from a failed read) | Modem off with a full pack, for the rest of the outage once the shed is latched | Peer review, C1. Section 8: the valid-reading rule; open item 15 |
+| ESPHome restores GPIO5 HIGH at boot, before `on_boot` runs | On battery, the modem sheds at boot, whatever charge the pack holds | Peer review, C1. Section 8: GPIO5 kept out of the switch and output components; open item 15 |
+| PSU running, but its path to the bus open (#5382 open, or a PSU or bus lead off) | PSU_SENSE stays up, so Q2 blocks any shed. The pack carries the modem to the BMS's 10.0 V cutoff with no warning | Peer review, C2. Section 8: plausibility alert; open item 18 |
+| No latch: the bus recovers above 11.8 V once the modem's load is gone | The modem cycles off and on as the load comes and goes | Peer review, S2. Section 8: latch the shed; open item 15 |
+| Survival sleep entered with mains present (PSU_SENSE wire off, pack at float, near 0 A) | The monitor goes dark between 120 s wakes with mains present. The modem is unaffected | Peer review, S3. Section 8: entry tied to the latched shed, plus the mirror alert; open item 18 |
 
 ## 6. Mechanical and assembly
 
@@ -429,7 +487,7 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 - The module is 22.9 x 22.9 x 9.7 mm [S: Pololu #4984], held by its five 0.1 in pins.
 - This board's holes are H1, H2 and H4 (M3), so the module's own two M2 holes go unused.
 - It dissipates 0.64 to 2.54 W in typical service (section 1.7), facing the enclosure floor.
-- Its clearance to the floor below the 15 mm standoffs is not recorded.
+- Its clearance to the floor below the 15 mm standoffs is not recorded (open item 23).
 
 **Under the XIAO** (about 10 mm clearance) [M: overlap with U1's fab outline]:
 - R1 to R3.
@@ -457,7 +515,7 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 | Check | Result |
 |---|---|
 | DRC, 19:43 board | 100 violations, 43 errors, 0 unconnected [M] |
-| DRC errors by type | 34 PTH inside courtyard, 6 NPTH inside courtyard, 3 courtyard overlaps; no clearance or copper errors [M]. This fits parts deliberately placed under the socketed modules, but each one has not been reviewed [I]. |
+| DRC errors by type | 34 PTH inside courtyard, 6 NPTH inside courtyard, 3 courtyard overlaps; no clearance or copper errors [M]. This fits parts deliberately placed under the socketed modules, but each one has not been reviewed [I]. Review each, and give each deliberate one a DRC exclusion with a comment saying why (open item 24). |
 | DRC warnings by type | 18 silk over copper, 15 silk-to-edge, 13 library-footprint mismatch, 7 silk overlap, 3 co-located holes (screw models over H1/H2/H4), 1 text height [M] |
 | Schematic ERC | 0 [M, 18:48] |
 | Netlist, schematic vs 18:10 board | "differences: 0" [M] |
@@ -469,11 +527,51 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 
 ## 8. Firmware requirements for Rev 4
 
+**Why these matter.** Hardware cannot tell a correct HIGH on GPIO5 from a wrong one (section
+1.2). Revision 3 adds the requirements below from the peer review (C1, C2, S2, S3). Each one
+closes a case where a wrong MODEM_OFF sheds the modem with a full pack, or where the pack runs
+down with no warning (section 5).
+
 - **GPIO5 (MODEM_OFF):** output, LOW at a cold boot and on restore (modem on). Drive HIGH only
   when battery ≤ 11.8 V **and** mains is absent [S: schematic note].
-  - **On a timer wake from survival sleep it must stay HIGH.** Survival sleep reboots the ESP
-    every 120 s [S: README, Operating Modes item 7]. A firmware that drives GPIO5 LOW at every
-    boot would power the modem up at every wake [D].
+  - **Only valid readings can shed.** The battery test passes only on N consecutive valid
+    INA260 readings at or below 11.8 V.
+    - A reading is valid only if it is fresh from this poll, not NaN, and in a plausible range.
+    - A NaN, a stale value or a 0 V from a failed read never counts toward a shed. On any doubt,
+      the modem stays on.
+    - The N consecutive readings also debounce the trip against the XB7's peaks, which draw
+      1.82 A at 11.8 V (section 1.7).
+    - N and the range are not yet set (open item 15).
+  - **Mains is absent only when debounced.** PSU_ADC must read below the mains-present threshold
+    for longer than the HDR decay (open item 6).
+  - **Latch the shed.** Once GPIO5 goes HIGH, keep it HIGH for the rest of the outage. Do not
+    release it because the bus recovers above 11.8 V after the load drops; that would cycle the
+    modem. Release only on mains, debounced for longer than the HDR decay.
+  - **Release the hold on every mains poll, not just on the edge.** On debounced mains, drive
+    GPIO5 LOW, then call `gpio_hold_dis`.
+    - A held pad keeps its level until the hold is released [S: ESP-IDF GPIO reference, per
+      peer review 2026-11-08, not re-read].
+    - Q2 hides a stuck HIGH while mains is up. It shows only at the next outage, as a shed with
+      a full pack (section 5).
+  - **Read it back.** Configure GPIO5 as input and output and read the pad at every poll. Alert
+    when the level read differs from the level commanded, and whenever it reads HIGH with mains
+    present (open item 16).
+  - **Own the pin from the first instruction.** Keep GPIO5 out of ESPHome's `switch` and
+    `output` components.
+    - A GPIO switch is set up at priority 800 and can restore a saved state. `on_boot` runs at
+      600 by default, after it [S: esphome.io, per peer review 2026-11-08, not re-read].
+    - Drive GPIO5 from a lambda at a priority above 800 that reads the wake cause first.
+    - Both priorities are [I] until confirmed on the ESPHome version in use.
+  - **On a timer wake from survival sleep, it stays HIGH only if PSU_ADC still reads mains
+    absent.** If mains is back, drive it LOW and release the hold. Survival sleep reboots the
+    ESP every 120 s [S: README, Operating Modes item 7]. A firmware that drives GPIO5 LOW at
+    every boot would power the modem up at every wake [D].
+  - **Commissioning test** (open item 17):
+    1. Force a shed on battery.
+    2. Let survival sleep start.
+    3. Restore mains, and wait two wake periods.
+    4. Cut mains again.
+    5. Pass: the modem stays on. That proves the hold was released.
   - The deployed firmware already reads the wake cause (`ups-monitor.yaml`, line 590).
   - **Deep-sleep hold.** On the ESP32-C3, `gpio_hold_en` alone does not hold a digital pad
     through deep sleep; `gpio_deep_sleep_hold_en` is also needed [S: ESP-IDF GPIO reference,
@@ -486,8 +584,10 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
     point.
   - To time the HDR decay, sample faster than the decay itself. A slow poll gives only a bound.
 - **On battery comes from PSU_ADC, not from a bus threshold.**
-  - The deployed firmware sets `on_battery` when the bus falls below 13.15 V, 23.3 mV under the
-    old 13.2 V float [S: README].
+  - The deployed firmware sets `on_battery` when the bus falls below 13.15 V [S: README]. That
+    is 50 mV under the old 13.2 V float [D: 13.2 − 13.15].
+  - Revision 2 gave 23.3 mV here, from the README. The README's own figures do not support it:
+    its 13.1970 V mean is 47.0 mV above 13.15 V [D].
   - At a 13.571 to 13.587 V float that threshold is 0.42 to 0.44 V down [D]. A full pack could
     hold the bus above it for some time on battery [I].
 - **Re-derive on this pack.** The discharge-phase thresholds (Plateau ≥ 12.65 V, Knee 12.40 to
@@ -496,10 +596,23 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
   - The host-shutdown ladder (`cliff_imminent`, `voltage_warning`, `voltage_critical`) has no
     host to shut down on this system (section 1.1).
   - Set the replacements from this pack's first discharge (open item 14).
+  - **The 11.8 V shed threshold is inherited too** [S: schematic note]. It was set on the
+    previous pack. Re-derive it from the same discharge.
 - **Survival-sleep entry.** The deployed firmware enters on the load collapse at the BP-65's trip
   (on battery, −0.30 A < I < +0.20 A) [S: README].
   - With no BP-65, that collapse is the board's own shed. Entry therefore follows the shed.
   - The board's own draw after a shed, about −35 mA, sits inside that window [D].
+  - **Enter only when the shed is latched,** not on the current window alone (peer review, S3).
+    With the PSU_SENSE wire off, a pack at float on mains reads "on battery" with a current near
+    0 A, which also sits inside the window.
+- **Plausibility alerts** (peer review, C2 and S3). These raise an alert only. Neither one drives
+  GPIO5, and neither overrides Q2 (open item 18).
+  - **PSU running, bus not fed:** PSU_ADC reads mains present while the INA260 reads a
+    sustained discharge of about 1 A, the modem's load (section 1.7). Wait longer than the HDR
+    decay before alerting. Q2 blocks every shed in this state, so this alert is the only
+    warning before the BMS cutoff.
+  - **The mirror:** PSU_ADC reads mains absent while the INA260 reads the pack charging or
+    holding at float. This means the PSU_SENSE wire is off.
 - **Unchanged from the deployed firmware:**
   - INA260 on I2C GPIO6/7, at the address set by the module's A0 jumper (0x40 on this build)
     [S: firmware header].
@@ -509,6 +622,9 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 - Run the ESP firmware validation gate (compile, not just config-valid) before flashing.
 
 ## 9. Open items
+
+**Items 1, 3, 4, 5 and 10 are board edits. Close them before the board is ordered** (peer
+review).
 
 1. **TB2:** the silk "GND" label sits nearer pad 3 (DQ) than pad 2, and the pin order differs
    from the deployed board. Fix the silk, or meter the pins before connecting the sensor.
@@ -521,8 +637,9 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
    **BOM CSV** (16:09) predates R6, R7 and C7 and lists R1 as horizontal; regenerate it from
    the board.
 6. **HDR-60-12 decay:** how long the output takes to fall after AC loss is unmeasured. It sets
-   the delay before a shed takes effect. On section 1.8's bracket the shed comes 3 to 8.5 h into
-   an outage [I], so a decay of seconds or minutes would not matter.
+   the delay before a shed takes effect. On section 1.8's bracket the shed comes 3 to 9.6 h into
+   an outage [I], so a decay of seconds or minutes would not matter. It also sets the debounce
+   on mains in section 8.
 7. **GPIO5 through deep sleep:** if the pin is not held, the modem turns back on during survival
    sleep. Section 8 gives the ESP32-C3's hold calls and the timer-wake boot path to test.
 8. **U4:** confirm the 0.1 in row pin order on the module in hand.
@@ -545,6 +662,29 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
     11.71 V (section 1.4).
 14. **First discharge of this pack** to the 11.8 V shed, coulomb-counted by the INA260. It sets
     the runtime (section 1.8) and the firmware's phase thresholds (section 8).
+15. **Shed logic** (section 8):
+    - the latch and its release on debounced mains;
+    - LOW and then `gpio_hold_dis` at every mains poll;
+    - the valid-reading rule, with N and the plausible range set;
+    - GPIO5 out of the switch and output components, in a lambda above priority 800;
+    - both ESPHome priorities confirmed on the version in use.
+16. **GPIO5 readback:** the pin as input and output, alerting on a mismatch and on HIGH with
+    mains present (section 8).
+17. **Commissioning test:** shed, sleep, restore mains, wait two wake periods, then cut mains.
+    The modem must stay on (section 8).
+18. **Plausibility alerts:** PSU running with the bus not fed, and the mirror case (section 8).
+19. **First recharge:** log its peak current into the pack against the 5.0 A label
+    (section 1.5).
+20. **HDR-60 overload type:** confirm whether the datasheet says "constant-current limiting" or
+    only hiccup below 50 % (section 1.5).
+21. **F1 at 2.5 A,** and the BUS lead's fuse rating, which must sit above F1 (section 4.1).
+22. **OEM adapter:** keep the XB7's NBC56B120460VU beside the UPS as a one-plug bypass
+    (section 5).
+23. **U4 at low input:** Pololu's output-current-versus-input curve at 10.0 V and 11.8 V
+    against the 1.49 A peak. At first power, also check its temperature and its clearance to
+    the floor (section 4.3).
+24. **DRC:** review each of the 43 errors, and give each deliberate one a commented exclusion
+    (section 7).
 
 ## Sources
 
@@ -552,7 +692,10 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 - [Seeed XIAO ESP32C3 wiki](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/): pin map.
 - [Pololu #4984 S13V25F12](https://www.pololu.com/product/4984): output, EN pull-up and threshold, input range, reverse-voltage protection, quiescent current, size, efficiency range.
 - [Mean Well HDR-60 series datasheet](https://www.meanwell.com/Upload/PDF/HDR-60/HDR-60-SPEC.PDF), file dated 2026-10-09: the HDR-60-12 column.
-- [ESP-IDF GPIO reference, ESP32-C3](https://docs.espressif.com/projects/esp-idf/en/v5.5.5/esp32c3/api-reference/peripherals/gpio.html): `gpio_hold_en`, `gpio_deep_sleep_hold_en`.
+- [ESP-IDF GPIO reference, ESP32-C3](https://docs.espressif.com/projects/esp-idf/en/v5.5.5/esp32c3/api-reference/peripherals/gpio.html): `gpio_hold_en`, `gpio_deep_sleep_hold_en`; `gpio_hold_dis` as read by the peer review.
+- [Pololu #5382 ideal diode](https://www.pololu.com/product/5382): 10 A, < 10 mΩ, LM74700-Q1, as read by the peer review.
+- [ESPHome core configuration](https://esphome.io/components/esphome.html): `on_boot` priority, and the GPIO switch's setup priority, as read by the peer review.
+- Peer review of revision 2 (2026-11-08, local time; not published): findings C1, C2, S1 to S6 and the minor items carried into revision 3.
 - ESP32-C3 datasheet v1.2, in the repository: [`esp32-c3_datasheet.pdf`](../UPS-Monitor/esp32-c3_datasheet.pdf), Table 14 (input-high level).
 - XB7: [`docs/specifications.md`](../docs/specifications.md), [`docs/wiring.md`](../docs/wiring.md), [`docs/voltage-drop-analysis.md`](../docs/voltage-drop-analysis.md); reports [05-06](../reports/UPS_Report_2026-05-06.md), [08-31](../reports/UPS_Report_2026-08-31_Boost_Integration.md) and [09-15](../reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md); [survival-sleep design v12](../UPS-Monitor/UPS_SurvivalSleep_Design_Summary_v12.md).
 - PSU and battery history: [`docs/component-selection.md`](../docs/component-selection.md), [`docs/bom.md`](../docs/bom.md), [README](../README.md), [Top-Off design](../Top-Off-Charger/top-off-charger-design.md) §4.1, §9 to §11.
@@ -569,3 +712,4 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 |---|---|---|
 | 1 | 2026-11-08 | First issue |
 | 2 | 2026-11-09 | System scope (owner): a UPS dedicated to the XB7, with no host or boost and no BP-65, the HDR-60-12 at 13.6 V, and a new Cyclenbatt pack. Section 1 rewritten, with the topology, the modem, the PSU, the battery, the load budget and a runtime bracket. Sections 4.4 and 4.5 reworked at 13.6 V. Section 4.3 gains U4's ratings. Two failure modes, four firmware requirements and open items 10 to 14 added |
+| 3 | 2026-11-09 | Peer review of revision 2. Section 1.2's third promise narrowed to a loss of function, with what hardware cannot close. Section 8 gains the shed latch, the hold release on every mains poll, the GPIO5 readback, the valid-reading rule, boot ownership of GPIO5 above priority 800, survival-sleep entry tied to the shed, plausibility alerts both ways, and a commissioning test. Six failure modes and open items 15 to 24 added. Recharge at 160 % (section 1.5), F1 at 2.5 A (section 4.1), U4 at low input (section 4.3), the x 0.88 floor (section 1.4), and a 128 Wh runtime anchor (section 1.8). Corrected: EN is an active-high enable, not active-low (section 4.3); 50 mV, not 23.3 mV (section 8); the BMS figures are [I] for this pack (section 1.6) |

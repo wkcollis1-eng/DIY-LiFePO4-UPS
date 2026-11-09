@@ -25,6 +25,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - **Rev 4 design document, revision 2: the system it serves** (owner, 2026-11-09). A UPS dedicated to the XB7 at 12 V DC, with no host, no boost and no BP-65, the HDR-60-12 trimmed to 13.6 V, and a new Cyclenbatt 10 Ah pack. Section 1 now gives the topology, the XB7's figures from the earlier documents, the PSU and battery, a load and current budget (0.98–1.74 A continuous, 2.15 A peak at the bus [D]), and a runtime bracket of 3.06–8.46 h that no measurement on this pack supports yet [I]. Sections 4.4 and 4.5 are reworked at 13.6 V, replacing an assumed 13.8 V.
 - **HDR-60-12 OVP range, found while writing revision 2.** Mean Well's current datasheet (file dated 2026-10-09) gives 14.2–16.2 V, latching, where `docs/bom.md` and `docs/specifications.md` give 13.8–16.2 V. At a 13.6 V set point the worst-case output is 13.898 V [D], which clears the first floor by 0.302 V and exceeds the second by 0.098 V. Recorded in the Rev 4 document (§1.5, open item 11); the two `docs/` files are unchanged.
+- **Rev 4 design document, revision 3: peer review of revision 2.** The enable network is sound, but hardware cannot tell a correct MODEM_OFF from a wrong one. Any of these would shed the modem with a full pack: a deep-sleep hold that is never released, a shed on a NaN or stale reading, or ESPHome restoring GPIO5 HIGH at boot. Section 8 now requires all of the following:
+  - a latched shed, released on debounced mains;
+  - `gpio_hold_dis` at every mains poll, and a GPIO5 readback;
+  - a valid-reading rule;
+  - GPIO5 owned above priority 800;
+  - survival-sleep entry tied to the shed;
+  - plausibility alerts in both directions;
+  - a commissioning test.
+
+  The document also adds a recharge of up to 160 % of the PSU rating, set against the pack's 5.0 A label. It adds F1 at 2.5 A, six failure modes and open items 15 to 24. The runtime bracket's upper anchor is now the pack's 128 Wh nameplate, which gives 3.06–9.63 h [D]. Corrected:
+  - U4's EN is an active-high enable; revision 1 said active-low.
+  - The old on-battery margin is 50 mV, not 23.3 mV.
 
 ---
 
