@@ -179,6 +179,17 @@ adapter's efficiency at about 13 W out of its 55 W. So the DC figures above may 
   suddenly, and the PSU's latching OVP has only 0.302 V of margin [I].
 - **The #5382 can carry it.** It is rated 10 A, < 10 mΩ, on an LM74700-Q1 [S: Pololu #5382, as
   read by the peer review], so 7.20 A is 72 % of its rating [D].
+- **The PSU-positive fuse is the tight one.** The enclosure fuses PSU positive at 7.5 A and the
+  battery lead at 10 A (owner, 2026-11-09).
+  - At the 160 % ceiling the PSU's 7.20 A is 96 % of the 7.5 A fuse [D: 7.20 ÷ 7.5]. The
+    6.18 A into the pack is 62 % of the 10 A fuse [D: 6.18 ÷ 10].
+  - 96 % is above the rule-of-thumb 75 % (section 1.7). Whether a long recharge near the
+    ceiling ages that fuse depends on its type and datasheet, which are not recorded [I]. The
+    first recharge's logged peak decides whether the PSU gets there (open item 19). The PSU's
+    output is the pack's current plus the 0.98 to 1.28 A load (section 1.7).
+  - A PSU fuse that opens leaves the PSU running with no path to the bus. Section 5's row for
+    that case applies if PSU_SENSE taps on the PSU side of that fuse. Where it taps is not
+    recorded.
 
 ### 1.6 The battery: a new Cyclenbatt 12 V 10 Ah LiFePO4
 
@@ -201,8 +212,8 @@ adapter's efficiency at about 13 W out of its 55 W. So the DC figures above may 
    independent of the firmware.
 4. Under-voltage: the BMS at 10.0 V [S for the previous pack; I for this one, open item 12]. U4
    runs down to 2.8 V input [S], so it adds no floor of its own.
-5. Over-current: F1 for the board and the modem (section 4.1), and the BMS's 10 A [S for the
-   previous pack; I for this one].
+5. Over-current: F1 for the board and the modem (section 4.1), the 10 A fuse on the battery
+   lead (owner, 2026-11-09), and the BMS's 10 A [S for the previous pack; I for this one].
 
 ### 1.7 Load and current budget
 
@@ -313,7 +324,13 @@ BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leave
   2.5 A link at 70 %; down to the shed threshold the figures are 74 % and 59 % [D: 1.74 ÷ 2.0,
   1.74 ÷ 2.5, 1.47 ÷ 2.0, 1.47 ÷ 2.5]. Only 2.5 A stays under the 75 % guidance in both cases.
 - **The BUS lead's own fuse must be rated above F1,** so that a fault on the board opens F1 and
-  not the lead. Its rating is not recorded here (open item 21).
+  not the lead.
+  - The enclosure has a 3 A fuse on the modem lead, 7.5 A on PSU positive and 10 A on the
+    battery lead (owner, 2026-11-09).
+  - Which fuse protects Rev 4's BUS lead is not yet recorded (open item 21).
+  - If it is the 3 A fuse, its rating is 1.2 times F1's [D: 3 ÷ 2.5]. A higher rating alone
+    does not make F1 open first. That depends on the two links' melting I²t, from their
+    datasheets [I].
 - Bulk decoupling on VIN: C4 47 µF 50 V aluminium electrolytic, plus C5 and C6 0.1 µF X7R.
   C6 sits at U4.
 
@@ -458,7 +475,7 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 | PSU_SENSE wire comes off with mains present | No override, and the ADC reads "mains absent". The firmware sheds only if the battery is also ≤ 11.8 V, which it should not be while mains is charging it [I]. Survival sleep could also start: see the survival-sleep row below | Falsified by a float voltage at or below 11.8 V |
 | Mains lost | Q2 keeps the override until the HDR output decays below about 3 V, so MODEM_OFF works only after that decay | **Decay time unmeasured** (open item 6) |
 | ESP deep-sleeps after shedding the modem | GPIO5 may float, and R3 then turns the modem back ON unless the pin is held | **Untested** (open item 7) |
-| F1 blows, or U4 fails | Modem off. Nothing on the board bypasses F1 or U4. Recovery is to plug the XB7 into its OEM adapter (NBC56B120460VU) on mains: a one-plug bypass, if the adapter is kept beside the UPS | Design trade: the modem now depends on F1, U4 and this board; open item 22 |
+| F1 blows, or U4 fails | Modem off. Nothing on the board bypasses F1 or U4. Recovery is to plug the XB7 into its OEM adapter (NBC56B120460VU) on mains: a one-plug bypass. The adapter is on hand (owner, 2026-11-09); keep it beside the UPS | Design trade: the modem now depends on F1, U4 and this board; open item 22 |
 | Firmware never sheds on battery (down, or running with no INA260 reading) | Modem stays ON and the pack runs to the BMS's 10.0 V cutoff, where the next row applies. With the BP-65 removed, nothing else sheds it. With no valid reading this is the intended direction: an invalid reading never sheds (section 8) | Sections 1.1 and 1.6; F1 at that point in section 1.7 |
 | Pack hits BMS cutoff, then recovers | Everything restarts, and U4's EN pull-up brings the modem back without firmware | 4.3 |
 | HDR-60-12 OVP trips | The PSU shuts off with mains present. PSU_SENSE reads about 0 V, so the board sees an outage: the pack carries the modem, and the firmware sheds at 11.8 V. Nothing recovers until AC is cycled at the PSU | OVP latches [S: HDR-60 datasheet]; margin in section 1.5; open item 11 |
@@ -678,8 +695,13 @@ review).
 20. **HDR-60 overload type:** confirm whether the datasheet says "constant-current limiting" or
     only hiccup below 50 % (section 1.5).
 21. **F1 at 2.5 A,** and the BUS lead's fuse rating, which must sit above F1 (section 4.1).
-22. **OEM adapter:** keep the XB7's NBC56B120460VU beside the UPS as a one-plug bypass
-    (section 5).
+    The enclosure's fuses are recorded: 3 A on the modem lead, 7.5 A on PSU positive, 10 A on
+    the battery lead (owner, 2026-11-09). Still open:
+    - which of them protects Rev 4's BUS lead;
+    - the I²t coordination with F1;
+    - the PSU fuse at 96 % of its rating at the overload ceiling (section 1.5).
+22. **OEM adapter:** on hand (owner, 2026-11-09). Keep the XB7's NBC56B120460VU beside the UPS
+    as a one-plug bypass (section 5).
 23. **U4 at low input:** Pololu's output-current-versus-input curve at 10.0 V and 11.8 V
     against the 1.49 A peak. At first power, also check its temperature and its clearance to
     the floor (section 4.3).
@@ -712,4 +734,4 @@ review).
 |---|---|---|
 | 1 | 2026-11-08 | First issue |
 | 2 | 2026-11-09 | System scope (owner): a UPS dedicated to the XB7, with no host or boost and no BP-65, the HDR-60-12 at 13.6 V, and a new Cyclenbatt pack. Section 1 rewritten, with the topology, the modem, the PSU, the battery, the load budget and a runtime bracket. Sections 4.4 and 4.5 reworked at 13.6 V. Section 4.3 gains U4's ratings. Two failure modes, four firmware requirements and open items 10 to 14 added |
-| 3 | 2026-11-09 | Peer review of revision 2. Section 1.2's third promise narrowed to a loss of function, with what hardware cannot close. Section 8 gains the shed latch, the hold release on every mains poll, the GPIO5 readback, the valid-reading rule, boot ownership of GPIO5 above priority 800, survival-sleep entry tied to the shed, plausibility alerts both ways, and a commissioning test. Six failure modes and open items 15 to 24 added. Recharge at 160 % (section 1.5), F1 at 2.5 A (section 4.1), U4 at low input (section 4.3), the x 0.88 floor (section 1.4), and a 128 Wh runtime anchor (section 1.8). Corrected: EN is an active-high enable, not active-low (section 4.3); 50 mV, not 23.3 mV (section 8); the BMS figures are [I] for this pack (section 1.6) |
+| 3 | 2026-11-09 | Peer review of revision 2. Section 1.2's third promise narrowed to a loss of function, with what hardware cannot close. Section 8 gains the shed latch, the hold release on every mains poll, the GPIO5 readback, the valid-reading rule, boot ownership of GPIO5 above priority 800, survival-sleep entry tied to the shed, plausibility alerts both ways, and a commissioning test. Six failure modes and open items 15 to 24 added. Recharge at 160 % (section 1.5), F1 at 2.5 A (section 4.1), U4 at low input (section 4.3), the x 0.88 floor (section 1.4), and a 128 Wh runtime anchor (section 1.8). Corrected: EN is an active-high enable, not active-low (section 4.3); 50 mV, not 23.3 mV (section 8); the BMS figures are [I] for this pack (section 1.6). Then the owner's fuse ratings and the OEM adapter on hand, with the PSU fuse's margin (sections 1.5, 4.1, 5 and 9) |

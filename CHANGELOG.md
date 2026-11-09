@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   The document also adds a recharge of up to 160 % of the PSU rating, set against the pack's 5.0 A label. It adds F1 at 2.5 A, six failure modes and open items 15 to 24. The runtime bracket's upper anchor is now the pack's 128 Wh nameplate, which gives 3.06–9.63 h [D]. Corrected:
   - U4's EN is an active-high enable; revision 1 said active-low.
   - The old on-battery margin is 50 mV, not 23.3 mV.
+- **Enclosure fuse ratings and the OEM adapter, recorded in the Rev 4 document** (owner, 2026-11-09). The fuses are 3 A on the modem lead, 7.5 A on PSU positive and 10 A on the battery lead. The XB7's OEM adapter is on hand as a bypass. At the PSU's 160 % overload ceiling, the 7.20 A output is 96 % of the 7.5 A fuse [D]. Which fuse protects Rev 4's BUS lead is still open.
 
 ---
 
