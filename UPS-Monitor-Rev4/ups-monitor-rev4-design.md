@@ -1,8 +1,8 @@
 # UPS Monitor Rev 4: design document
 
 **Status (2026-11-09):** layout in progress, not fabricated, no Rev 4 firmware yet.
-**Document revision:** 3 (2026-11-09): revision 2 after peer review. See the revision history at
-the end.
+**Document revision:** 4 (2026-11-09): the owner's wiring answers to revision 3. See the revision
+history at the end.
 **Dates and times:** dates from revision 2 on are UTC. Clock times (the board's 19:43 save, the
 BOM's 16:09) and revision 1's dates are local, EST (UTC−5). Revisions 2 and 3 were written on the
 evening of 2026-11-08, local time.
@@ -189,7 +189,8 @@ adapter's efficiency at about 13 W out of its 55 W. So the DC figures above may 
     output is the pack's current plus the 0.98 to 1.28 A load (section 1.7).
   - A PSU fuse that opens leaves the PSU running with no path to the bus. Section 5's row for
     that case applies if PSU_SENSE taps on the PSU side of that fuse. Where it taps is not
-    recorded.
+    recorded. Tapping on the bus side of the fuse turns that case into an ordinary outage
+    (section 3).
 
 ### 1.6 The battery: a new Cyclenbatt 12 V 10 Ah LiFePO4
 
@@ -302,6 +303,24 @@ ideal diode, so it reads about 0 V with mains off (owner, 2026-11-08). With main
 PSU's 13.6 V set point (section 1.5). The commissioning backfeed
 test measured 0.10 V there [M: commissioning test, as recorded 2026-11-08].
 
+**The PSU_SENSE lead is unfused** (owner, 2026-11-09). **Fuse it at the tap end, at about 0.5 to
+1 A** (recommended, revision 4; open item 25):
+- **The PSU does not protect a thin sense wire.** It hiccups only when a fault pulls its output
+  below 50 %, which is 6.8 V [S: section 1.5; D]. A partial short that holds the output above
+  that is fed continuously in the overload band, 4.73 to 7.20 A [D: 1.05 x 4.5; 1.6 x 4.5]. If
+  the #5382 fails short, the pack can feed the fault as well.
+- **The 7.5 A PSU-positive fuse does not protect it either.** It is rated above the PSU's
+  maximum output (section 1.5). And if the tap is on the PSU side of that fuse, the sense wire is
+  not in its path at all.
+- **It costs no accuracy.** The sense load is about 0.23 mA (section 4.5). Even 10 Ω of fuse
+  resistance against the dividers' 118 to 122 kΩ is under 85 ppm [D: 10 ÷ 118k].
+- **It fails safe.** A blown sense fuse looks like the wire coming off (section 5). The mirror
+  alert in section 8 reports it.
+- **Where to tap.** Tap between the 7.5 A fuse and the #5382, still upstream of the diode so the
+  pack cannot backfeed it. Then a blown PSU fuse reads as an ordinary outage and the shed logic
+  handles it, rather than leaving the PSU running with no path to the bus (section 1.5). Where it
+  taps today is not recorded.
+
 **TB2 pin order is a wiring hazard.** Rev 4 runs 3V3 / GND / DQ [M]. The deployed board's JST-XH
 ran GND / DQ / 3V3 [M: `UPS-Monitor-THT.kicad_pcb` in the repo]. The DS18B20's own order is
 GND / DQ / VDD. Rev 4's "GND" silk label sits 1.46 mm from pad 2 and 1.08 mm from pad 3 (DQ)
@@ -325,12 +344,20 @@ BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leave
   1.74 ÷ 2.5, 1.47 ÷ 2.0, 1.47 ÷ 2.5]. Only 2.5 A stays under the 75 % guidance in both cases.
 - **The BUS lead's own fuse must be rated above F1,** so that a fault on the board opens F1 and
   not the lead.
-  - The enclosure has a 3 A fuse on the modem lead, 7.5 A on PSU positive and 10 A on the
-    battery lead (owner, 2026-11-09).
-  - Which fuse protects Rev 4's BUS lead is not yet recorded (open item 21).
-  - If it is the 3 A fuse, its rating is 1.2 times F1's [D: 3 ÷ 2.5]. A higher rating alone
-    does not make F1 open first. That depends on the two links' melting I²t, from their
-    datasheets [I].
+  - The enclosure has three fuses (owner, 2026-11-09):
+    - 3 A on the modem lead, between the MODEM terminal and the XB7's barrel jack;
+    - 7.5 A on PSU positive;
+    - 10 A on the battery lead.
+  - **The 3 A fuse is downstream of U4,** so it does not protect the BUS lead and needs no
+    coordination with F1. The XB7's 1.49 A peak is 50 % of it [D: 1.49 ÷ 3].
+  - **Whether the BUS lead has a fuse is not recorded** (open item 21). In Rev 4 that lead
+    carries the whole system's load: 0.98 to 1.74 A continuous and 2.15 A peak (section 1.7).
+    Rev 1's lead carried only the board's ~35 mA.
+    - Without its own fuse, only the 10 A battery fuse and the PSU's limit protect it.
+    - Size the lead for at least F1's 2.5 A, and fuse it at the bus end. The fuse goes above F1
+      and at or below the wire's rating.
+    - A ratio of 2 or more over F1, such as 5 A, is the common rule of thumb for selectivity
+      [I]. The links' melting I²t from their datasheets decides it.
 - Bulk decoupling on VIN: C4 47 µF 50 V aluminium electrolytic, plus C5 and C6 0.1 µF X7R.
   C6 sits at U4.
 
@@ -472,10 +499,11 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 |---|---|---|
 | ESP crashes, resets, browns out or is unplugged | Modem stays ON | 4.4 truth table |
 | Firmware asserts MODEM_OFF while mains is present | Modem stays ON | Q2 override |
-| PSU_SENSE wire comes off with mains present | No override, and the ADC reads "mains absent". The firmware sheds only if the battery is also ≤ 11.8 V, which it should not be while mains is charging it [I]. Survival sleep could also start: see the survival-sleep row below | Falsified by a float voltage at or below 11.8 V |
+| PSU_SENSE wire comes off with mains present | No override, and the ADC reads "mains absent". The firmware sheds only if the battery is also ≤ 11.8 V, which it should not be while mains is charging it [I]. Survival sleep could also start: see the survival-sleep row below. A blown PSU_SENSE fuse (section 3) looks the same | Falsified by a float voltage at or below 11.8 V |
+| PSU_SENSE lead shorts while unfused | The PSU feeds the fault at up to its 7.20 A ceiling, and hiccups only if the fault pulls its output below 6.8 V. A thin sense wire can overheat | Section 3: fuse at the tap; open item 25 |
 | Mains lost | Q2 keeps the override until the HDR output decays below about 3 V, so MODEM_OFF works only after that decay | **Decay time unmeasured** (open item 6) |
 | ESP deep-sleeps after shedding the modem | GPIO5 may float, and R3 then turns the modem back ON unless the pin is held | **Untested** (open item 7) |
-| F1 blows, or U4 fails | Modem off. Nothing on the board bypasses F1 or U4. Recovery is to plug the XB7 into its OEM adapter (NBC56B120460VU) on mains: a one-plug bypass. The adapter is on hand (owner, 2026-11-09); keep it beside the UPS | Design trade: the modem now depends on F1, U4 and this board; open item 22 |
+| F1 blows, U4 fails, or the 3 A modem-lead fuse opens | Modem off. Nothing on the board bypasses F1 or U4. Recovery is to plug the XB7 into its OEM adapter (NBC56B120460VU) on mains: a one-plug bypass. The adapter is on hand (owner, 2026-11-09); keep it beside the UPS | Design trade: the modem now depends on F1, U4 and this board; open item 22 |
 | Firmware never sheds on battery (down, or running with no INA260 reading) | Modem stays ON and the pack runs to the BMS's 10.0 V cutoff, where the next row applies. With the BP-65 removed, nothing else sheds it. With no valid reading this is the intended direction: an invalid reading never sheds (section 8) | Sections 1.1 and 1.6; F1 at that point in section 1.7 |
 | Pack hits BMS cutoff, then recovers | Everything restarts, and U4's EN pull-up brings the modem back without firmware | 4.3 |
 | HDR-60-12 OVP trips | The PSU shuts off with mains present. PSU_SENSE reads about 0 V, so the board sees an outage: the pack carries the modem, and the firmware sheds at 11.8 V. Nothing recovers until AC is cycled at the PSU | OVP latches [S: HDR-60 datasheet]; margin in section 1.5; open item 11 |
@@ -695,10 +723,14 @@ review).
 20. **HDR-60 overload type:** confirm whether the datasheet says "constant-current limiting" or
     only hiccup below 50 % (section 1.5).
 21. **F1 at 2.5 A,** and the BUS lead's fuse rating, which must sit above F1 (section 4.1).
-    The enclosure's fuses are recorded: 3 A on the modem lead, 7.5 A on PSU positive, 10 A on
-    the battery lead (owner, 2026-11-09). Still open:
-    - which of them protects Rev 4's BUS lead;
-    - the I²t coordination with F1;
+    The enclosure's fuses are recorded (owner, 2026-11-09):
+    - 3 A on the modem lead, between the MODEM terminal and the barrel jack;
+    - 7.5 A on PSU positive;
+    - 10 A on the battery lead.
+
+    None of them protects Rev 4's BUS lead. Still open:
+    - whether the BUS lead has a fuse, and its wire gauge;
+    - that fuse's I²t coordination with F1;
     - the PSU fuse at 96 % of its rating at the overload ceiling (section 1.5).
 22. **OEM adapter:** on hand (owner, 2026-11-09). Keep the XB7's NBC56B120460VU beside the UPS
     as a one-plug bypass (section 5).
@@ -707,6 +739,9 @@ review).
     the floor (section 4.3).
 24. **DRC:** review each of the 43 errors, and give each deliberate one a commented exclusion
     (section 7).
+25. **PSU_SENSE lead:** fuse it at the tap at about 0.5 to 1 A. Record where it taps relative
+    to the 7.5 A fuse, and move it to the bus side of that fuse if it is not already there
+    (section 3).
 
 ## Sources
 
@@ -735,3 +770,4 @@ review).
 | 1 | 2026-11-08 | First issue |
 | 2 | 2026-11-09 | System scope (owner): a UPS dedicated to the XB7, with no host or boost and no BP-65, the HDR-60-12 at 13.6 V, and a new Cyclenbatt pack. Section 1 rewritten, with the topology, the modem, the PSU, the battery, the load budget and a runtime bracket. Sections 4.4 and 4.5 reworked at 13.6 V. Section 4.3 gains U4's ratings. Two failure modes, four firmware requirements and open items 10 to 14 added |
 | 3 | 2026-11-09 | Peer review of revision 2. Section 1.2's third promise narrowed to a loss of function, with what hardware cannot close. Section 8 gains the shed latch, the hold release on every mains poll, the GPIO5 readback, the valid-reading rule, boot ownership of GPIO5 above priority 800, survival-sleep entry tied to the shed, plausibility alerts both ways, and a commissioning test. Six failure modes and open items 15 to 24 added. Recharge at 160 % (section 1.5), F1 at 2.5 A (section 4.1), U4 at low input (section 4.3), the x 0.88 floor (section 1.4), and a 128 Wh runtime anchor (section 1.8). Corrected: EN is an active-high enable, not active-low (section 4.3); 50 mV, not 23.3 mV (section 8); the BMS figures are [I] for this pack (section 1.6). Then the owner's fuse ratings and the OEM adapter on hand, with the PSU fuse's margin (sections 1.5, 4.1, 5 and 9) |
+| 4 | 2026-11-09 | Owner's wiring answers. The battery lead lands on INA260 VIN− (as in section 1.3 and the firmware header). The 3 A fuse sits between the MODEM terminal and the barrel jack, downstream of U4. The PSU_SENSE lead is unfused. Added a recommended fuse at the PSU_SENSE tap and a tap on the bus side of the 7.5 A fuse (section 3), the BUS lead's fuse and sizing (section 4.1), one failure mode, and open item 25 |

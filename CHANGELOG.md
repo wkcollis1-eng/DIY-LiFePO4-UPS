@@ -38,6 +38,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - U4's EN is an active-high enable; revision 1 said active-low.
   - The old on-battery margin is 50 mV, not 23.3 mV.
 - **Enclosure fuse ratings and the OEM adapter, recorded in the Rev 4 document** (owner, 2026-11-09). The fuses are 3 A on the modem lead, 7.5 A on PSU positive and 10 A on the battery lead. The XB7's OEM adapter is on hand as a bypass. At the PSU's 160 % overload ceiling, the 7.20 A output is 96 % of the 7.5 A fuse [D]. Which fuse protects Rev 4's BUS lead is still open.
+- **Rev 4 design document, revision 4: the owner's wiring answers** (owner, 2026-11-09).
+  - The battery lead lands on INA260 VIN−, as the firmware header says.
+  - The 3 A fuse sits between the board's MODEM terminal and the XB7's barrel jack, downstream of U4, so it does not protect the BUS lead.
+  - The PSU_SENSE lead is unfused. The PSU feeds a partial short there at up to 7.20 A, and it hiccups only below 6.8 V [D]. So revision 4 recommends a 0.5–1 A fuse at the tap, and a tap on the bus side of the 7.5 A fuse, so that a blown PSU fuse reads as an outage.
+  - The BUS lead now carries the whole load. It should be sized and fused at the bus end, above F1. Whether it has a fuse today is open (item 21).
 
 ---
 
