@@ -43,6 +43,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - The 3 A fuse sits between the board's MODEM terminal and the XB7's barrel jack, downstream of U4, so it does not protect the BUS lead.
   - The PSU_SENSE lead is unfused. The PSU feeds a partial short there at up to 7.20 A, and it hiccups only below 6.8 V [D]. So revision 4 recommends a 0.5–1 A fuse at the tap, and a tap on the bus side of the 7.5 A fuse, so that a blown PSU fuse reads as an outage.
   - The BUS lead now carries the whole load. It should be sized and fused at the bus end, above F1. Whether it has a fuse today is open (item 21).
+- **Rev 4 design document, revision 5: the board as saved 2026-11-10 15:22, and firmware V4.0** (2026-11-10). Document only; the board and the firmware are unchanged.
+  - Board: one 3-pole terminal replaces the BUS and MODEM blocks, R8 adds a 1-Wire pull-up, R1 to R8 lie flat, and the outline is 38.00 x 53.25 mm [M]. DRC gives 95 violations, 45 errors and 0 unconnected, with 41 schematic-parity items [M].
+  - **Open before the board is ordered:** the 3-pole footprint is 3.50 mm pitch, and its Value names a part listed at 3.81 mm (item 26).
+  - F1's field now names a 3.15 A link, where revision 3 chose 2.5 A (item 21). The BUS lead is 16 AWG and unfused (owner, 2026-11-09).
+  - Firmware: new section 8.1 records what `ups-monitor-rev4.yaml` V4.0 implements. It compiles on ESPHome 2026.10.2 and has never been flashed. Every Rev 4 threshold in it is a placeholder (item 28).
+- **Rev 4 design document, revision 6: the board as saved 2026-11-10 16:06, the owner's decisions, and the datasheets read** (2026-11-10). Document only; the firmware is unchanged, and the board edit is the owner's.
+  - The 3-pole terminal's footprint is now 3.81 mm with 1.1 mm holes [M], which matches Phoenix's sheet for 5442769 [S] (item 26 closed). DRC gives 98 violations, 45 errors and 0 unconnected, with 41 schematic-parity items [M].
+  - **F1 is 3.15 A** (owner), Schurter SPT 0001.2509. Its datasheet and the holder's drawing show no safety issue (item 21 closed). On record: the link's maximum dissipation at 1.5 x rated, 4.0 W, is above the holder's 1.6 W rated power acceptance [S]; in service the link makes at most 0.21 W [D: 2.15² x 0.140 ÷ 3.15].
+  - **R8 is not fitted:** the sensor in service has its pull-up in its head (owner; item 27 closed). The board file does not yet mark R8 DNP [M]. PSU_SENSE pad 1 stays unconnected by decision (owner).
+  - Every track width and thermal relief was checked against its load and its protection, and all pass [M; D: IPC-2221] (section 7). One exception: PSU_SENSE's 0.30 mm copper has no fuse behind it, so the recommended fuse at the tap is now 0.5 A (item 25).
+  - Datasheets read: the HDR-60's overload wording (item 20 closed), U3, U4's current curve, the INA260 breakout's print, OSH Park's limits, and the ESP-IDF and ESPHome pages. Not obtained at revision 6: Phoenix's sheet for the 2-pole 5442756 (new item 30; supplied for revision 7).
+  - **Corrected (revision 5's error):** the board's GND lead does not carry the same current as its BUS lead. It carries the difference between input and output, at most about 0.66 A [D: 2.15 − 1.49] (section 1.3).
+- **Rev 4 design document, revision 7: U4's pin order and three datasheets supplied by the owner** (2026-11-10). Document only.
+  - EN is next to VIN on U4's pin-header row (owner), as on the footprint [M] (item 8 closed).
+  - The 2-pole terminal's Phoenix print (5442756) confirms 3.81 mm, 13.5 A and 200 V [S]. It has no dimensioned drawing, so the pin and hole stay inferred from the 3-pole part (item 30 narrowed).
+  - The BUS lead is UL 1569 hook-up wire, 105 °C and 300 V [S]. Its sheet gives no current rating.
+  - The enclosure fuses are Littelfuse MINI 32 V [S]. In a hard short F1 melts first: 22 A²s against a typical 122 A²s for the 10 A link [S]. Around 13 A the two fuses' gates overlap, so the order is not guaranteed.
+  - **New finding:** the PSU's 7.20 A overload ceiling is over the 6.4 A that sheet allows a 7.5 A link at 20 °C [S] (section 1.5). It is not a prompt trip: the sheet's shortest opening time at 110 % of rating is 100 h [S]. Decide after the first recharge's logged peak (item 21).
+  - Not confirmed: the part numbers on the wire and the fuses in hand against those sheets.
 
 ---
 
