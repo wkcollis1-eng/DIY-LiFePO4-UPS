@@ -1,29 +1,30 @@
 # UPS Monitor Rev 4: design document
 
-**Status (2026-11-11):** layout in progress, not fabricated. Rev 4 firmware V4.0 is written and
+**Status (2026-11-12):** layout in progress, not fabricated. Rev 4 firmware V4.0 is written and
 compiles; it has never been flashed or bench-tested (section 8.1).
-**Document revision:** 8 (2026-11-11): brings the document into line with the board as saved
-2026-11-11 16:18, a re-layout. That board has a smaller outline and a TE 282834-2 PSU_SENSE
-terminal whose pad 1 is now the signal. TB2's pin order is reversed, and only the VIN test point
-remains. Revision 8 also records the owner's facts of 2026-11-11: the header gap, unplated module
-holes, trimmed tails, 15 mm standoffs and an 11 mm module stack. See the revision history at the
-end.
+**Document revision:** 9 (2026-11-12): brings the document into line with the board as saved
+2026-11-12 14:25. On that board U4 stands upright on the top side on a right-angle header, and
+F1's holder is on the bottom with no cover. The 2-pole PSU_SENSE block and the VIN test point
+are gone: PSU_SENSE is pole 4 of a 4-pole TB2. C8, 10 nF on Q1's base, is new. Revision 9 also
+reads Pololu's efficiency graph for U4's loss. See the revision history at the end.
 **Dates and times:** dates from revision 2 on are UTC. Clock times (the board's saves, the
 BOM's 16:09) and revision 1's dates are local, EST (UTC−5). Revisions 2 and 3 were written on the
 evening of 2026-11-08, local time.
 **Master file:** `UPS-Monitor-Rev 4.kicad_pcb` (not yet in this repository). The board is the
 master; the schematic was
-synced from it on 2026-11-08 and has trailed it since: KiCad's schematic-parity DRC lists 51
+synced from it on 2026-11-08 and has trailed it since: KiCad's schematic-parity DRC lists 56
 differences (section 7). Where the two disagree, this document follows the board.
 
 Figures carry the repository's provenance tags: **[M]** measured, **[S]** specification or prior
 document, **[D]** derived by the arithmetic shown, **[I]** inferred and not yet tested (with the
 observation that would falsify it). An [M] with no other source was read from the board file
-saved 2026-11-11 16:18 (sha256 415fe99d8ba69b35…), by parsing the file and running KiCad 10's
-`kicad-cli pcb drc`. That save is a re-layout of the 2026-11-10 16:06 save (sha256
-02d74bea98f1b086…): nearly every part moved. Text that names "the 16:06 board" or "the 15:22
-board" describes that earlier layout and is kept as history. Positions are board coordinates in
-mm.
+saved 2026-11-12 14:25 (sha256 2c31e87128c91911…), by parsing the file and running KiCad 10's
+`kicad-cli pcb drc`. Heights tagged "3D models" were read from the board's KiCad 3D export: they
+are the models' heights, not the parts'. The 14:25 save moves U4, F1, TB2, Q1, Q2, R1 to R8 and
+H2 from the 2026-11-11 16:18 save (sha256 415fe99d8ba69b35…), itself a re-layout of the
+2026-11-10 16:06 save (sha256 02d74bea98f1b086…). Text that names "the 2026-11-11 board", "the
+16:06 board" or "the 15:22 board" describes that earlier layout and is kept as history, except
+where section 7 says it was re-checked. Positions are board coordinates in mm.
 
 ---
 
@@ -127,7 +128,7 @@ adapter's efficiency at about 13 W out of its 55 W. So the DC figures above may 
   does so at any bus voltage from 2.8 to 22 V [S]. The XB7 no longer sees the bus.
 - The low edge of that band is 0.19 V under the lowest input on record [D: 11.71 − 11.52], and
   inside the inferred ±10 % [D]. Measure U4's output at its VOUT header joint (U4 pad 5) at
-  first power; the 2026-11-11 board has no +12V MODEM test point (open item 13).
+  first power; the 2026-11-12 board has no test points (open item 13).
 - Behind U4 the XB7 is a constant-power load on the bus. Its bus current rises as the pack
   falls (section 1.7).
 
@@ -250,7 +251,9 @@ adapter's efficiency at about 13 W out of its 55 W. So the DC figures above may 
 
 **Inputs:**
 - XB7: 12.2 to 14.4 W typical and 17.9 W peak (section 1.4).
-- U4 efficiency: 85 to 95 % [S: Pololu #4984].
+- U4 efficiency: 85 to 95 % [S: Pololu #4984]. Pololu's efficiency graph for this module, read
+  2026-11-12, gives about 96 % at 1.0 to 1.5 A out with 12 V in [S: section 4.3]. The budget
+  below keeps 85 % as its floor, because the graph has no curve between 5 and 12 V in.
 - The board's own ~35 mA [S: firmware header], taken as 0.45 W [D: about 35 mA x 12.8 V].
 
 **Power at the bus** = XB7 ÷ efficiency + 0.45 W [D]:
@@ -284,6 +287,11 @@ adapter's efficiency at about 13 W out of its 55 W. So the DC figures above may 
   - Peak output 1.49 A [D: 17.9 W ÷ 12 V], against the 2.5 A Pololu lists [S].
   - Typical loss 0.64 to 2.54 W [D: 12.2 x (1/0.95 − 1); 14.4 x (1/0.85 − 1)]. Pololu warns
     the module can get hot enough to burn [S].
+  - At the graph's 96 % [S], which holds with 12 V or more in, the typical loss is 0.51 to 0.60 W
+    and the peak 0.75 W [D: 12.2, 14.4 and 17.9 x (1/0.96 − 1)]. The bus is above 12 V at
+    float and at mid-discharge (table above). The 2.54 W end, and 3.16 W at peak [D: 17.9 x
+    (1/0.85 − 1)], apply only if efficiency below 12 V in falls toward the graph's 5 V curve
+    [I: falsified by the bench test in section 4.3].
 - **Board copper:** about 3.95 A at a 10 °C rise for 2.0 mm, the narrowest track on the modem's
   path (section 4.1), against the 2.15 A peak. (Revision 7 gave 3.7 A for the 16:06 board's
   1.85 mm.)
@@ -325,16 +333,16 @@ INA260 (U2) ── I2C GPIO6/7, Alert GPIO3 (R1 pull-up)      DS18B20 (TB2) ─�
 
 ## 3. Interfaces
 
-| Ref | Part | Pin 1 | Pin 2 | Pin 3 |
-|---|---|---|---|---|
-| BUS | Phoenix 5442769 (BC-381X9-3 GN), 3.81 mm, 3-pole, on KiCad's MKDS 1/3-3.81 footprint | +12V_MODEM (U4 output), silk "MODEM" and "+": to the 3 A fuse and the XB7's 5.5 x 2.1 mm centre-positive barrel | GND, silk "GND": to the GND bus | BUS, silk "+", to F1. It lands on the bus side of the INA260 (section 1.3) |
-| PSU_SENSE | TE 282834-2, 2.54 mm, 2-pole, on KiCad's TerminalBlock_TE_282834-2 footprint | PSU_SENSE, silk "+" | No net, silk "NC" | |
-| TB2 | TE 282834-3, 2.54 mm, 3-pole | DQ (GPIO10), silk "DQ" | GND, silk "GND" | +3V3, silk "+" |
+| Ref | Part | Pin 1 | Pin 2 | Pin 3 | Pin 4 |
+|---|---|---|---|---|---|
+| BUS | Phoenix 5442769 (BC-381X9-3 GN), 3.81 mm, 3-pole, on KiCad's MKDS 1/3-3.81 footprint | +12V_MODEM (U4 output), silk "MODEM" and "+": to the 3 A fuse and the XB7's 5.5 x 2.1 mm centre-positive barrel | GND, silk "GND": to the GND bus | BUS, silk "+", to F1. It lands on the bus side of the INA260 (section 1.3) | |
+| TB2 | 4-pole, 2.54 mm, on KiCad's TE 282834-4 footprint; its Value names VN04A1500000G | +3V3, silk "+" | DQ (GPIO10), silk "DQ", placed between pads 2 and 3 | GND, no silk label | PSU_SENSE, silk "PSU_SENSE" |
 
-**Revision 8: both small terminals changed on the 2026-11-11 board** [M].
-- PSU_SENSE's signal moved from pad 2 to pad 1.
-- TB2's order is reversed from what revisions 1 to 7 gave.
-- Wire both by the silk and the table above, not by an earlier revision of this document.
+**Revision 9: the two small terminals are now one, TB2** (2026-11-12 board) [M].
+- The 2-pole PSU_SENSE block is gone. PSU_SENSE is TB2's pad 4.
+- TB2's order is new again: pad 1 +3V3, pad 2 DQ, pad 3 GND, pad 4 PSU_SENSE.
+- Wire it by the table above and a meter, not by an earlier revision of this document and not by
+  the silk alone: the GND pole has no label.
 
 **One 3-pole block replaces revision 4's separate BUS and MODEM blocks** [M]. Its only GND pole
 is the board's return; the modem's return goes to the GND bus (section 1.3).
@@ -357,33 +365,30 @@ AWG" came from a distributor listing. The BUS lead pair is 16 AWG (owner, 2026-1
 largest wire the block takes.
 - **Hold the block while tightening.** On a 2- or 3-pole block one soldered pin per pole cannot
   take the screw torque by itself [S: same, p. 3, application note].
-- **The 2-pole PSU_SENSE block is now TE 282834-2** (2026-11-11 board), the same series as TB2.
-  - Its footprint is 2.54 mm pitch with 1.1 mm holes and 2.1 mm pads, like TB2's [M].
-  - Revision 7's Phoenix 5442756 is no longer on the board. Its print, read 2026-11-10, now
-    only records why it was dropped.
-  - TE's sheet for 282834-2 has not been read. This document claims no current, voltage or
-    wire-size rating and no body height for it (open item 30).
-  - In service the block carries about 0.23 mA (section 4.5); a fault current is the tap
-    fuse's job (below).
-- **The PSU_SENSE footprint's Value field holds the footprint's name** [M]. The BOM inherits
-  it, so the BOM line does not name the part (item 5).
+- **TB2 carries PSU_SENSE as its fourth pole** (2026-11-12 board).
+  - Its footprint is KiCad's TE 282834-4: 2.54 mm pitch, 1.20 mm holes, 2.10 mm pads [M]. The
+    16:18 board's 2-pole TE 282834-2 and revision 7's Phoenix 5442756 are no longer on the
+    board.
+  - Its Value field is a footprint-style name, "TerminalBlock_VN04A1500000G_1x04_P2.54mm_
+    Horizontal", and its 3D model is TE's [M]. No maker's sheet for either part has been read.
+    This document claims no current, voltage or wire-size rating and no body height for it
+    (open item 30). The BOM inherits that Value, so the BOM line does not name a part (item 5).
+  - In service PSU_SENSE carries about 0.23 mA (section 4.5); a fault current is the tap fuse's
+    job (below).
 
-**PSU_SENSE pad 2 connects to nothing, by decision** [M] (owner, 2026-11-10).
-- On the 16:06 board the unconnected pole was pad 1; the 2026-11-11 layout swapped the pads.
-  The decision is unchanged: one pole is NC.
-- No ground wire runs with the sense lead. The PSU's negative already reaches the board through
-  the GND bus and the board's GND pole, and the two dividers return that way.
+**No pole is left unconnected any more** [M]. The 16:06 and 16:18 boards' 2-pole PSU_SENSE block
+had one NC pole, by decision (owner, 2026-11-10). On the 2026-11-12 board PSU_SENSE is one pole
+of TB2.
+- The decision behind the NC pole stands: no ground wire runs with the sense lead. The PSU's
+  negative already reaches the board through the GND bus and the board's GND pole, and the two
+  dividers return that way.
 
-**Test points:** only VIN remains, a 2.0 mm pad with a 1.0 mm drill at (42.43, 35.35), silk
-"VIN" [M]. The 16:06 board's GND, 3V3, MODEM_EN and +12V MODEM test points were removed on
-2026-11-11.
-- Front silk now labels three of U4's header joints:
-  - "MODEM_EN" over pad 1, 0.39 mm from it [M];
-  - "GND" beside pads 3 and 4, 0.39 mm [M];
-  - "+12V MODEM" beside pad 5, 0.24 mm [M].
-- Probe those joints from the top. For a ground reference use U4 pad 3 or 4.
-- The "MODEM_EN" text's left end is 0.89 mm from the VIN test point [M]. It labels U4 pad 1,
-  not the test point.
+**Test points:** none [M]. The 16:18 board's VIN test point was removed on 2026-11-12; the 16:06
+board's GND, 3V3, MODEM_EN and +12V MODEM test points went on 2026-11-11.
+- U4 stands on the top side (section 4.3), so its five header joints are soldered on the back.
+  Probe them there: pad 1 MODEM_EN, pad 2 VIN, pads 3 and 4 GND, pad 5 +12V_MODEM [M].
+- The only silk left at U4 is "GND", beside pads 3 and 4, on the front under the module [M].
+  The 16:18 board's "MODEM_EN" and "+12V MODEM" labels are gone.
 
 **PSU_SENSE wiring.** It is wired to the Mean Well HDR-60-12 output, upstream of the Pololu #5382
 ideal diode, so it reads about 0 V with mains off (owner, 2026-11-08). With mains on it reads the
@@ -393,10 +398,9 @@ test measured 0.10 V there [M: commissioning test, as recorded 2026-11-08].
 **The PSU_SENSE lead is unfused** (owner, 2026-11-09). **Fuse it at the tap end, at 0.5 A**
 (recommended; revision 4 said 0.5 to 1 A; open item 25):
 - **The board's sense copper is the thinnest unprotected conductor on it.**
-  - On the 2026-11-11 board the track is 0.50 mm wide: 14.99 mm on the front and 7.16 mm on
-    the back [M].
-  - One 0.20 mm segment, 0.14 mm long, lies wholly inside the 0.50 mm copper at both of its
-    ends [M; D: geometry], so it is not a neck.
+  - On the 2026-11-12 board the track is 0.50 mm wide throughout, with no via: 15.73 mm on the
+    back from TB2 pad 4 to R7, then 14.09 mm on the front to R4 [M]. The 16:18 board's 0.20 mm
+    segment is gone.
   - A 0.50 mm track carries 1.45 A for a 10 °C rise and fuses near 4.6 A [D: IPC-2221 and
     Preece, 35 µm copper]. That is still below the 4.73 to 7.20 A the PSU can feed into a
     short.
@@ -420,14 +424,16 @@ test measured 0.10 V there [M: commissioning test, as recorded 2026-11-08].
   taps today is not recorded.
 
 **TB2 pin order is a wiring hazard.**
-- The 2026-11-11 board runs pad 1 DQ, pad 2 GND, pad 3 +3V3 [M]. That reverses the 3V3 / GND /
-  DQ that revisions 1 to 7 described from the earlier layouts.
+- The 2026-11-12 board runs pad 1 +3V3, pad 2 DQ, pad 3 GND, pad 4 PSU_SENSE [M]. That is the
+  third order in three layouts: the 16:18 board ran DQ / GND / +3V3, and revisions 1 to 7
+  described 3V3 / GND / DQ.
 - The deployed board's JST-XH ran GND / DQ / 3V3 [M: `UPS-Monitor-THT.kicad_pcb` in the repo].
   The DS18B20's own order is GND / DQ / VDD.
-- The silk labels are vertical text beside the pads, reading "+", "GND", "DQ" from pad 3 to
-  pad 1 [M]. Each label is centred within 0.5 mm of its own pad along the row [D: text box
-  centre against pad centre], so they read in pad order.
-- The 15:22 board's "GND" label, which sat nearer DQ than GND, is gone.
+- The silk does not label every pole [M]. "+" sits 0.80 mm from pad 1 along the row and
+  "PSU_SENSE" beside pad 4. "DQ" sits between pads 2 and 3, 1.13 mm from pad 2 and 1.41 mm
+  from pad 3, and pad 3 (GND) has no label (open item 1).
+- PSU_SENSE now sits beside GND. A sense lead landed one pole over, on pad 3, shorts the PSU's
+  output through the sense lead, which is unfused today (below; section 5) [D].
 - Still check the pins with a meter before the sensor goes on (see section 9).
 
 ## 4. Circuit blocks
@@ -435,25 +441,25 @@ test measured 0.10 V there [M: commissioning test, as recorded 2026-11-08].
 ### 4.1 Input and fuse
 BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leaves as VIN.
 - Track widths along each load path [M]:
-  - These are re-read on the 2026-11-11 board. Revision 7's figures were for the 16:06
-    layout.
-  - BUS, terminal pad 3 to F1 pad 1: 2.5 mm, 28.2 mm long, front copper.
-  - VIN, F1 pad 2 to U4 pad 2: 2.0 mm, 14.8 mm long [M; D: 11.49 + 0.11 + 3.23 mm by
-    segment].
-  - VIN, F1 to U3 pad 3: 2.0 mm for 21.1 mm, then 1.5 mm for 8.3 mm past C4. This branch
+  - These are re-read on the 2026-11-12 board. Revision 8's figures were for the 2026-11-11
+    layout and revision 7's for the 16:06 layout.
+  - BUS, terminal pad 3 to F1 pad 1: 2.5 mm, 26.3 mm long, front copper.
+  - VIN, F1 pad 2 to U4 pad 2: 2.0 mm, 14.5 mm long, front copper.
+  - VIN, F1 to U3 pad 3: 2.0 mm for 17.8 mm, then 1.5 mm for 8.3 mm past C4. This branch
     carries only the board's ~35 mA.
-  - +12V_MODEM, U4 pad 5 to terminal pad 1: back copper, 2.0 mm for 2.4 mm, then 2.5 mm for
-    37.8 mm, 40.2 mm in all.
-  - The 1.0 mm on VIN is the 6.2 mm spur to the VIN test point, which carries no load.
-  - No via sits on BUS, VIN or +12V_MODEM. The only non-GND vias are on PSU_SENSE, SCL and SDA.
+  - +12V_MODEM, U4 pad 5 to terminal pad 1: back copper, 2.0 mm for 2.0 mm, then 2.5 mm for
+    36.9 mm, 38.9 mm in all.
+  - VIN is 1.5 and 2.0 mm only. The 2026-11-11 board's 1.0 mm spur went with the VIN test point.
+  - No via sits on BUS, VIN, +12V_MODEM or PSU_SENSE. The only non-GND via is on SDA.
   - A 2.0 mm track carries about 3.95 A at a 10 °C rise (section 1.7).
   - Section 7 checks every net's width against its load and against the fuse behind it.
 - Track resistance [D: track length ÷ width x 0.49 mΩ per square, for 35 µm copper at 20 °C;
   pads, vias, the fuse and its holder are not included]:
-  - Terminal to U4's input: 9.16 mΩ [D: 5.53 + 3.63], which drops 20 mV at the 2.15 A peak.
-  - U4's output to the terminal: 8.00 mΩ [D: 0.59 + 7.41], which drops 12 mV at the 1.49 A
+  - Terminal to U4's input: 8.71 mΩ [D: 5.16 + 3.55], which drops 19 mV at the 2.15 A peak.
+  - U4's output to the terminal: 7.73 mΩ [D: 0.49 + 7.24], which drops 12 mV at the 1.49 A
     peak.
-  - Revision 7 had 10.3 and 7.25 mΩ on the 16:06 layout.
+  - Revision 8 had 9.16 and 8.00 mΩ on the 2026-11-11 layout, and revision 7 10.3 and 7.25 mΩ
+    on the 16:06 layout.
 - F1 now carries U4 (the modem) as well as U3, which is the whole system's load.
   - The schematic note puts that at about 1.1 to 1.2 A at 12 to 11.8 V [S: schematic note, D:
     13.4 W bus load / V].
@@ -472,8 +478,7 @@ BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leave
     [D: 0.048 x 10^0.44 x 81.4^0.725, with 81.4 mil² = 59.1 mil x 1.378 mil]. So a 3.15 A
     link still sits under the copper, with less margin than on the 16:06 board's 1.6 mm.
     - That 1.5 mm section is on the branch to U3 only, about 35 mA in service [M: path trace on
-      the 2026-11-11 board].
-    - The 1.0 mm spur to the VIN test point carries no load.
+      the 2026-11-12 board].
 - **F1 is 3.15 A** (owner, 2026-11-10: "unless it causes a safety issue"). **The datasheets
   show none.** This supersedes the 2.5 A advice above (open item 21, closed).
   - **The link.** 0001.2509 is a Schurter SPT 5x20: time-lag T, ceramic, to IEC 60127-2 sheet 5,
@@ -492,6 +497,8 @@ BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leave
   - **The holder.** 696108003002 is rated 6.3 A at 250 VAC by VDE and 20 A by UL, −30 to
     +120 °C [S: Würth drawing 696 108 003 002, rev D, sheet 1]. Its 22.6 mm pin pitch and 1.5 mm
     hole match the board [M].
+  - **On the 2026-11-12 board the holder is on the bottom side, with no cover** (owner,
+    2026-11-12) [M: F1 on B.Cu]. Its clearance to the enclosure floor is in section 6.
   - **One formal mismatch, not new with 3.15 A.** The holder's rated power acceptance is 1.6 W
     (VDE) [S: same]. The link's power at 1.5 x rated is 0.8 W typical and 4.0 W maximum; the
     2.5 A link's is 0.6 W and 2.5 W [S: Schurter, p. 3]. So on the maximum column every SPT link
@@ -537,8 +544,10 @@ BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leave
     - The terminal takes 13.5 A, and the 2.5 mm BUS track rises 57 °C at a sustained 10 A
       [D: IPC-2221]. So the lead, the terminal and the track ahead of F1 all stand behind the
       10 A fuse.
-      - On the 2026-11-11 board that track is 28.2 mm long, not 7.0 mm. Its nearest approach
-        to a hole is 2.52 mm from H4's centre [M], where the nylon hardware sits (section 6).
+      - On the 2026-11-12 board that track is 26.3 mm long (28.2 mm on the 2026-11-11 board,
+        7.0 mm on the 16:06 board). Its nearest approach to a hole is 2.80 mm from H3's centre
+        [M], where the nylon hardware sits (section 6). On the 2026-11-11 board it was 2.52 mm
+        from H4's.
     - Selectivity: the upstream fuses are 10 A and 7.5 A against F1's 3.15 A, and F1's melting
       I²t is 22 A²s [S: Schurter, p. 3]. The owner supplied the enclosure fuses' sheet
       (2026-11-10): Littelfuse MINI blade fuses, 32 V DC, interrupting 1000 A. Typical I²t is
@@ -559,15 +568,16 @@ BUS + reaches F1, a Würth 696108003002 holder for 5x20 mm fuse-links, and leave
         with a full pack at float, and the next outage would drop the modem at once
         [I: falsified by a section 8 alert that fires with the battery lead open].
 - Bulk decoupling on VIN: C4 47 µF 50 V aluminium electrolytic, plus C5 and C6 0.1 µF X7R.
-  - **C6 is U4's input capacitor.** Its VIN pad sits on the VIN track 3.2 mm of 2.0 mm copper
+  - **C6 is U4's input capacitor.** Its VIN pad sits on the VIN track 3.3 mm of 2.0 mm copper
     from U4 pad 2 [M: path trace]. Its GND pad returns through the pour.
   - **How far it may sit** (owner's question, 2026-11-11). A 0.1 µF ceramic helps a switcher
     only while the copper to it adds little inductance beside its own. Keep it within about
     10 mm of track of U4's VIN pin [I: a rule of thumb of about 1 nH per mm of trace;
     falsified if a scope at U4's VIN pin shows less input ripple with C6 moved closer]. At
-    3.2 mm it is well inside that. No move is needed.
-  - C6's VIN pad is 0.85 mm from a GND large hole on U4's back, centre to centre [M]. Its tail
-    is a short hazard, covered in sections 5 and 6.
+    3.3 mm it is well inside that. No move is needed.
+  - C6 now sits under the upright module, 8.9 mm below the module's lowest surface above it
+    [M: 3D models]. The 2026-11-11 board's short hazard, C6's VIN pad 0.85 mm from a GND large
+    hole on U4's back, went with the bottom-side mount.
   - C5 sits beside U3.
 
 ### 4.2 3.3 V supply
@@ -578,20 +588,20 @@ U3 is a Pololu D24V7F3 step-down module in a 1x3 socket: pin 1 +3V3, pin 2 GND, 
 - U3 takes 4 to 36 V in and gives 600 mA continuous at most, with short-circuit and
   over-temperature protection and no reverse-voltage protection [S: Pololu #5592 product page,
   features list, read 2026-11-10]. The page gives no figure for its short-circuit current.
-- On the 2026-11-11 board the +3V3 trunk is 1.5 mm and its branches are 0.50 mm [M].
-  - The only thinner copper is a 1.75 mm stub of 0.30 mm to R1, which carries R1's 0.33 mA
-    [M; D: 3.3 V ÷ 10 kΩ].
-  - There is also a 0.20 mm segment, 0.04 mm long, that lies inside the 0.30 mm track's
-    rounded end [D: geometry].
-  - Even a 0.30 mm track rises only about 3 °C at U3's 600 mA [D: IPC-2221, external, 35 µm].
-    So U3 limits before the copper does.
+- On the 2026-11-12 board the +3V3 trunk is 1.5 mm and its branches are 0.50 mm, with nothing
+  thinner [M: 63.4 mm of 1.5 mm and 28.8 mm of 0.50 mm, all front copper].
+  - The 2026-11-11 board's 0.30 mm stub to R1 and the 0.20 mm segment inside its end are gone.
+  - A 0.50 mm track rises only about 1.4 °C at U3's 600 mA (IPC-2221, external, 35 µm)
+    [D: 0.6 = 0.048 x ΔT^0.44 x 27.1^0.725, with 27.1 mil² = 19.7 mil x 1.378 mil]. So U3
+    limits before the copper does.
 - The 16:06 board's 0.30 mm branches to TB2, R8 and the 3V3 test point are gone; that test
   point was removed.
 
 ### 4.3 Modem 12 V (U4)
 U4 is a Pololu #4984 S13V25F12, a 12 V ±4 % step-up/step-down regulator [S: Pololu #4984 page].
-- It is mounted on the **bottom** side and uses only the module's 0.1 in row, in the order
-  EN, VIN, GND, GND, VOUT [S: Pololu product picture + STEP hole positions, per schematic note].
+- It stands **upright on the top side**, on a right-angle 1x5 header, and uses only the
+  module's 0.1 in row, in the order EN, VIN, GND, GND, VOUT [S: Pololu product picture + STEP
+  hole positions, per schematic note]. The 2026-11-11 board hung it flat from the bottom side.
   **EN is next to VIN on the module's row** (owner, 2026-11-10), as on the footprint, whose
   pad 1 is MODEM_EN and pad 2 VIN [M] (open item 8, closed).
 - EN is an active-high enable. A 475 kΩ internal pull-up to VIN enables the module by default,
@@ -610,9 +620,10 @@ U4 is a Pololu #4984 S13V25F12, a 12 V ±4 % step-up/step-down regulator [S: Pol
 - The module is 22.9 x 22.9 x 9.7 mm, with two M2 holes [S]. A second row of four larger
   3.5 mm-pitch holes carries VIN, GND and VOUT; this board does not use it.
   - The module's two M2 holes are unplated (owner, 2026-11-11).
-  - On the board the large-hole row sits at x 46.48, at y 37.25 (VIN), 40.75 and 44.25 (GND)
-    and 47.75 (VOUT) [M: footprint's back-fab circles, placed from Pololu's STEP].
-  - That row is where the board's solder tails can reach the module (sections 5 and 6).
+  - On the 2026-11-11 board, with the module flat on the bottom side, that row lay over the
+    board's solder tails. Upright on the 2026-11-12 board, the module lies over no tail
+    [M: 3D models; section 6]. The large holes are still live VIN, GND and VOUT copper, now
+    open to loose wire and probes.
 - Its output, loss and current are budgeted in section 1.7. What it does for the XB7 is in
   section 1.4.
 - **The 2.5 A is the spec table's figure, not the figure at this board's input** (peer review,
@@ -622,26 +633,60 @@ U4 is a Pololu #4984 S13V25F12, a 12 V ±4 % step-up/step-down regulator [S: Pol
   gives about 2.4 A at 10.0 V and 2.65 A at 11.8 V [D: linear between those two points], both
   above the 1.49 A peak (open item 23, curve part closed). Its output current limit is 5.1 A
   [S: same page].
-- **Its floor clearance is 2.8 mm** [D: 15 − 2.5 − 9.7].
-  - The terms are the 15 mm bottom standoffs (owner, 2026-11-11), U4's 2.5 mm header gap
-    (owner, 2026-11-11) and the module's 9.7 mm height [S].
-  - The figure holds only with U4's header tails trimmed, as the owner plans.
-  - The clearance part of open item 23 is closed.
-- **Its temperature is unchecked.** It hangs from the bottom side and can get hot enough to
-  burn (section 1.7). It sits 2.8 mm above whatever the board stands on, so nothing that can
-  melt or char may sit under it. At first power, measure its temperature at the XB7's peak
-  load (open item 23).
+  - The page gives that curve for room temperature in still air, with no added heat sinking
+    [S: Pololu #4984 page, read 2026-11-12]. A warm enclosure is not room temperature.
+- **Its efficiency at this board's inputs** [S: Pololu #4984, efficiency graph, read by eye
+  2026-11-12]: about 96 % at 1.0 to 1.5 A out with 12 V in, 95 to 95.5 % with 20 V in, and
+  85 to 89 % with 5 V in.
+  - The graph has no curve between 5 and 12 V in. The bus falls below 12 V late in a
+    discharge (section 1.7), so the budget keeps 85 % as its floor there.
+  - **The bench test that settles it** (open item 33): feed U4 from a bench supply at 10.0,
+    11.0, 11.8, 12.0 and 13.6 V; load its output with 10 Ω (1.2 A) and then 8 Ω (1.5 A),
+    resistors rated 18 W or more, or an electronic load; read η = VOUT x IOUT ÷ (VIN x IIN)
+    with meters at the module's pins.
+- **Mounting on the 2026-11-12 board** [M: 3D models, unless tagged otherwise]:
+  - The module's model is 22.86 x 22.86 x 9.57 mm, against Pololu's 22.9 x 22.9 x 9.7 mm [S].
+    Its back stands 0.5 mm inside the board's right edge (x 50.45 against 50.92).
+  - Its lower edge sits 2.2 mm above the board in the model. That gap is set by the header's
+    spacer [I: falsified by the header's own drawing, once its part number is known].
+  - Pololu supplies the module with a straight 1x5 header only [S: Pololu #4984 page, included
+    hardware]. The right-angle header is the owner's own part, and its part number is not yet
+    recorded (open item 31).
+  - The footprint's courtyard and front fab outline still draw the module lying flat, from
+    x 47.13 to 70.09, past the board edge [M]. That is why DRC finds U4's courtyard over H2
+    (section 7; open item 35).
+  - The 2026-11-11 board's 2.8 mm floor clearance [D: 15 − 2.5 − 9.7] and the plan to trim
+    U4's header tails no longer apply. U4's five joints are on the back like any through-hole
+    part's.
+- **Which way the module faces sets its pin order** [D]. Turning the module to face the other
+  way reverses its row along the header. The footprint expects EN, VIN, GND, GND, VOUT on pads
+  1 to 5. Reversed, the module's GND pins land on pad 2 (VIN) and pad 3, and its VIN on pad 4
+  (GND), so VIN is shorted to GND behind F1 at first power.
+  - The 3D view shows the module's component side toward the board's interior [M]. That this
+    face puts the module's EN pin on pad 1 has not been checked against the module (open item
+    32).
+  - The board has no silk mark for the module's face (section 5).
+- **Its temperature is unchecked.** Pololu warns the module can get hot enough to burn
+  (section 1.7). Upright on the top side it sits in the enclosure's air, with C6 under it.
+  At first power, measure its temperature at the XB7's peak load (open item 23).
 
 ### 4.4 Modem-enable logic (Q1, Q2)
 Q1 and Q2 are 2N3904 transistors, formed-lead TO-92 (Diotec, 2.54 mm).
 - Their footprints are in-line TO-92 at 2.54 mm pad pitch. Pad 1 goes to GND (emitter), pad 2
   is the base and pad 3 the collector [M: pad nets]. Check that order against the part's
   marking before soldering.
-- Both are turned so that pad 1, the GND end, faces U4's large-hole row. On the 2026-11-11
-  board that pad is 9.0 mm from the row [D: 46.48 − 37.45], so neither transistor is now a
-  hole-row hazard (section 6).
+- On the 2026-11-12 board Q1 sits at (32.59, 49.33), turned 180°, and Q2 at (27.50, 43.09),
+  both under the XIAO (section 6) [M]. The 2026-11-11 board turned both so that pad 1 faced
+  U4's large-hole row; with U4 upright that hazard is gone.
 - **Q1** pulls U4's EN low, which turns the modem off. GPIO5 (MODEM_OFF) drives its base
   through R2 100k, and R3 100k holds the base to GND.
+- **C8, 10 nF from Q1's base to GND, is new on the 2026-11-12 board** [M: pad nets]. The BOM
+  names it a 50 V X7R radial ceramic, K103K10X7RF53L2 [M: BOM of 2026-11-12 13:29].
+  - With R2 and R3 it makes a time constant of about 0.5 ms [D: 10 nF x (100k ∥ 100k)].
+  - Its purpose is not recorded. It reads as a filter that keeps a short glitch on GPIO5 from
+    turning the modem off [I: falsified by the owner's stated reason for it].
+  - Its courtyard overlaps Q1's, Q2's and R7's, but its fab outline clears theirs by 1.04,
+    0.87 and 0.67 mm [M] (section 7).
 - **Q2** shorts Q1's base to GND whenever PSU_SENSE is up. PSU_SENSE drives Q2's base through
   R4 100k, and R5 22k holds that base to GND.
 
@@ -667,8 +712,8 @@ Q1 and Q2 are 2N3904 transistors, formed-lead TO-92 (Diotec, 2.54 mm).
   33 µA [D: 3.3 V / 100 kΩ], so forced β is about 0.32 [D].
 - **Saturation check:** both transistors are deep in saturation [I]. That is falsified if
   MODEM_EN reads above about 0.2 V with GPIO5 high and mains absent.
-  - Probe it at U4 pad 1, under the "MODEM_EN" silk, against U4 pad 3 or 4.
-  - The 2026-11-11 board has no MODEM_EN test point.
+  - Probe it at U4 pad 1's joint on the back, against pad 3 or 4.
+  - The 2026-11-12 board has no test points (section 3).
 
 ### 4.5 Mains readback (PSU_ADC)
 R7 100k runs from PSU_SENSE to PSU_ADC, R6 18k from PSU_ADC to GND, and C7 0.1 µF from PSU_ADC
@@ -713,8 +758,9 @@ to GND. PSU_ADC goes to XIAO pad 3 (D2 = GPIO4, ADC1).
   2026-11-10); its value is not recorded.
 - **R8 is therefore not fitted (DNP)** (owner, 2026-11-10; open item 27, closed). The footprint
   stays on the board.
-  - The 2026-11-11 board marks R8 DNP [M].
-  - The BOM regenerated 2026-11-11 16:14 still lists R8 at quantity 1 [M] (open item 5).
+  - The 2026-11-12 board marks R8 DNP [M].
+  - The BOM regenerated 2026-11-12 13:29 still lists R8 at quantity 1 [M] (open item 5), as
+    the 2026-11-11 16:14 BOM did.
 - A replacement sensor with no pull-up of its own needs R8 fitted.
 - R8 lies wholly under the INA260 breakout (section 6). Fitting it later means lifting the
   breakout off its socket.
@@ -761,7 +807,7 @@ and D6/D7, and run counter-clockwise seen from the top, as on the module [M: pad
 | ESP reboots during a latched shed (crash, watchdog, OTA) | The modem comes back on: V4.0 keeps the latch in RAM only. The firmware sheds again after about 20 s of valid readings at or below 11.8 V [D: 10 mains polls + 10 valid reads, at 1 s each; both placeholders] | Section 8.1; by design, so that no stored state can shed at boot |
 | INA260 unreadable or implausible on a survival wake | V4.0 leaves survival sleep and boots normally, with the modem on (exit reason 2). With no valid reading it never sheds again, so a depleted pack runs to the BMS's 10.0 V cutoff | Section 8.1, deviation 2: on any doubt the modem stays on |
 | Shed pack rests at or above 13.0 V during survival sleep, with PSU_ADC reading mains absent | V4.0 leaves survival sleep (exit reason 5) and the modem comes back on, on battery. The firmware sheds again at 11.8 V, and the cycle can repeat [I] | Section 8.1, deviation 1. Falsified by a shed pack that rests below 13.0 V (open item 14) |
-| A solder tail under U4 touches the module's large-hole row or its underside | It depends on the pair. On the 2026-11-11 board C6's VIN tail is 0.85 mm, centre to centre, from a GND hole: a tail on that hole shorts VIN to GND behind F1 and blows it [D]. F1's VIN tail is 1.75 mm from the VOUT hole; on it, the bus would drive the modem's 12 V output directly [D]. Revision 7's Q2 case is gone: Q1 and Q2 now sit 9.0 mm from the row | Section 6: every tail trimmed flush (owner, 2026-11-11), Kapton over the hole row; open item 29 |
+| U4 fitted facing the wrong way on its right-angle header | Its row lands reversed on pads 1 to 5: the module's GND pins on pad 2 (VIN) and pad 3, its VIN on pad 4 (GND), its VOUT on pad 1 (MODEM_EN) and its EN on pad 5. At first power VIN is shorted to GND behind F1, which opens [D] | Section 4.3: no silk marks the module's face; check its pins against the pads before soldering (open item 32). The 2026-11-11 board's solder-tail hazard under U4 went with the bottom-side mount (section 6) |
 | F1 blows, U4 fails, or the 3 A modem-lead fuse opens | Modem off. Nothing on the board bypasses F1 or U4. Recovery is to plug the XB7 into its OEM adapter (NBC56B120460VU) on mains: a one-plug bypass. The adapter is on hand (owner, 2026-11-09); keep it beside the UPS | Design trade: the modem now depends on F1, U4 and this board; open item 22 |
 | Firmware never sheds on battery (down, or running with no INA260 reading) | Modem stays ON and the pack runs to the BMS's 10.0 V cutoff, where the next row applies. With the BP-65 removed, nothing else sheds it. With no valid reading this is the intended direction: an invalid reading never sheds (section 8) | Sections 1.1 and 1.6; F1 at that point in section 1.7 |
 | Pack hits BMS cutoff, then recovers | Everything restarts, and U4's EN pull-up brings the modem back without firmware | 4.3 |
@@ -779,98 +825,105 @@ None of them has run on hardware.
 ## 6. Mechanical and assembly
 
 **Board:**
-- Outline 37.78 x 51.46 mm, measured on the centre line of the Edge.Cuts rectangle [M]. The
-  16:06 board was 38.00 x 53.25 mm.
+- Outline 36.88 x 51.46 mm, measured on the centre line of the Edge.Cuts rectangle [M]. The
+  2026-11-11 board was 37.78 x 51.46 mm and the 16:06 board 38.00 x 53.25 mm [M].
 - 2 layers, 1.60 mm thick, 35 µm copper, and one GND zone that fills both layers [M].
 - Fabricator per back silk: OSH Park ("Nov 2026").
-- The back-silk "Board Size: 37.78mm x 51.46mm" text agrees with the outline [M]. Its
-  "1 1/2" x 2"" is nominal: the board is 1.49 x 2.03 in [D: ÷ 25.4].
+- The back-silk "Board Size: 36.88 x 51.46 mm" text agrees with the outline [M]. Its
+  "1 1/2" x 2"" is nominal: the board is 1.45 x 2.03 in [D: ÷ 25.4].
 
-**Mounting holes:** three 3.2 mm non-plated holes [M]: H1 at (24.93, 28.33), H2 at (19.45,
-46.38) and H4 at (26.03, 70.33).
+**Mounting holes:** three 3.2 mm non-plated holes [M]: H1 at (24.93, 28.32), H2 at (47.56,
+27.96) and H3 at (26.02, 70.33).
+- H2 moved on 2026-11-12 from (19.45, 46.38), under the XIAO, to the top right corner beside
+  TB2. H3 sits where the 2026-11-11 board's H4 was, within 0.01 mm; the schematic still calls
+  that hole H4 (section 7) [M].
 - **Hardware is M2.5 nylon,** standoffs and screws (owner, 2026-11-09). An M2.5 screw has
   0.35 mm of play all round in a 3.2 mm hole [D: (3.2 − 2.5) ÷ 2].
 - H1 sits under the INA260 and gets a standoff to support its overhang (owner).
   - **That standoff is a rest, not a fastening.** The breakout's two mounting holes are
     17.78 mm from its header row [S: Adafruit INA260 (PID 4226) fabrication print, read
     2026-11-10; D: 0.90 − 0.10 − 0.10 in].
-    - On the 2026-11-11 board U2's socket row is at y 34.03. That puts the holes at y 16.25,
-      8.43 mm beyond the board's edge at y 24.68 [D].
+    - On the 2026-11-12 board U2's socket row is at y 34.02, as on the 2026-11-11 board. That
+      puts the holes at y 16.25, about 8.5 mm beyond the board's edge at y 24.70 [D].
     - H1 is 5.70 mm from the row [D: 34.025 − 28.325], so it lines up with neither hole (open
       item 9, this part closed).
   - **The rest must be no taller than 11.0 mm,** the breakout's underside on its 8.5 + 2.5 mm
     header stack (owner, 2026-11-11). A taller one lifts the breakout's pins partly out of its
     socket, which gives an intermittent I2C fault [D].
-- H2 sits under the XIAO, and H4 under U3.
+- H3 sits under U3. H2 now sits under no module; its centre is 3.57 mm from the upright U4's
+  nearest face [D: 31.53 − 27.96, from the 3D models]. U4's flat-mount courtyard still
+  overlaps it in DRC (section 4.3).
 - **Keep the hardware nylon.** The nearest non-GND front copper to each hole's centre is [M]:
   - H1: +3V3, 1.86 mm. A metal head or washer wider than 3.7 mm would sit on that track
     [D: 2 x 1.86].
-  - H2: Alert, 2.94 mm.
-  - H4: BUS, 2.52 mm. That copper is ahead of F1, behind only the 10 A battery fuse.
-- **Three "REF\*\*" M3 screw placeholders still sit over the holes.** They cause 9 of the 39 DRC
+  - H2: TB2 pad 1 (+3V3), 4.42 mm. On the 2026-11-11 board H2 was 2.94 mm from Alert.
+  - H3: BUS, 2.80 mm. That copper is ahead of F1, behind only the 10 A battery fuse.
+- **Three "REF\*\*" M3 screw placeholders still sit over the holes.** They cause 9 of the 13 DRC
   errors (section 7). The owner deletes them when the board is finalised (open item 4).
 - **The bottom standoffs are 15 mm** (owner, 2026-11-11). The 3D view's Würth 15 mm standoffs
-  are therefore the real length, not placeholders. U4's floor clearance follows from them
-  (section 4.3).
+  are therefore the real length, not placeholders. F1's floor clearance follows from them
+  (below).
 
-**U4 on the bottom side:**
-- The module is 22.9 x 22.9 x 9.7 mm [S: Pololu #4984], held by its five 0.1 in pins. It goes
-  on its supplied male pin header (owner, 2026-11-09), whose gap between board and module is
-  2.5 mm (owner, 2026-11-11).
-- This board's holes are H1, H2 and H4, so the module's own two M2 holes go unused. They are
-  unplated (owner, 2026-11-11).
-- It dissipates 0.64 to 2.54 W in typical service (section 1.7), facing the enclosure floor
-  2.8 mm below it [D: section 4.3].
-- **The module's large-hole row faces the board.** The row is VIN, GND, GND, VOUT from the EN
-  end (Pololu's picture, per the owner, 2026-11-09). This board does not use it.
-  - The footprint draws those holes at x 46.48 and y 37.25 (VIN), 40.75, 44.25 (both GND) and
-    47.75 (VOUT) [M: footprint drawing, not checked against the module in hand].
-  - C6's VIN pad is 0.85 mm, centre to centre, from the GND hole at y 40.75 [M]. A C6 tail
-    that reaches it shorts VIN to GND behind F1 (section 5).
-  - F1's VIN clip pin protrudes 3.5 mm below the holder [S: Würth drawing 696 108 003 002,
-    rev D, sheet 1]. That is a 1.9 mm tail on the 1.6 mm board [D], 0.6 mm short of the module
-    even before trimming [D: 2.5 − 1.9].
-    - It is 1.75 mm edge to edge from the VOUT hole [D].
-    - On that hole the bus would drive the modem's 12 V output directly (section 5).
-  - Q1 and Q2 are no longer beside the row (section 4.4).
-- **Keep anything fitted in U4's M2 holes nylon.** TB2's pad 1 (DQ) overlaps the upper hole,
-  at (48.51, 33.23), in plan [D]. F1's pad 2 (VIN) overlaps the lower one, at (48.51, 51.77),
-  by 0.04 mm [D].
-- **30 plated pads lie inside U4's courtyard** [M: DRC], and their solder tails come through
-  under the module.
-  - Their nets: VIN (C6, F1 and the VIN test point); MODEM_EN, PSU_SENSE, PSU_ADC and DQ;
-    both transistor bases; Alert, SDA and SCL; GND; and unconnected socket pins.
-  - Every tail is trimmed flush (owner, 2026-11-11).
-  - The back silk at U4 reads "Trim flush, Kapton over hole row on the module back" [M].
-  - The header gap is 2.5 mm (owner, 2026-11-11), which closes that part of open item 29.
+**F1 on the bottom side** (2026-11-12 board):
+- The Würth 696108003002 holder is fitted on the back at (45.10, 63.08) [M], with no cover
+  (owner, 2026-11-12).
+- **Its floor clearance is 3.5 mm** [D: 15 − 11.5]. The terms are the 15 mm bottom standoffs
+  (owner, 2026-11-11) and the holder's 11.5 mm height [S: Würth drawing 696 108 003 002, rev D,
+  sheet 1]. KiCad's 3D model includes a cover and reaches 22.28 mm below the board [M: 3D
+  models], so the 3D view overstates the holder.
+- **With no cover, the link and both clips are bare.** The pad 1 clip is BUS, ahead of F1 and
+  behind only the 10 A battery fuse; the pad 2 clip is VIN. Nothing conductive may sit under
+  the board within that 3.5 mm. The enclosure is ABS [S: `../docs/wiring.md`].
+- F1's pins come through to the front. Pad 2's is under the upright U4, 2.42 mm below the
+  module [M: 3D models], so even an untrimmed tail clears it.
 
-**Every top module sits 11 mm up:** an 8.5 mm female header on a 2.5 mm male header (owner,
-2026-11-11). The figures below are pads inside each module's outline on the 2026-11-11 board
-[M], unless tagged otherwise.
+**U4 upright on the top side** (2026-11-12 board):
+- The module stands on a right-angle 1x5 header, the owner's own part (section 4.3; open item
+  31). Its back is 0.5 mm inside the board's right edge [M: 3D models].
+- Its five header joints are soldered on the back (section 3). Its own two M2 holes go unused;
+  they are unplated (owner, 2026-11-11).
+- Under it in plan lie only C6, 8.9 mm below the module, and F1's pad 2 tail, 2.42 mm below
+  [M: 3D models].
+- It dissipates 0.51 to 0.60 W in typical service at the graph's 96 % [S], and up to 2.54 W at the
+  budget's 85 % floor (section 1.7).
+- **Which way it faces sets its pin order.** Fitted the wrong way, it shorts VIN to GND behind
+  F1 (sections 4.3 and 5; open item 32).
+- The 2026-11-11 board's hazards under U4 are gone [M]: the 30 plated pads inside its
+  courtyard (and their DRC errors), C6's and F1's tails near the large-hole row, the plan to
+  tape that row with Kapton, and the back silk "Trim flush, Kapton over hole row on the module
+  back". U4's M2 holes no longer lie over TB2's or F1's pads.
+
+**The XIAO, the INA260 and U3 each sit 11 mm up:** an 8.5 mm female header on a 2.5 mm male
+header (owner, 2026-11-11). The figures below are pads inside each module's outline on the
+2026-11-12 board [M], unless tagged otherwise.
 
 **Under the XIAO** (11 mm clearance):
-- R1 to R5, and one pad each of R6 and R7.
+- R1 to R5, both pads of each. R6 and R7 are no longer under it.
 - C3: body 3.6 mm [S: distributor listings for K104K10X7RF53L2]. C7 is no longer under it.
-- H2 and its screw head.
-- Two of the three pads of Q1 and of Q2. These are the tallest parts here, about 8.1 mm on
-  formed leads [D: 3D render], leaving about 2.9 mm. The TO-92 body is 4.6 mm tall [S: Diotec
-  2N3904 datasheet, version 2026-03-10, p. 3]. The seated height is not measured (open
-  item 29).
+- C8, new on 2026-11-12: its model's top is 3.89 mm, as is C3's, 7.10 mm below the XIAO
+  [M: 3D models].
+- H2 is no longer under it (mounting holes, above).
+- All three pads of Q1 and of Q2. These are the tallest parts here: their models' tops are
+  at 7.30 mm, 3.70 mm below the XIAO's underside [M: 3D models]. Revision 8 read about 8.1 mm
+  from the render. The TO-92 body is 4.6 mm tall [S: Diotec 2N3904 datasheet, version
+  2026-03-10, p. 3]. The seated height on formed leads is not measured (open item 29).
 - The XIAO's edge is 0.70 mm from the INA260 breakout's edge [D], with both at 11 mm.
 
 **Under the INA260:**
-- Parts: C2, H1 and its rest standoff, both pads of R8 (DNP), and PSU_SENSE pad 2 (NC).
-- The breakout overhangs the board's top edge by 11.9 mm [D: 24.68 − 12.79].
+- Parts: C2, H1 and its rest standoff, both pads of R8 (DNP), and TB2's pads 3 (GND) and 4
+  (PSU_SENSE).
+- The breakout overhangs the board's top edge by 11.9 mm [D: 24.70 − 12.79].
 - R8's courtyard no longer overlaps U2's. That DRC error of revision 7 is gone.
-- **The PSU_SENSE block's top is about 0.5 mm below the breakout's underside** [D: 3D render;
-  TE's drawing not read, open item 30]. On assembly, check that the breakout seats fully in
-  its socket without resting on the block.
-- The block's NC screw is 1.37 mm under the breakout's edge. Its "+" screw is 1.18 mm outside
-  that edge [D], so a driver shank of up to 2.4 mm reaches it, straight down only. Wire
-  PSU_SENSE before seating the breakout.
+- **TB2's top is 1.92 mm below the breakout's underside in the 3D models** [M: 3D models,
+  TB2's top at 8.50 mm, the INA260's underside at 10.42 mm]. On the owner's 11.0 mm stack it
+  is about 2.5 mm [D: 11.0 − 8.50]. TE's drawing was not read (open item 30). On assembly,
+  check that the breakout seats fully in its socket without resting on TB2.
+  - Revision 8 had the 2-pole PSU_SENSE block about 0.5 mm under the breakout [D: 3D render].
+- TB2's screws for poles 3 and 4 (x 37.03 and 34.49) sit under the breakout, whose edge is at
+  x 38.30 [M]. Wire TB2 before seating the breakout.
 
 **Under U3:**
-- C1's pad 1, and H4 with its screw.
+- C1's pad 1, and H3 with its screw.
 - U3 covers about 1.7 mm of the back of the BUS terminal's body [D: 3D render]. The terminal is
   about 8.6 mm tall [D: render], under U3's 11 mm.
 - The BUS screws are about 1.9 mm from U3's edge [D], so a driver blade up to 3.8 mm wide fits,
@@ -895,36 +948,42 @@ None of them has run on hardware.
 
 **Assembly order:**
 1. Solder the parts that go under the modules before their sockets. Seat C4 upright.
-2. Trim every solder tail flush (owner, 2026-11-11), and tape U4's hole row with Kapton.
-3. Fit U4 on the bottom side, on its male header.
-4. Fit each screw before the module above it: H1's rest (11.0 mm at most) before the INA260,
-   H2 before the XIAO and H4 before U3. The module has to come out to reach its screw again.
-5. Wire BUS and PSU_SENSE while U3 and the breakout are out (section 3 for the pole order).
-   Their screws sit at or under the module edges.
-6. Check TB2 with a meter before the sensor goes on. Then seat the modules.
+2. Trim every solder tail flush (owner, 2026-11-11).
+3. Fit F1's holder on the back. It has no cover: keep the board's underside clear (above).
+4. Check which way U4's module faces against its pads (section 4.3; open item 32). Then fit
+   it upright on its right-angle header and solder the five joints on the back.
+5. Fit each screw before the module above it: H1's rest (11.0 mm at most) before the INA260,
+   and H3 before U3. H2 sits under no module. The module has to come out to reach its screw
+   again.
+6. Wire BUS and TB2 while U3 and the breakout are out (section 3 for the pole order). Their
+   screws sit at or under the module edges.
+7. Check TB2 with a meter before the sensor goes on. Then seat the modules.
 
-## 7. Verification status (2026-11-11)
+## 7. Verification status (2026-11-12)
 
 | Check | Result |
 |---|---|
-| DRC, 2026-11-11 16:18 board | 91 violations, 39 errors, 0 unconnected, 51 schematic-parity items [M: `kicad-cli pcb drc`, all severities, schematic parity on, no zone refill]. The 16:06 save gave 98, 45, 0 and 41; the 15:22 save 95, 45, 0 and 41, the same with and without a refill; the 2026-11-09 20:12 save 90, 43, 0 and 38 [M] |
-| DRC errors by type | 30 PTH inside courtyard, all under U4 (section 6). 6 NPTH inside courtyard and 3 courtyard overlaps, all from the three REF** screw placeholders over H1, H2 and H4. The 16:06 board's R8/U2 courtyard overlap is gone. No clearance, copper or unconnected errors [M]. These fit parts deliberately placed under the modules (section 6), but each one has not been reviewed [I]. Review each, and give each deliberate one a DRC exclusion with a comment saying why (open item 24). |
-| DRC warnings by type | 16 silk over copper, 13 silk overlap, 13 library-footprint mismatch, 5 silk-to-edge, 3 co-located holes (screw placeholders over H1/H2/H4), 2 text height [M]. All cosmetic; not reviewed one by one for this revision |
-| Schematic parity vs 2026-11-11 board | 51 [M]: 19 footprint-to-symbol mismatches; 13 field mismatches; 8 net conflicts (BUS pads 1 to 3, F1 pad 1, PSU_SENSE pads 1 and 2, TB2 pads 1 and 3); 5 footprints missing from the board (MODEM and the four removed test points); 4 extra on the board (R8 and the three REF** placeholders); 2 duplicate references (REF**). The schematic is still the 2026-11-08 18:48 save and has not followed the board since (open item 5). The PSU_SENSE and TB2 conflicts are the pin swaps of section 3 |
-| Netlist, read from the 2026-11-11 board's pads | Agrees with sections 3, 4 and 4.7, and with the pins firmware V4.0 uses [M]: XIAO pads 2 to 6, 11, 12 and 13, and the INA260's pads 1 to 5 |
-| Fabrication limits, 2026-11-11 board | Smallest via drill 0.30 mm, smallest plated pad drill 0.70 mm (R1), via annular ring 0.15 mm, narrowest track 0.20 mm (two segments under 0.15 mm long, each inside wider copper, sections 3 and 4.2), copper to the outline's centre line 0.55 mm [M]. Each clears the OSH Park 2-layer limit: 10 mil drill, 5 mil annular ring, 6 mil trace and space, 15 mil board-edge keepout, which are 0.254, 0.127, 0.1524 and 0.381 mm [S: OSH Park 2-layer service page, read 2026-11-10; D: mil x 0.0254]. The review tool's profile holds the same four figures. Its verdict, "OUTSIDE OSH LIMITS: hole-to-hole edge gap, mask web, different-net pads", comes only from the three REF** screw placeholders |
-| GND pour | **Not re-measured on the 2026-11-11 board** (a check that did not run for this revision). That board has one GND zone filling both layers and 89 vias, of which only those on PSU_SENSE, SCL and SDA are not GND [M]. DRC reports 0 unconnected [M], so every GND pad and via reaches the pour, but islands and part-covered vias were not counted. Earlier saves: 15:22 board, 13 islands on the front and 6 on the back, each tied to GND by a via or a plated pad; one GND via, at (35.05, 39.05), sat only partly inside the front fill [M]. 16:06 board: of 84 GND vias the check flagged one, at (16.75, 66.75), 9/16 inside the fill and 0.37 mm from BUS pad 1 [M] |
-| Track widths against load, 2026-11-11 board | Every track was measured by net and layer [M: `pcbnew`]. BUS 2.5 mm. VIN 2.0 mm from F1 to U4 and to C4, 1.5 mm from C4 to U3, 1.0 mm spur to the test point. +12V_MODEM 2.0 then 2.5 mm, on the back. +3V3 1.5 mm trunk, 0.50 mm branches, a 0.30 mm stub to R1. PSU_SENSE 0.50 mm. Signals 0.25 mm, DQ 0.30 mm. No via on BUS, VIN or +12V_MODEM. At a 10 °C rise the copper carries 4.65 A at 2.5 mm, 3.95 A at 2.0 mm, 3.21 A at 1.5 mm, 2.39 A at 1.0 mm, 1.45 A at 0.50 mm, 1.00 A at 0.30 mm and 0.88 A at 0.25 mm [D: IPC-2221 external, 0.048 x ΔT^0.44 x A^0.725, 35 µm]. Against those: 2.15 A peak on BUS and VIN (rise 1.7 °C at 2.5 mm, 2.5 °C at 2.0 mm), 1.49 A on +12V_MODEM (1.1 °C at 2.0 mm), under 0.14 A on +3V3 [D: 0.45 W ÷ 3.3 V, section 1.7], and signal currents of milliamps. **Every net passes** |
-| Track widths against the protection behind them | Behind F1 (3.15 A): section 4.1; the worst is 52 °C on the 1.5 mm section of the branch to U3 at 6.62 A for up to 30 min [D] (revision 7: 47 °C on 1.6 mm). Ahead of F1: the 2.5 mm BUS track rises 57 °C at the battery lead's 10 A fuse [D], over 28.2 mm. Behind U4: 2.0 mm rises 18 °C at U4's 5.1 A output limit [D; S: Pololu #4984], and the modem lead has its own 3 A fuse. Behind U3: 0.50 mm rises about 1.4 °C at 600 mA [D; section 4.2]. **PSU_SENSE is the exception:** its 0.50 mm copper has no fuse behind it until the lead is fused (section 3; open item 25) |
-| Thermal reliefs, 2026-11-11 board | **Not re-measured** (a check that did not run for this revision). The 16:06 figures below were for that board's two GND zones; the 2026-11-11 board has one zone on both layers, and its spoke settings and per-pad spoke counts were not read. Re-measure before fabrication (open item 24). 16:06 board: both GND zones use thermal reliefs with 0.5 mm spokes and a 0.5 mm gap; every spoke measured 0.49 to 0.50 mm wide [M: fill sampled on a ring around each pad]. Every GND pad has at least 2 spokes on each layer: BUS pad 2 has 4 + 4 (front + back), U4's GND pins 4 + 4 and 2 + 2, U3, U2 and C4 2 + 2, Q1 and Q2 3 + 3, the rest 2 to 4 per layer. BUS, VIN and +12V_MODEM pads connect by tracks, not zones. The GND lead carries at most about 0.66 A (section 1.3), which is 0.08 A per spoke at BUS pad 2 [D: 0.66 ÷ 8]. Even the 10 A upstream fuse through those 8 spokes is 1.25 A each, under the 1.45 A a 0.5 mm spoke carries at a 10 °C rise [D]. **All pass** |
+| DRC, 2026-11-12 14:25 board | 54 violations, 13 errors, 0 unconnected, 56 schematic-parity items [M: `kicad-cli pcb drc`, all severities, schematic parity on, no zone refill, with the project's footprint and symbol library tables beside the board]. Run without those tables, the same board reports 56 violations, including 3 library-footprint issues that come from the run, not the board [M]; an interim review on 2026-11-12 quoted that run in error. The 2026-11-11 16:18 save gave 91, 39, 0 and 51; the 16:06 save 98, 45, 0 and 41; the 15:22 save 95, 45, 0 and 41, the same with and without a refill; the 2026-11-09 20:12 save 90, 43, 0 and 38 [M] |
+| DRC errors by type | 7 courtyard overlaps and 6 NPTH inside courtyard [M]. Nine come from the three REF** screw placeholders over H1, H2 and H3: all 6 NPTH errors and 3 overlaps. One is U4's courtyard over H2, because U4's footprint still draws the module lying flat (section 4.3; open item 35). Three are C8's courtyard over Q1's, Q2's and R7's; their fab outlines clear by 0.67 mm or more (section 4.4). The 2026-11-11 board's 30 PTH-inside-courtyard errors under U4 are gone. No clearance, copper or unconnected errors [M]. Review each, and give each deliberate one a DRC exclusion with a comment saying why (open item 24). |
+| DRC warnings by type | 16 library-footprint mismatch, 8 silk overlap, 7 silk-to-edge, 5 silk over copper, 3 co-located holes (screw placeholders over H1/H2/H3), 2 text height [M]. None is a copper or clearance finding; not reviewed one by one for this revision |
+| Schematic parity vs 2026-11-12 board | 56 [M]: 19 footprint-to-symbol mismatches; 13 field mismatches; 7 net conflicts (BUS pads 1 to 3, F1 pad 1, TB2 pads 2 to 4); 8 footprints missing from the board (H4, MODEM, the PSU_SENSE block and the five removed test points); 7 extra on the board (R8, C8, H2, H3 and the three REF** placeholders); 2 duplicate references (REF**). The schematic is still the 2026-11-08 18:48 save and has not followed the board since (open item 5). The TB2 conflicts are the pin changes of section 3 |
+| Netlist, read from the 2026-11-12 board's pads | Agrees with sections 3, 4 and 4.7, and with the pins firmware V4.0 uses [M]: XIAO pads 2 to 6, 11, 12 and 13, and the INA260's pads 1 to 5 |
+| Fabrication limits, 2026-11-12 board | Smallest via drill 0.30 mm, smallest plated pad drill 0.70 mm (R1), via annular ring 0.15 mm, narrowest track 0.25 mm, copper to the outline's centre line 0.53 mm (F1 pad 1 and the BUS track) [M]. Each clears the OSH Park 2-layer limit: 10 mil drill, 5 mil annular ring, 6 mil trace and space, 15 mil board-edge keepout, which are 0.254, 0.127, 0.1524 and 0.381 mm [S: OSH Park 2-layer service page, read 2026-11-10; D: mil x 0.0254]. The review tool's profile holds the same four figures; **it was not re-run on this board**. On the 2026-11-11 board its verdict, "OUTSIDE OSH LIMITS: hole-to-hole edge gap, mask web, different-net pads", came only from the three REF** screw placeholders |
+| GND pour | **Not re-measured on the 2026-11-12 board** (a check that did not run for this revision). That board has one GND zone filling both layers and 85 vias, of which only the one on SDA is not GND [M]. The 2026-11-11 board had 89, with non-GND vias on PSU_SENSE, SCL and SDA. DRC reports 0 unconnected [M], so every GND pad and via reaches the pour, but islands and part-covered vias were not counted. Earlier saves: 15:22 board, 13 islands on the front and 6 on the back, each tied to GND by a via or a plated pad; one GND via, at (35.05, 39.05), sat only partly inside the front fill [M]. 16:06 board: of 84 GND vias the check flagged one, at (16.75, 66.75), 9/16 inside the fill and 0.37 mm from BUS pad 1 [M] |
+| Track widths against load, 2026-11-12 board | Every track was measured by net and layer [M: `pcbnew`]. BUS 2.5 mm. VIN 2.0 mm from F1 to U4 and to C4, 1.5 mm from C4 to U3. +12V_MODEM 2.0 then 2.5 mm, on the back. +3V3 1.5 mm trunk, 0.50 mm branches. PSU_SENSE 0.50 mm. Signals 0.25 mm, DQ 0.30 mm. No via on BUS, VIN, +12V_MODEM or PSU_SENSE. At a 10 °C rise the copper carries 4.65 A at 2.5 mm, 3.95 A at 2.0 mm, 3.21 A at 1.5 mm, 2.39 A at 1.0 mm, 1.45 A at 0.50 mm, 1.00 A at 0.30 mm and 0.88 A at 0.25 mm [D: IPC-2221 external, 0.048 x ΔT^0.44 x A^0.725, 35 µm]. Against those: 2.15 A peak on BUS and VIN (rise 1.7 °C at 2.5 mm, 2.5 °C at 2.0 mm), 1.49 A on +12V_MODEM (1.1 °C at 2.0 mm), under 0.14 A on +3V3 [D: 0.45 W ÷ 3.3 V, section 1.7], and signal currents of milliamps. **Every net passes** |
+| Track widths against the protection behind them | Behind F1 (3.15 A): section 4.1; the worst is 52 °C on the 1.5 mm section of the branch to U3 at 6.62 A for up to 30 min [D] (revision 7: 47 °C on 1.6 mm). Ahead of F1: the 2.5 mm BUS track rises 57 °C at the battery lead's 10 A fuse [D], over 26.3 mm. Behind U4: 2.0 mm rises 18 °C at U4's 5.1 A output limit [D; S: Pololu #4984], and the modem lead has its own 3 A fuse. Behind U3: 0.50 mm rises about 1.4 °C at 600 mA [D; section 4.2]. **PSU_SENSE is the exception:** its 0.50 mm copper has no fuse behind it until the lead is fused (section 3; open item 25) |
+| Thermal reliefs, 2026-11-12 board | **Not re-measured** (a check that did not run for revision 8 or 9). The 16:06 figures below were for that board's two GND zones; the 2026-11-11 and 2026-11-12 boards have one zone on both layers, and its spoke settings and per-pad spoke counts were not read. Re-measure before fabrication (open item 24). 16:06 board: both GND zones use thermal reliefs with 0.5 mm spokes and a 0.5 mm gap; every spoke measured 0.49 to 0.50 mm wide [M: fill sampled on a ring around each pad]. Every GND pad has at least 2 spokes on each layer: BUS pad 2 has 4 + 4 (front + back), U4's GND pins 4 + 4 and 2 + 2, U3, U2 and C4 2 + 2, Q1 and Q2 3 + 3, the rest 2 to 4 per layer. BUS, VIN and +12V_MODEM pads connect by tracks, not zones. The GND lead carries at most about 0.66 A (section 1.3), which is 0.08 A per spoke at BUS pad 2 [D: 0.66 ÷ 8]. Even the 10 A upstream fuse through those 8 spokes is 1.25 A each, under the 1.45 A a 0.5 mm spoke carries at a 10 °C rise [D]. **All pass** |
 | Schematic ERC | Not re-run. It was 0 on 2026-11-08 18:48 [M] |
-| BOM CSV in the board folder | **Regenerated 2026-11-11 16:14**, four minutes before the board's 16:18 save [M: file times]. It lists every part on the board, with R6 to R8, C7 and the RNMF14 resistors [M]. Two faults remain (open item 5): it lists R8 at quantity 1 although the board marks R8 DNP, and its PSU_SENSE line names the footprint, not the part [M] |
-| Terminal block against its footprint | **BUS: resolved on the 16:06 board.** The footprint is 3.81 mm pitch with 1.1 mm holes [M], and the part is 3.81 mm with a 1.1 mm hole [S: Phoenix 5442769 catalogue sheet, section 3] (open item 26, closed). **PSU_SENSE:** TE 282834-2 on KiCad's TerminalBlock_TE_282834-2 footprint, 2.54 mm with 1.1 mm holes [M]; TE's sheet not read (open item 30) |
+| BOM CSV in the board folder | **Regenerated 2026-11-12 13:29**, before the board's 14:25 save [M: file times], so it was not checked as a whole against that save. It lists C8 (K103K10X7RF53L2) and TB2 on the 282834-4 footprint [M]. Two faults remain (open item 5): it lists R8 at quantity 1 although the board marks R8 DNP, and its TB2 line names a footprint, not a part [M]. The 2026-11-11 16:14 BOM had the same two faults, the second on the PSU_SENSE block's line |
+| Gerber archive in the board folder | Written 2026-11-12 13:30, before the board's 14:25 save [M: file times], so it does not describe this board. Regenerate before ordering (open item 37) |
+| Terminal block against its footprint | **BUS: resolved on the 16:06 board.** The footprint is 3.81 mm pitch with 1.1 mm holes [M], and the part is 3.81 mm with a 1.1 mm hole [S: Phoenix 5442769 catalogue sheet, section 3] (open item 26, closed). **TB2:** 4 poles on KiCad's TerminalBlock_TE_282834-4 footprint, 2.54 mm with 1.20 mm holes [M]; its Value names VN04A1500000G; no maker's sheet read (open item 30). The 2026-11-11 board's 2-pole PSU_SENSE block (TE 282834-2) is gone |
 | Datasheets read for revision 6 | F1's link and holder, the 3-pole terminal, the PSU's overload wording, U3, U4's current curve, the INA260 breakout's print, the OSH Park limits, and the ESP-IDF and ESPHome pages section 8 cites. Each is cited where it is used and listed under Sources |
 | Datasheets supplied by the owner for revision 7 | The 2-pole terminal (Phoenix 5442756), the hook-up wire (CnC Tech UL 1569) and the enclosure's blade fuses (Littelfuse MINI 32 V). The part numbers on the wire and the fuses in hand were not read against those sheets. The 2026-11-11 board no longer uses 5442756 (section 3) |
 | Owner's facts for revision 8 (2026-11-11) | U4's header gap 2.5 mm; U4's M2 holes unplated; every solder tail trimmed; bottom standoffs 15 mm; each top module on an 8.5 mm female and a 2.5 mm male header, 11 mm up. Fit figures that follow from them are in sections 4.3 and 6. Several rest on KiCad's 3D view, not on drawings, and are tagged so |
+| Owner's facts for revision 9 (2026-11-12) | U4 stands upright on the top side, on a right-angle header; F1's holder is on the bottom side, with no cover. The header's part number and the module's label are not yet recorded (open item 31). Fit figures are in sections 4.3 and 6, read from the 3D models and tagged so |
+| Datasheets read for revision 9 | Pololu #4984: the efficiency graph, the still-air note on the current curve and the included-hardware list (section 4.3). TE's sheet for TB2 was not read (open item 30) |
 | Fabricated / assembled / powered | **No** |
-| U4 pin order on the actual module | EN is next to VIN on the module's 0.1 in row (owner, 2026-11-10). The footprint agrees: pad 1 MODEM_EN, pad 2 VIN, pads 3 and 4 GND, pad 5 +12V_MODEM [M] (open item 8, closed) |
+| U4 pin order on the actual module | EN is next to VIN on the module's 0.1 in row (owner, 2026-11-10). The footprint agrees: pad 1 MODEM_EN, pad 2 VIN, pads 3 and 4 GND, pad 5 +12V_MODEM [M] (open item 8, closed). **Upright on a right-angle header, which way the module faces now sets the order** (section 4.3; open item 32) |
 | Rev 4 firmware | V4.0 written. Its configuration is valid and it compiles on ESPHome 2026.10.2: real compile, exit 0, and `-Wall -Wextra` adds no warning to the deployed firmware's baseline [M, 2026-11-09]. **Never flashed or bench-tested** (section 8.1) |
 | System, section 1 (2026-11-09) | PSU set point 13.6 V and the new pack (owner). The installed PSU's OVP range, U4's output and the new pack's capacity are **not checked** (open items 11, 13 and 14) |
 
@@ -1136,28 +1195,33 @@ and narrows items 8, 9, 11, 23 and 25 from the datasheets read on 2026-11-10. Re
 closes item 8 and narrows items 21 and 30, from the owner's answer and the three sheets the
 owner supplied that day. Revision 8 (the 2026-11-11 16:18 board and the owner's facts that day)
 closes the clearance half of item 23 and the header-gap part of item 29, replaces the part in
-item 30, and brings items 1, 3, 4, 5, 13, 24 and 25 up to that board.
+item 30, and brings items 1, 3, 4, 5, 13, 24 and 25 up to that board. Revision 9 (the
+2026-11-12 14:25 board and the owner's facts that day) brings items 1, 3, 4, 5, 13, 23, 24, 25,
+29 and 30 up to that board and opens items 31 to 37.
 
-1. **TB2:** the pin order differs from the deployed board, and the 2026-11-11 board reverses it
-   again: pad 1 DQ, pad 2 GND, pad 3 +3V3 [M] (section 3). Its labels now sit each within
-   0.5 mm of its own pad [D], so the 15:22 board's misplaced "GND" is gone. Still meter the pins
-   before connecting the sensor.
+1. **TB2:** the pin order differs from the deployed board, and the 2026-11-12 board changes it
+   a third time: pad 1 +3V3, pad 2 DQ, pad 3 GND, pad 4 PSU_SENSE [M] (section 3). Pad 3 (GND)
+   has no silk label, and "DQ" sits between pads 2 and 3 [M]. Label GND and move "DQ" to pad 2.
+   Still meter the pins before connecting the sensor. (The 2026-11-11 board ran DQ / GND /
+   +3V3, each label within 0.5 mm of its own pad.)
 2. ~~**1-Wire pull-up:** where is the deployed DS18B20's pull-up?~~ **RESOLVED 2026-11-08:** it
    is in the sensor lead (owner). The 15:22 board adds R8 as well; see item 27.
 3. ~~**Back silk:** the "Board Size" text is stale.~~ **RESOLVED on the 15:22 board:** it reads
    38mm x 53.25mm, which is the outline [M]. The 2026-11-11 board's text reads 37.78 x 51.46,
-   which is again the outline [M].
-4. **REF\*\* screw placeholders:** three remain, over H1, H2 and H4. They cause 9 of the
-   2026-11-11 board's 39 DRC errors, 5 parity items and the fabrication tool's only
-   out-of-limits verdict (section 7). The owner deletes them when the board is finalised.
-5. **Schematic:** it is still the 2026-11-08 18:48 save and trails the 2026-11-11 board by 51
-   parity items (section 7): the 3-pole terminal, the horizontal resistors, R8, the BUS net
-   name, the TE 282834-2 PSU_SENSE block with its signal on pad 1, TB2's reversed order and the
-   removed test points.
-   **BOM CSV:** regenerated 2026-11-11 16:14, four minutes before the 16:18 save, but it still
-   lists R8 (quantity 1) and gives the PSU_SENSE block its footprint name as its value [M].
-   **R8 is DNP** (item 27), and the 2026-11-11 board now marks it so [M]. Set PSU_SENSE's Value
-   to the part number and exclude R8 from the BOM, then regenerate it.
+   which is again the outline [M], and the 2026-11-12 board's 36.88 x 51.46, again the outline
+   [M].
+4. **REF\*\* screw placeholders:** three remain, over H1, H2 and H3. They cause 9 of the
+   2026-11-12 board's 13 DRC errors, 5 parity items and the 3 co-located-hole warnings, and on
+   the 2026-11-11 board they were the fabrication tool's only out-of-limits verdict (section 7).
+   The owner deletes them when the board is finalised.
+5. **Schematic:** it is still the 2026-11-08 18:48 save and trails the 2026-11-12 board by 56
+   parity items (section 7): the 3-pole terminal, the horizontal resistors, R8, C8, the BUS net
+   name, the 4-pole TB2 with PSU_SENSE on pad 4, the moved and renamed holes and the removed
+   test points.
+   **BOM CSV:** regenerated 2026-11-12 13:29, before the 14:25 save, and it still lists R8
+   (quantity 1) and gives TB2 a footprint name as its value [M]. **R8 is DNP** (item 27), and
+   the 2026-11-12 board marks it so [M]. Set TB2's Value to the part number and exclude R8 from
+   the BOM, then regenerate it after the last board save.
 6. **HDR-60-12 decay:** how long the output takes to fall after AC loss is unmeasured. It sets
    the delay before a shed takes effect. On section 1.8's bracket the shed comes 3 to 9.6 h into
    an outage [I], so a decay of seconds or minutes would not matter. It also sets the debounce
@@ -1196,8 +1260,8 @@ item 30, and brings items 1, 3, 4, 5, 13, 24 and 25 up to that board.
 12. **Which pack:** is the new pack in service the "second, new" Cyclenbatt used on the top-off
     bench from 2026-10-28 (Top-Off §11.1)? If so, its label, its BMS cuts at 14.310 to 14.315 V
     and its bench history apply to it (section 1.6).
-13. **U4's output** at its VOUT header joint (U4 pad 5, silk "+12V MODEM") against pad 3 or 4
-    ("GND") at first power, against the XB7's lowest input on record,
+13. **U4's output** at its VOUT header joint (U4 pad 5's joint on the back; the 2026-11-12 board
+    has no "+12V MODEM" silk) against pad 3 or 4 ("GND") at first power, against the XB7's lowest input on record,
     11.71 V (section 1.4).
 14. **First discharge of this pack** to the 11.8 V shed, coulomb-counted by the INA260. It sets
     the runtime (section 1.8) and the firmware's phase thresholds (section 8).
@@ -1251,21 +1315,27 @@ item 30, and brings items 1, 3, 4, 5, 13, 24 and 25 up to that board.
 23. **U4 at low input:** ~~Pololu's output-current-versus-input curve at 10.0 V and 11.8 V
     against the 1.49 A peak.~~ **Curve read 2026-11-10:** about 2.4 A and 2.65 A, both above
     1.49 A (section 4.3). ~~Its clearance to the floor.~~ **Closed 2026-11-11:** 2.8 mm on the
-    owner's 15 mm standoffs and 2.5 mm header gap [D: 15 − 2.5 − 9.7] (section 4.3). Still
-    open: at first power, check its temperature.
-24. **DRC:** review each of the 2026-11-11 board's 39 errors, and give each deliberate one a
-    commented exclusion (section 7). Thirty are U4's own plated pins inside its courtyard; nine
-    go when the REF\*\* placeholders are deleted (item 4).
-    - The thermal reliefs and GND islands were not re-measured on the 2026-11-11 board (a check
-      that did not run for this revision). Re-measure both before fabrication.
-    - Three +12V_MODEM track joins near (34.2, 56.5) on the back overlap without sharing an end
-      point [M]. They are connected (0 unconnected). Snap the ends when the layout is tidied.
+    owner's 15 mm standoffs and 2.5 mm header gap [D: 15 − 2.5 − 9.7] (section 4.3). On the
+    2026-11-12 board U4 stands upright on the top side, so that clearance no longer applies;
+    the current curve is for room temperature in still air [S] (section 4.3). Still open: at
+    first power, check its temperature.
+24. **DRC:** review each of the 2026-11-12 board's 13 errors, and give each deliberate one a
+    commented exclusion (section 7). Nine go when the REF\*\* placeholders are deleted (item 4);
+    one is U4's flat-mount courtyard over H2 (item 35); three are C8's courtyard against Q1's,
+    Q2's and R7's. The 2026-11-11 board's thirty U4 pin errors are gone.
+    - The thermal reliefs and GND islands were not re-measured on the 2026-11-11 or 2026-11-12
+      board (a check that did not run for revision 8 or 9). Re-measure both before fabrication.
+    - Two SDA track ends on the back at (28.85, 37.34) overlap 0.02 mm apart without sharing
+      an end point [M]. They are connected (0 unconnected). Snap them when the layout is
+      tidied. The 2026-11-11 board's three +12V_MODEM joins of this kind are gone [M].
 25. **PSU_SENSE lead:** fuse it at the tap at 0.5 A (revision 4 said about 0.5 to 1 A). The
-    board's sense copper (0.50 mm on the 2026-11-11 board, 0.30 mm before) has no other
-    protection (sections 3 and 7). Record where it taps relative to the 7.5 A fuse, and move it
-    to the bus side of that fuse if it is not already there (section 3). The terminal's NC
-    pole stays unconnected, and no PSU ground wire goes to it (owner, 2026-11-10). On the
-    2026-11-11 board the NC pole is pad 2 and the signal is pad 1 [M].
+    board's sense copper (0.50 mm on the 2026-11-11 and 2026-11-12 boards, 0.30 mm before) has
+    no other protection (sections 3 and 7). Record where it taps relative to the 7.5 A fuse,
+    and move it to the bus side of that fuse if it is not already there (section 3). No PSU
+    ground wire goes with the lead (owner, 2026-11-10). On the 2026-11-12 board PSU_SENSE is
+    TB2 pad 4, beside GND on pad 3 [M]: a lead landed one pole over shorts the PSU through it
+    until it is fused (section 3). On the 2026-11-11 board it was pad 1 of a 2-pole block whose
+    pad 2 was NC.
 26. ~~**Terminal block pitch:** the 3-pole footprint is 3.50 mm pitch, and its Value names
     Phoenix 5442769, which is listed at 3.81 mm (section 3). Measure the part in hand, then
     change the footprint or the part. **Do not order the board before this is settled.**~~
@@ -1283,32 +1353,58 @@ item 30, and brings items 1, 3, 4, 5, 13, 24 and 25 up to that board.
 29. **Clearances to check on the assembled board** (section 6):
     - ~~the gap between the board and U4 on its male header, with every tail under it trimmed
       flush and the module's hole row taped;~~ **Closed 2026-11-11:** the header gap is 2.5 mm
-      and every tail is trimmed (owner). Tape the module's hole row as section 6 says;
-    - no metal screw in U4's M2 holes, which are unplated (owner). On the 2026-11-11 board TB2's
-      pad 1 and F1's pad 2 sit under them in plan [M];
-    - the seated height of Q1 and Q2 under the XIAO: about 8.1 mm, leaving about 2.9 mm under
-      the module's 11 mm [D: 3D render, not a measurement];
+      and every tail is trimmed (owner). Moot on the 2026-11-12 board, where U4 stands upright
+      and nothing under it needs tape (section 6);
+    - ~~no metal screw in U4's M2 holes, which are unplated (owner). On the 2026-11-11 board TB2's
+      pad 1 and F1's pad 2 sit under them in plan [M];~~ moot on the 2026-11-12 board: upright,
+      those holes lie over no pad;
+    - the seated height of Q1 and Q2 under the XIAO: their models' tops are at 7.30 mm, 3.70 mm
+      under the module's 11 mm [M: 3D models, not a measurement of the parts]; revision 8 read
+      about 8.1 mm from the render;
     - C4 standing upright: its can is 0.43 mm from U3's outline [D];
-    - the PSU_SENSE block's top, about 0.5 mm under the INA260 breakout [D: 3D render; TE's
-      drawing not read].
-30. **The 2-pole PSU_SENSE terminal:** ~~Phoenix 5442756: its own sheet was not read. Sheet
+    - TB2's top under the INA260 breakout: 1.92 mm in the 3D models, about 2.5 mm on the owner's
+      11.0 mm stack [M: 3D models; D] (no maker's drawing read, item 30);
+    - F1's holder, with no cover, 3.5 mm above the enclosure floor [D: section 6];
+    - U4's module over C6 and over F1's pad 2 tail: 8.9 mm and 2.42 mm in the 3D models [M].
+30. **The PSU_SENSE terminal** (a 2-pole block until 2026-11-11, pole 4 of TB2 since
+    2026-11-12): ~~Phoenix 5442756: its own sheet was not read. Sheet
     read 2026-11-10 (supplied by the owner): 3.81 mm pitch, 2 positions, 13.5 A and 200 V,
     and the footprint's pitch matches it (section 3). The print has no dimensioned drawing, so
     the pin and hole are still taken from the 3-pole part of the same series [I: falsified by
     the part not seating in its footprint]. Try the part in the board before soldering.~~
     **Part changed 2026-11-11:** the board now uses TE 282834-2, 2.54 mm, on KiCad's
     TerminalBlock_TE_282834-2 footprint (section 3), so the 5442756 question is moot.
-    - TE's sheet for 282834-2 has not been read. This document claims no current or voltage
+    **Part changed again 2026-11-12:** PSU_SENSE is now pole 4 of TB2, on KiCad's
+    TerminalBlock_TE_282834-4 footprint, whose Value names VN04A1500000G (section 3).
+    - No maker's sheet for TB2's part has been read. This document claims no current or voltage
       rating, body height or pin size for it. Read it before ordering, and check its height
       against the INA260 breakout above it.
-    - The footprint's second 3D model is linked by an absolute local path, so the 3D view
-      will not find it on another machine.
+    - ~~The footprint's second 3D model is linked by an absolute local path, so the 3D view
+      will not find it on another machine.~~ On the 2026-11-12 board both of TB2's 3D models
+      (TE 282834-4 and a Phoenix MPT 0,5-4-2.54) use library paths, not absolute ones [M].
+31. **U4's module and header** (owner): the label read off the module in hand, to confirm it is
+    the S13V25F12 that Pololu's sheets cover, and the right-angle header's part number. The
+    header sets the module's height and spacing, which section 6 now takes from the 3D model
+    [I] (section 4.3).
+32. **U4's face:** add a silk mark on the board showing which way the module's component side
+    faces, and before soldering check the module's EN pin against pad 1 with it fitted that
+    way. Fitted the other way it shorts VIN to GND behind F1 (sections 4.3 and 5).
+33. **U4's efficiency below 12 V in:** run the bench test in section 4.3 at 10.0, 11.0, 11.8,
+    12.0 and 13.6 V. Until then section 1.7 budgets 85 % below 12 V.
+34. **F1's rating on the silk:** the back silk reads only "F1" [M]. Add "3.15 A T" so a
+    replacement link is not chosen from memory.
+35. **U4's courtyard and fab outline:** they still draw the module lying flat, past the board
+    edge (section 4.3), and cause the U4/H2 DRC error. Redraw them for the upright module.
+36. **BUS pad 3's silk:** it reads "+", as pad 1 does with "MODEM" [M]. Name pad 3 as the bus
+    input so the two "+" labels cannot be swapped.
+37. **Gerbers:** the archive in the board folder was written at 13:30, before the 14:25 save
+    [M]. Regenerate it, and the BOM (item 5), after the last board save and before ordering.
 
 ## Sources
 
 - [ESP32-C3 Series Datasheet v2.4 (Espressif)](https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf): Table 2-1; §5.5, Tables 5-5 and 5-6, p. 56.
 - [Seeed XIAO ESP32C3 wiki](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/): pin map.
-- [Pololu #4984 S13V25F12](https://www.pololu.com/product/4984): output, EN pull-up and threshold, input range, reverse-voltage protection, quiescent current, size, efficiency range; read again 2026-11-10 for the 5.1 A output current limit, which row carries EN, the [maximum continuous output current graph](https://a.pololu-files.com/picture/0J12094.600.png?9e7667921971a0e351911e9fdbb6cf1f) and the top-view picture.
+- [Pololu #4984 S13V25F12](https://www.pololu.com/product/4984): output, EN pull-up and threshold, input range, reverse-voltage protection, quiescent current, size, efficiency range; read again 2026-11-10 for the 5.1 A output current limit, which row carries EN, the [maximum continuous output current graph](https://a.pololu-files.com/picture/0J12094.600.png?9e7667921971a0e351911e9fdbb6cf1f) and the top-view picture; read again 2026-11-12 for the [efficiency graph](https://a.pololu-files.com/picture/0J12092.1200.png?8b36cb01df38f97b26a3a5d633f62493) (curves at 5, 12 and 20 V in; none between 5 and 12 V), the included straight header, and the current graph's room-temperature, still-air condition.
 - [Pololu #5592 D24V7F3](https://www.pololu.com/product/5592), read 2026-11-10: input range, 600 mA, protections.
 - [Mean Well HDR-60 series datasheet](https://www.meanwell.com/Upload/PDF/HDR-60/HDR-60-SPEC.PDF), file dated 2026-10-09: the HDR-60-12 column; p. 2 read again 2026-11-10 for the overload and over-voltage wording.
 - [ESP-IDF GPIO reference, ESP32-C3](https://docs.espressif.com/projects/esp-idf/en/v5.5.5/esp32c3/api-reference/peripherals/gpio.html), v5.5.5, read 2026-11-10: `gpio_hold_en`, `gpio_hold_dis`, `gpio_deep_sleep_hold_en`.
@@ -1331,7 +1427,7 @@ item 30, and brings items 1, 3, 4, 5, 13, 24 and 25 up to that board.
 - ESPHome 2026.10.2 source: `esphome/core/component.h` (setup priorities) and `esphome/components/globals/globals_component.h`.
 - Diotec 2N3904 datasheet, version 2026-03-10, p. 3: TO-92 outline. Held in the board folder, not in this repository.
 - Digi-Key listings, read 2026-11-10: [Phoenix Contact 5442769](https://www.digikey.at/en/products/detail/phoenix-contact/5442769/4390288) (3 positions, 3.81 mm) and [5442756](https://www.digikey.com.au/en/products/detail/phoenix-contact/5442756/4390287) (2 positions, 3.81 mm). The 3-pole part's Phoenix sheet is listed above and the 2-pole part's below. The 2-pole part is no longer on the board from 2026-11-11.
-- TE Connectivity 282834-2 (PSU_SENSE from 2026-11-11) and 282834-3 (TB2): no TE datasheet was read for this document. Only a 3D model of 282834-2 is in the board folder (item 30).
+- TE Connectivity 282834-2 (PSU_SENSE from 2026-11-11) and 282834-3 (TB2): no TE datasheet was read for this document. Only a 3D model of 282834-2 is in the board folder (item 30). From 2026-11-12 TB2 is on KiCad's 282834-4 footprint, with Value VN04A1500000G: no datasheet was read for that part either, and its 3D models are linked by library paths [M] (item 30).
 - Supplied by the owner 2026-11-10, held in the board folder, not in this repository: Phoenix Contact, "PCB terminal block - BC-381X9- 2 GN - 5442756", catalogue print dated 11/10/2014, 2 pages; CnC Tech, "UL 1569 Hook-Up Wire", P/N 1569-XX-1-0500-0XX-1-TS, 2 pages; Littelfuse, "MINI Series Blade Fuses, Rated 32V" datasheet, revised 2024-09-27, 3 pages.
 - Deployed firmware header: [`ups-monitor.yaml`](../UPS-Monitor/ups-monitor.yaml).
 - Deployed board: [`UPS-Monitor-THT.kicad_pcb`](../UPS-Monitor/UPS-Monitor-THT.kicad_pcb).
@@ -1349,3 +1445,4 @@ item 30, and brings items 1, 3, 4, 5, 13, 24 and 25 up to that board.
 | 6 | 2026-11-10 | Brought into line with the board saved 2026-11-10 16:06 and the owner's decisions of that day. The 3-pole terminal's footprint is 3.81 mm and matches the part (section 3; item 26 closed). F1 is 3.15 A, with the link's and holder's datasheets read and no safety issue found (section 4.1; item 21 closed). R8 is not fitted (section 4.6; item 27 closed). PSU_SENSE pad 1 stays unconnected by decision (section 3). Datasheets read: the PSU's overload wording (item 20 closed), U3, U4's current curve, the INA260 print, OSH Park's limits, and the ESP-IDF and ESPHome pages (sections 1.5, 4.2, 4.3, 6, 7 and 8). Section 7 re-run on the 16:06 board, with every track width and thermal relief checked against its load and its protection. PSU_SENSE fuse tightened to 0.5 A (item 25). Items 8, 9, 11 and 23 narrowed; item 30 added. Corrected: revision 5 said the board's GND lead carries the same current as its BUS lead; it carries the difference between input and output (section 1.3) |
 | 7 | 2026-11-10 | The owner's answer on U4 and three datasheets the owner supplied. EN is next to VIN on U4's row, as on the footprint (sections 4.3 and 7; item 8 closed). The 2-pole terminal's catalogue print confirms its pitch and ratings but has no dimensioned drawing (section 3; item 30 narrowed). The BUS lead is UL 1569 hook-up wire, 105 °C and 300 V (section 4.1). The enclosure fuses are Littelfuse MINI 32 V: F1 melts first in a hard short on typical I²t, the two fuses' gates overlap around 13 A, and the 3 A modem link's figures are added (section 4.1). New finding: the PSU's 7.20 A overload ceiling is over the 6.4 A that sheet allows a 7.5 A link at 20 °C (section 1.5; item 21) |
 | 8 | 2026-11-11 | Brought into line with the board saved 2026-11-11 16:18, a re-layout, and the owner's facts of that day. Board: outline 37.78 x 51.46 mm (section 6); PSU_SENSE is a TE 282834-2 with the signal on pad 1, and its copper is 0.50 mm (section 3); TB2 is reversed, pad 1 DQ to pad 3 +3V3, with each label at its own pad (section 3; item 1); only the VIN test point remains, and U4's output is measured at its VOUT header joint (sections 1 and 3; item 13); R8 is marked DNP (section 4.6). Sections 4.1 and 4.2 re-measured: track widths, lengths, resistance and the rise behind F1. Owner's facts: U4's header gap is 2.5 mm, its M2 holes are unplated, every tail is trimmed, the bottom standoffs are 15 mm, and the top modules sit 11 mm up on 8.5 mm female and 2.5 mm male headers. From those: U4 clears the floor by 2.8 mm (section 4.3; item 23's clearance closed). The hazard at U4's hole row is now C6 and F1, not Q2 (sections 5 and 6). C6 needs no move (section 4.1). Section 6 rewritten for the new holes, the parts under each module, and an assembly order. Section 7 re-run: 91 violations, 39 errors, 0 unconnected, 51 parity; thermal reliefs and GND islands not re-measured (item 24). Items 1, 3, 4, 5, 13, 24, 25 and 29 updated; item 30's part replaced, with TE's sheet not read. Revision 7's "about 10 mm" for the XIAO's height is replaced by the owner's 11 mm (section 4.7) |
+| 9 | 2026-11-12 | Brought into line with the board saved 2026-11-12 14:25 and with Pololu's efficiency graph. Board: U4 stands upright on the top side on a right-angle 1x5 header, with its joints on the back, and F1's holder is on the bottom side with no cover (sections 4.3 and 6); outline 36.88 x 51.46 mm and holes H1 to H3 (section 6); PSU_SENSE is pole 4 of a 4-pole TB2, beside GND, and the 2-pole block is gone (section 3; item 25); C8, 10 nF, is new under the XIAO (section 4.4); the VIN test point is gone, so U4's output is measured at its pad 5 joint (item 13). Sections 4.1 and 4.2 re-measured. Section 4.3: the graph gives about 96 % [S] at the modem's 1.0 to 1.5 A with 12 V in, so 0.51 to 0.60 W [D], but it has no curve between 5 and 12 V in, so the budget keeps its 85 % floor below 12 V until a bench test (item 33). The upright mount ends the floor clearance and the hazards at U4's hole row; fitted facing the wrong way, U4 shorts VIN to GND (section 5; item 32). Section 7 re-run: 54 violations, 13 errors, 0 unconnected, 56 parity. An interim review of this board quoted 56 violations from a run without the project's library tables; that figure was the run's, not the board's (section 7). Items 1, 3, 4, 5, 13, 23, 24, 25, 29 and 30 updated; items 31 to 37 opened |
