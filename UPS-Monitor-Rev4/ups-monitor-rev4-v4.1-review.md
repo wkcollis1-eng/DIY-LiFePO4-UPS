@@ -347,6 +347,9 @@ polls.
 
 ## 5. Bench test plan
 
+The step-by-step, printable version of this plan, with every expected log line checked
+against the V4.1 firmware, is `ups-monitor-rev4-bench-procedure.md`.
+
 **Before any test:**
 - **Logs.** `logger: baud_rate: 0`, so logs come over the network only: `esphome logs
   ups-monitor-rev4.yaml` or the HA device log.
