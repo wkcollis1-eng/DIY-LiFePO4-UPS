@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2026-11-15] — 2026-11-15
 
+### Added
+- **UPS Monitor Rev 4 bench commissioning procedure** (`UPS-Monitor-Rev4/ups-monitor-rev4-bench-procedure.md`), for firmware V4.1. Eleven tests (T1 to T11) with setup, steps, record blanks and pass/fail, written to be printed. The review's bench plan, expanded:
+  - It names the rig: a bench supply as the battery, a separate PSU_SENSE supply, a survival blocker and a UART tap on GPIO21.
+  - It names a bench-only build, which compiles clean on ESPHome 2026.10.2, with UART logging and an INA260 power-down button for a negative test of the stale-read rule.
+  - Each expected log line says where it can be seen. Boot-time and survival-wake lines never reach the network log, because the API does not replay earlier lines.
+  - All 88 expected lines were checked mechanically against the V4.1 format strings, with the substitutions resolved.
+
 ### Changed
 - **UPS Monitor Rev 4 firmware V4.1** (`UPS-Monitor-Rev4/ups-monitor-rev4.yaml`), from a review of V4.0 against design doc section 8. Still never flashed. No substitution value from V4.0 changed. The report is `UPS-Monitor-Rev4/ups-monitor-rev4-v4.1-review.md`.
   - **Behaviour fixes:**
