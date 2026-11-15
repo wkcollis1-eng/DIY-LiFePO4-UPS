@@ -1,5 +1,5 @@
 # ============================================================================
-# UPS Monitor REV 4 BOARD — firmware V4.0 (2026-11-09) — NOT YET BENCH-TESTED
+# UPS Monitor REV 4 BOARD — firmware V4.1 (2026-11-15) — NOT YET BENCH-TESTED
 # ============================================================================
 # Derived from UPS-Monitor/ups-monitor.yaml V1.20 (the deployed Rev 1 firmware,
 # which is unchanged). Requirements: UPS-Monitor-Rev4/ups-monitor-rev4-design.md
@@ -35,6 +35,43 @@
 #   (f) Alerts (alert only, none drives GPIO5): MODEM_OFF readback fault, PSU
 #       running but bus not fed, PSU sense lost. Counters: Modem Shed Count,
 #       Shed Hold Lost Count (the field instrument for design-doc open item 7).
+#
+# What V4.1 changes against V4.0 (review of 2026-11-15; search "REV 4.1 [F" for
+# every site; report: UPS-Monitor-Rev4/ups-monitor-rev4-v4.1-review.md):
+#   [F01] Priority -100 re-anchors a mid-outage reboot on the debounced PSU-sense
+#         mains state, the signal on_battery uses. V4.0 still tested the bus
+#         against 13.15 V, so a reboot early in an outage, with the bus above
+#         13.15 V, counted a new outage and zeroed the restored Ah/Wh.
+#   [F02] A shed read is valid only if the INA260 reports a NEW conversion
+#         (Mask/Enable CVRF) and both I2C transfers return OK. Design doc section
+#         8 asks for "fresh from this poll"; V4.0 could not tell a frozen register.
+#         New: substitution shed_require_cvrf, counter "Shed Path Stale Reads".
+#   [F03] A NON-timer boot with the survival flag set leaves survival sleep (new
+#         exit reason 4) instead of re-shedding on one sample; the supervisor
+#         re-earns the shed, as design doc section 5 says a reboot during a shed
+#         does.
+#   [F04] "Modem Shed Ineffective": shed latched while the modem's load is still
+#         on the bus (Q1 path broken). Alert only.
+#   [F05] "PSU Decay To Threshold": seconds from the INA260 load step to the first
+#         PSU-sense poll below mains_present_v. Field instrument for open item 6.
+#   [F06] Pack current read at every survival exit test, logged and kept in NVS
+#         ("Survival Exit Test Current"). Optional gate, OFF by default
+#         (survival_exit5_require_charge), that makes exit reason 5 also need a
+#         charging pack: design doc 8.1 deviation 1 without the unmeasured rest V.
+#   [F07] The unused INA260 power-register channel is removed: one I2C read and
+#         one throttle_average scheduler item per second, consumed by nothing.
+#   [F08] Onset detector and both capture scripts: buffers pre-zeroed and I2C
+#         results checked. A failed current read after a good voltage read reused
+#         the voltage bytes as the current (13.5 V read back as +13.5 A).
+#   [F09] Comments corrected where V4.0 no longer matched the code or the
+#         ESPHome 2026.10.2 / ESP-IDF 5.5.6 source (ADC never returns NaN;
+#         gpio_config does not log at INFO; which call holds GPIO5; reason codes;
+#         on_battery / fully-charged exclusivity; plausibility delay sizing).
+#   [F10] LVD Imminent tests 100 mV above shed_voltage (was the BP-65's
+#         lvd_voltage). Same 11.90 V today; stays in step when the shed moves.
+#   [F11] Every value inherited from the previous pack is listed with a TODO and
+#         the measurement that replaces it. No substitution value from V4.0 was
+#         changed. F01, F02 and F03 change behaviour; the rest add or annotate.
 #
 # PLACEHOLDERS - not measured, set in the "REV 4" substitutions block: the divider
 # ratio, the mains threshold, the mains debounce (the HDR output decay is
@@ -91,6 +128,12 @@
 #                             NOT shared with deep_sleep. Recovery is timer-wake (§-150)
 #                             and the run_duration watchdog, neither of which uses GPIO3.
 #   GPIO20 (D7) — now SPARE (was the breadboard ALERT pin; left unconnected on PCB)
+#   REV 4.1 [F09]: on the Rev 4 board (2026-11-12 save) TB2 is a 4-pole screw
+#   terminal: pad 1 +3V3, pad 2 DQ, pad 3 GND, pad 4 PSU_SENSE (design doc 3, item 1;
+#   meter it before connecting). R8 4.7k has a footprint but is DNP: the sensor in
+#   service carries its own pull-up (item 27).
+#   REV 4.1 [F09]: on Rev 4 the ALERT pull-up is R1 10k (design doc 4.6), not R2.
+#   GPIO4 = PSU_ADC and GPIO5 = MODEM_OFF (design doc 4.7) are in the REV 4 notes.
 #
 # Power: TB1 (BATTERY +/-) → F1 (5x20 mm 1A slow-blow) → C4 47uF / C5 0.1uF →
 #        D24V7F3 VIN; VOUT (3.3 V) → 3V3 rail (XIAO 3V3, INA VCC) with C1 10uF +
@@ -421,6 +464,28 @@ substitutions:
   friendly_name: "UPS Monitor Rev 4"
   device_description: "12V LiFePO4 modem UPS, Rev 4 board — INA260 + DS18B20 + PSU sense + modem shed"
 
+  # --- REV 4.1 [F11] — values inherited from the PREVIOUS pack / Rev 1 system --
+  # TODO(open item 14): none of these was measured on the Cyclenbatt 10 Ah pack at
+  # the 13.6 V float. Each stays as it is until this pack's first coulomb-counted
+  # discharge to the shed, logged at 5 s, gives its replacement:
+  #   validated_capacity_ah 4.18   -> Ah Delivered (This Outage) at the MODEM SHED
+  #                                   line. Nameplate is 10 Ah [S], so Runtime
+  #                                   Remaining probably reads low until then [I].
+  #   float_voltage 13.30          -> only seeds g_onset_float_v; set to the bus at
+  #                                   float on this PSU (13.571-13.587 V [D]).
+  #   on_battery_threshold_v 13.15 -> after [F01], used only by the voltage gate of
+  #                                   Battery Fully Charged; check it against the
+  #                                   measured float.
+  #   settling/plateau/knee_min_v  -> phase boundaries on that discharge's V curve.
+  #   knee/cliff_slope_threshold   -> the EMA slope in that discharge's knee/cliff.
+  #   warning/critical_voltage     -> no host to shut down (design doc 8): alerts.
+  #   onset_float_v_min 13.15      -> the at-rest gate of the onset capture.
+  #   survival_entry_current_lo/hi -> the board's post-shed draw (about -35 mA [D])
+  #                                   and its WiFi peaks, from the shed test log.
+  #   survival_exit_v 13.0         -> the shed pack's resting voltage over 1 h.
+  #   shed_voltage 11.80           -> that discharge, and the XB7's lowest input.
+  # The Ri literals (20-300 mOhm band, -0.8 A arm, 0.20 A rest) sit in lambdas.
+
   # --- Battery & system parameters (INA260 coulomb-counted, May 2026) -------
   validated_capacity_ah:    "4.18"   # Ah usable at 13.3V float, 14.9W load.
                                      # V1.17: load is now 26.8 W [M 2026-08-29];
@@ -446,6 +511,8 @@ substitutions:
   warning_voltage:          "12.40"  # HA first-warning notification
   critical_voltage:         "12.20"  # Software-controlled HA Green shutdown
   lvd_voltage:              "11.80"  # BP-65 hardware disconnect (Setting 7)
+                                     # REV 4.1 [F10]: no longer referenced; no BP-65
+                                     # here. LVD Imminent now uses shed_voltage.
 
   # --- Discharge phase boundary voltages (May 2026 characterisation) --------
   settling_min_v:           "13.00"  # Above → settling  (OCV relaxation, ~5 min)
@@ -609,6 +676,22 @@ substitutions:
                                      # lowest typical draw, 0.98 A / 2 [D, doc 1.7].
   plausibility_alert_delay: "60s"    # both plausibility alerts must hold this long.
                                      # Must also exceed the HDR decay (open item 6).
+                                     # REV 4.1 [F09]: precisely, the decay to
+                                     # mains_present_v PLUS mains_debounce_polls s:
+                                     # "PSU Running Bus Not Fed" sees the outage's
+                                     # discharge while mains is still debounced
+                                     # present. Same bound for Modem Shed Ineffective.
+  # REV 4.1 [F02]: true = a shed read also needs CVRF (INA260 Mask/Enable bit 3)
+  # set, i.e. a conversion finished since the previous poll. false = V4.0
+  # behaviour. Either way stale reads are counted ("Shed Path Stale Reads"). Bench:
+  # that counter stays 0 through the shed test (review bench plan, test 5).
+  shed_require_cvrf:        "true"
+  # REV 4.1 [F06]: true = exit reason 5 (bus >= survival_exit_v twice, PSU sense
+  # absent) also needs the pack CHARGING: I >= ac_return_current_a at the exit
+  # test. false = V4.0 behaviour (default). Turn on once the bench has shown the
+  # exit-test current of a wire-off recovery (review bench test 7), and before
+  # service if a shed pack is seen resting at or above survival_exit_v (item 14).
+  survival_exit5_require_charge: "false"
 
 # ============================================================================
 esphome:
@@ -617,7 +700,7 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.ups-monitor-rev4"
-    version: "4.0"
+    version: "4.1"
   on_boot:
     # ── Priority 900: REV 4 — GPIO5 / MODEM_OFF, decided on the wake cause ──
     # Runs before everything else in this file, including the NVS globals
@@ -717,14 +800,29 @@ esphome:
     - priority: -100
       then:
         - delay: 6s
+        # REV 4.1 [F01] — wait for the supervisor's first debounced mains decision
+        # (about mains_debounce_polls s after boot), then test the SAME signal
+        # on_battery uses. V4.0 kept the V1.x bus test, v < on_battery_threshold_v,
+        # but REV 4's on_battery comes from PSU sense: at the 13.6 V float a pack
+        # early in an outage can hold the bus above 13.15 V [I: design doc 8]. A
+        # reboot then skipped this re-anchor, on_press found outage_start_uptime
+        # == 0, counted a NEW outage and zeroed the restored Ah/Wh: the V1.12
+        # item-7 bug, re-opened. on_press fires on_battery's delayed_on (10 s)
+        # after g_mains_state reaches 0, so this still runs first.
+        - wait_until:
+            condition:
+              lambda: 'return id(g_mains_state) >= 0 || id(survival_mode_active);'
+            timeout: 60s
         - if:
             condition:
               lambda: |-
                 float v = id(ina260_voltage).state;
                 float i = id(ina260_current).state;
+                // REV 4.1 [F01]: debounced mains ABSENT replaces the V1.x
+                // v < ${on_battery_threshold_v}. v is still required to be valid.
                 return !id(survival_mode_active) &&
                        !isnan(v) && !isnan(i) &&
-                       v < ${on_battery_threshold_v} && i < -0.05f;
+                       id(g_mains_state) == 0 && i < -0.05f;
             then:
               - lambda: |-
                   // Re-anchor timing only if not already set this outage.
@@ -743,6 +841,8 @@ esphome:
     # Skipped entirely on normal boots — zero overhead in normal operation.
     #
     # Decision logic (fail toward EXIT, never toward re-sleep):
+    #   0. REV 4.1 [F03]: a NON-timer boot with the flag set exits at once
+    #      (reason 4, modem on); the supervisor must re-earn the shed.
     #   1. 20 ms settle (V1.13: the SOLE freshness wait — the ina260 platform's
     #      setup() reset + 0x0307 config ran at priority 600; a fresh AVG=4
     #      conversion needs ~5 ms), then register 0x02 read (1.25 mV LSB,
@@ -776,6 +876,27 @@ esphome:
             id(survival_should_sleep) = false;
             if (!id(survival_mode_active)) return;
 
+            // REV 4.1 [F03] — a NON-timer boot (power-on, brown-out, panic, task
+            // WDT, esp_restart) with the NVS survival flag still set. Priority 900
+            // has already driven GPIO5 LOW (modem on). V4.0 went on to re-sleep with
+            // the pad latched HIGH on ONE PSU sample and at most three bus reads:
+            // a re-shed without the supervisor, against design doc section 5 ("ESP
+            // reboots during a latched shed ... the modem comes back on ... sheds
+            // again after about 20 s of valid readings") and the RAM-only latch.
+            // Now: leave survival (reason 4), modem on, and let the supervisor
+            // re-earn the shed from live readings; survival re-arms through its
+            // normal entry if the pack is still low. Cost per such reset: about
+            // mains_debounce_polls + shed_valid_reads_n + 30 s of modem load.
+            if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER) {
+              id(survival_mode_active) = false;
+              id(outage_was_survival)  = false;   // as reason 2: don't strand the marker
+              id(survival_exit_reason) = 4;       // REV 4.1: 4 = reset during survival
+              ESP_LOGW("ups.survival",
+                "SURVIVAL EXIT (RESET DURING SURVIVAL, wake cause %d) | modem on; the shed must be re-earned",
+                (int) esp_sleep_get_wakeup_cause());
+              return;
+            }
+
             // V1.13: 20 ms freshness wait — now the SOLE pre-decision settle (the
             // priority-600 mode-restore + its 10 ms delay were removed; the platform
             // is the single configurator, AVG=4). A fresh AVG=4 averaged bus-voltage
@@ -807,6 +928,10 @@ esphome:
             //     ratio is applied here. NaN (a failed read) counts as mains ABSENT.
             float psu1 = id(psu_adc).sample() * ${psu_divider_ratio}f;
             bool mains1 = !isnan(psu1) && psu1 >= ${mains_present_v}f;
+            // REV 4.1 [F09]: in ESPHome 2026.10.2 ADCSensor::sample() never returns
+            // NaN on ESP32: failed conversions are skipped and an all-failed read
+            // returns raw 0 (Aggregator aggr_{0}), about 0 V = mains ABSENT. Same
+            // direction as the NaN rule above; the isnan() stays as a belt.
 
             // V1.9: register 0x02 (Bus Voltage) read via the I2CDevice helper.
             // write_read issues write-pointer -> repeated-START -> read as ONE
@@ -899,9 +1024,28 @@ esphome:
                 id(ina_raw).write_read(&vreg, 1, vd2, 2);   // vreg still in scope
                 uint16_t raw2 = ((uint16_t)vd2[0] << 8) | vd2[1];
                 float v2 = raw2 * 0.00125f;
+                // REV 4.1 [F06] — pack current at the exit test (0x01, signed, 1.25 mA
+                // LSB [S: SBOS656C]). A pack that is CHARGING (mains back, PSU_SENSE
+                // wire off) reads amps positive; a shed pack that only rests above
+                // survival_exit_v (design doc 8.1 deviation 1, open item 14) reads
+                // the board's own draw, tens of mA negative. Kept in NVS for every
+                // exit test, because this log line is never seen (no network).
+                uint8_t ireg = 0x01; uint8_t ib2[2] = {0, 0};
+                bool i2_ok = (id(ina_raw).write_read(&ireg, 1, ib2, 2) == i2c::ERROR_OK);
+                float i2 = i2_ok ? (int16_t)(((uint16_t)ib2[0] << 8) | ib2[1]) * 0.00125f : NAN;
+                id(survival_exit_test_i) = i2;
                 float psu2 = id(psu_adc).sample() * ${psu_divider_ratio}f;
                 bool rec_psu = mains1 && !isnan(psu2) && psu2 >= ${mains_present_v}f;
                 bool rec_v   = (v1 >= ${survival_exit_v}f) && (v2 >= ${survival_exit_v}f);
+                // REV 4.1 [F06]: optional (survival_exit5_require_charge, default
+                // false = V4.0): reason 5 also needs I >= ac_return_current_a.
+                if (${survival_exit5_require_charge} && !rec_psu && rec_v &&
+                    !(!isnan(i2) && i2 >= ${ac_return_current_a}f)) {
+                  ESP_LOGW("ups.survival",
+                    "Reason-5 exit refused: bus %.3f / %.3f V >= ${survival_exit_v} V but I=%.4f A is not charging (resting pack?)",
+                    v1, v2, i2);
+                  rec_v = false;
+                }
                 if (rec_psu || rec_v) {
                     id(survival_mode_active) = false;
                     id(survival_exit_reason) = 1;   // V1.14: 1 = genuine recovery (V >= 13.0 x2)
@@ -937,9 +1081,9 @@ esphome:
                         id(last_outage_start_v), id(last_outage_min_v));
                     }
                     ESP_LOGI("ups.survival",
-                      "SURVIVAL EXIT (%s) | V1=%.3fV V2=%.3fV | PSU %.2fV / %.2fV | recovery — normal boot, modem released",
+                      "SURVIVAL EXIT (%s) | V1=%.3fV V2=%.3fV | PSU %.2fV / %.2fV | I=%.4fA | recovery — normal boot, modem released",
                       rec_psu ? "mains on PSU sense" : "bus voltage only, PSU sense absent",
-                      v1, v2, psu1, psu2);
+                      v1, v2, psu1, psu2, i2);   // REV 4.1 [F06]: + I
                     // V1.20: say out loud that no recharge-step Ri will be captured
                     // for this outage, instead of leaving the sensor silently stale.
                     // This is CORRECT behaviour, not a defect to fix: the BP-65 cut the
@@ -957,8 +1101,8 @@ esphome:
                     return;
                 }
                 ESP_LOGW("ups.survival",
-                  "Exit re-read failed: V1=%.3f V2=%.3f PSU %.2f / %.2f — re-sleeping",
-                  v1, v2, psu1, psu2);
+                  "Exit re-read failed: V1=%.3f V2=%.3f PSU %.2f / %.2f I=%.4f — re-sleeping",
+                  v1, v2, psu1, psu2, i2);   // REV 4.1 [F06]: + I
             }
 
             // Below exit threshold (or glitch re-read) — re-enter sleep.
@@ -1081,7 +1225,7 @@ esphome:
       then:
         - logger.log:
             level: INFO
-            format: "UPS Monitor Rev 4 V4.0 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4, paired 5 s V/I blocks), DS18B20 on GPIO10, PSU sense on GPIO4, modem shed on GPIO5 (hold through survival sleep), timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri (windowed gate)"
+            format: "UPS Monitor Rev 4 V4.1 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4, paired 5 s V/I blocks), DS18B20 on GPIO10, PSU sense on GPIO4, modem shed on GPIO5 (hold through survival sleep), timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri (windowed gate)"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -1254,6 +1398,10 @@ i2c_device:
 # 1-Wire bus
 # DQ = GPIO10 (XIAO D10) → DS18B20 DQ on TB2 (3-pin JST-XH: 3V3 / DQ / GND)
 # DS18B20 module has built-in 4.7 kΩ pull-up — no external resistor required.
+# REV 4.1 [F09]: on the Rev 4 board (2026-11-12 save) TB2 is a 4-pole screw
+# terminal: pad 1 +3V3, pad 2 DQ, pad 3 GND, pad 4 PSU_SENSE (design doc 3, item 1;
+# meter it before connecting). R8 4.7k has a footprint but is DNP: the sensor in
+# service carries its own pull-up (item 27).
 # ----------------------------------------------------------------------------
 one_wire:
   - platform: gpio
@@ -1413,6 +1561,25 @@ globals:
     type: int
     initial_value: '0'
     restore_value: yes
+  # REV 4.1 [F02]: supervisor shed-path reads that found CVRF clear (no conversion
+  # since the previous poll). RAM only: a diagnostic, not worth an NVS write.
+  - id: g_shed_stale_reads
+    type: int
+    initial_value: '0'
+    restore_value: no
+  # REV 4.1 [F05]: millis() of the first INA260 load step after rest (onset
+  # detector); 0 = none pending. Consumed by the supervisor's first low PSU poll.
+  - id: g_step_ms
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+  # REV 4.1 [F06]: pack current (A, signed) at the last survival exit test. NVS:
+  # the exit runs with no network, so its log line is not seen. Written only at an
+  # exit test (rare). NAN until the first one; reset at survival entry.
+  - id: survival_exit_test_i
+    type: float
+    initial_value: 'NAN'
+    restore_value: yes
 
   # --- V1.14: INA260 stale-data watchdog (transient) -------------------------
   # Updated from the bus-voltage on_raw_value (1 Hz — fires ONLY when the
@@ -1568,6 +1735,9 @@ globals:
   # distinguishable only in logs that cannot be streamed mid-outage (baud_rate 0;
   # the AP is dead). 0 = none this episode, 1 = recovery (V >= 13.0 x2),
   # 2 = fail-safe (implausible read), 3 = max-cycle backstop. Reset to 0 at arm.
+  # REV 4.1 [F09]: REV 4 redefined 1 (PSU sense confirmed mains, twice) and added
+  # 5 (bus >= survival_exit_v twice, PSU sense absent); [F03] adds 4 (reset during
+  # survival: a non-timer boot with the flag set).
   - id: survival_exit_reason
     type: int
     initial_value: '0'
@@ -1694,6 +1864,9 @@ interval:
   #             modem load is gone); only debounced mains clears it.
   #             LIMIT: "valid" does not prove the conversion is new (CVRF is not
   #             read). A chip that answers with a frozen register would pass.
+  #             REV 4.1 [F02]: closed. CVRF (06h bit 3) is read before every shed
+  #             read; clear = INVALID (shed_require_cvrf), and I2C errors are
+  #             checked, not only the pre-zeroed buffer.
   #   3. PAD    the commanded level is written every poll; when it is LOW the
   #             hold is released every poll as well. Then the pad is read back
   #             (it is configured INPUT_OUTPUT). Two consecutive mismatches raise
@@ -1711,12 +1884,36 @@ interval:
 
           // 1. MAINS — direct sample, volts at the pin x divider ratio.
           float psu = id(psu_adc).sample() * ${psu_divider_ratio}f;
+          // REV 4.1 [F09]: sample() never returns NaN on ESPHome 2026.10.2 (see
+          // -150); a failed ADC reads about 0 V, which counts as absent the same way.
           if (!isnan(psu) && psu >= ${mains_present_v}f) {
             id(g_mains_lo_n) = 0;
             if (id(g_mains_hi_n) < 30000) id(g_mains_hi_n) += 1;
           } else {
             id(g_mains_hi_n) = 0;
             if (id(g_mains_lo_n) < 30000) id(g_mains_lo_n) += 1;
+          }
+          // REV 4.1 [F05] — open item 6 field instrument. The first poll below the
+          // threshold while mains is still debounced PRESENT is when the HDR output
+          // has decayed through mains_present_v. Timed from the INA260 load step the
+          // onset detector saw (g_step_ms): the ideal diode hands the bus to the
+          // pack once the PSU output sags below it [I]. Resolution is the 1 s poll
+          // plus the 0.2 s step debounce, so a decay under ~1.2 s is only bounded.
+          // Measurement only: nothing below reads it.
+          if (id(g_mains_state) == 1 && id(g_mains_lo_n) == 1) {
+            uint32_t now_ms = millis();
+            if (id(g_step_ms) != 0 && (now_ms - id(g_step_ms)) < 600000u) {
+              float s = (now_ms - id(g_step_ms)) / 1000.0f;
+              id(psu_decay_s).publish_state(s);
+              ESP_LOGI("ups.mains",
+                "PSU sense %.2f V < ${mains_present_v} V, %.1f s after the INA260 load step (HDR decay, open item 6)",
+                psu, s);
+            } else {
+              ESP_LOGI("ups.mains",
+                "PSU sense %.2f V < ${mains_present_v} V, no INA260 load step in the last 600 s (glitch, decay < step debounce, or decay > 600 s)",
+                psu);
+            }
+            id(g_step_ms) = 0;
           }
           if (id(g_mains_hi_n) >= ${mains_debounce_polls}) id(g_mains_state) = 1;
           if (id(g_mains_lo_n) >= ${mains_debounce_polls}) id(g_mains_state) = 0;
@@ -1731,11 +1928,32 @@ interval:
               ESP_LOGW("ups.shed", "MODEM RESTORED | mains present, PSU sense %.2f V (debounced)", psu);
             }
           } else if (id(g_mains_state) == 0 && !id(shed_latched)) {
+            // REV 4.1 [F02] — FRESH, per design doc section 8 ("fresh from this
+            // poll"). Mask/Enable (06h) bit 3, CVRF, "is set after all conversions,
+            // averaging, and multiplications are complete" and clears when 06h is
+            // read [S: TI SBOS656C, 8.6.5]. Nothing else reads 06h: not this file,
+            // not the ina260 platform (2026.10.2 source, update() reads 02h/01h/03h
+            // only). So CVRF = 1 means an AVG=4 conversion (~5 ms) finished since
+            // the previous poll. A powered-down or stalled chip still answers with
+            // its last result [S: SBOS656C 8.3.3, "the data from the last
+            // conversion remain available"], and now reads INVALID. Both transfers
+            // must also return i2c::ERROR_OK (V4.0 relied on the zeroed buffer).
+            uint8_t mreg = 0x06; uint8_t mb[2] = {0, 0};      // Mask/Enable (06h)
+            bool i2c_ok = (id(ina_raw).write_read(&mreg, 1, mb, 2) == i2c::ERROR_OK);
+            bool cvrf   = (mb[1] & 0x08) != 0;                // bit 3, low byte
             uint8_t reg = 0x02; uint8_t b[2] = {0, 0};
-            id(ina_raw).write_read(&reg, 1, b, 2);              // Bus Voltage (0x02)
+            i2c_ok = (id(ina_raw).write_read(&reg, 1, b, 2) == i2c::ERROR_OK) && i2c_ok;  // Bus Voltage (0x02)
             uint16_t vraw = ((uint16_t)b[0] << 8) | b[1];
             float v = vraw * 0.00125f;
-            bool valid = (vraw != 0x0000 && vraw != 0xFFFF &&
+            if (i2c_ok && !cvrf && id(g_shed_stale_reads) < 1000000000) {
+              id(g_shed_stale_reads) += 1;
+              if (id(g_shed_stale_reads) % 60 == 1)
+                ESP_LOGW("ups.shed",
+                  "Shed read STALE: INA260 CVRF clear, no conversion since the last poll | V=%.3f | count %d%s",
+                  v, id(g_shed_stale_reads), ${shed_require_cvrf} ? " | read rejected" : " | gate off, read used");
+            }
+            bool valid = (i2c_ok && (cvrf || !${shed_require_cvrf}) &&
+                          vraw != 0x0000 && vraw != 0xFFFF &&
                           v > ${shed_plausible_v_min}f && v < ${shed_plausible_v_max}f);
             if (valid && v <= ${shed_voltage}f) id(g_shed_low_n) += 1;
             else                                id(g_shed_low_n) = 0;
@@ -1994,11 +2212,19 @@ interval:
           if (id(g_onset_capturing))    return;     // capture owns the bus
 
           // Raw INA260 read -- same explicit-byte pattern as the survival path.
-          uint8_t reg; uint8_t b[2];
-          reg = 0x02; id(ina_raw).write_read(&reg, 1, b, 2);   // Bus Voltage (0x02)
+          // REV 4.1 [F08] — buffer pre-zeroed and both I2C results checked. Through
+          // V4.0, b[] was uninitialised and reused, and the result was ignored: a
+          // failed CURRENT read after a good voltage read left the voltage bytes in
+          // b[], so 13.5 V came back as +13.5 A (raw 10800 x 1.25 mA) [D]. A
+          // failed poll is now skipped, like the 0x0000 guard below. Success-path
+          // behaviour is unchanged.
+          uint8_t reg; uint8_t b[2] = {0, 0};
+          reg = 0x02; bool ok = (id(ina_raw).write_read(&reg, 1, b, 2) == i2c::ERROR_OK);  // Bus Voltage (0x02)
           uint16_t vraw = ((uint16_t)b[0] << 8) | b[1];
-          reg = 0x01; id(ina_raw).write_read(&reg, 1, b, 2);   // Current (0x01)
+          b[0] = 0; b[1] = 0;
+          reg = 0x01; ok = (id(ina_raw).write_read(&reg, 1, b, 2) == i2c::ERROR_OK) && ok;  // Current (0x01)
           int16_t  iraw = (int16_t)(((uint16_t)b[0] << 8) | b[1]);
+          if (!ok) return;                                     // REV 4.1 [F08]
           if (vraw == 0x0000 || vraw == 0xFFFF) return;        // bad-read / pre-first-conv guard
           float v = vraw * 0.00125f;                           // V, 1.25 mV LSB
           float i = iraw * 0.00125f;                           // A, 1.25 mA LSB, +chg/-dis
@@ -2037,6 +2263,7 @@ interval:
               if (id(g_onset_armed)) {
                 id(g_onset_armed)         = false;
                 id(g_onset_capturing)     = true;
+                id(g_step_ms)             = millis();   // REV 4.1 [F05]: rest->load instant
                 id(onset_capture).execute();
               }
               return;
@@ -2177,22 +2404,28 @@ sensor:
             // still unpaired means that update's current read failed.
             if (id(g_v_pending)) id(ina_unpaired_reads)++;
             id(g_v_pending) = true;
-    power:
-      # V1.16: renamed + internal. The INA260 POWER register computes an
-      # UNSIGNED product per internal conversion; near zero current it reports
-      # the rectified noise floor (0.07-0.40 W observed on this unit at float)
-      # instead of the true ~0.01 W. Same silicon-family behavior characterized
-      # on the bank monitor's INA228 (2026-07-17). "Battery Power" is now the
-      # signed V x I template below — same name, so HA entity id continuity holds.
-      name: "INA260 Power Register"
-      id: ina260_power
-      internal: true
-      unit_of_measurement: "W"
-      accuracy_decimals: 3
-      device_class: power
-      state_class: measurement
-      filters:
-        - throttle_average: 5s
+    # REV 4.1 [F07] — the power channel below is REMOVED (commented out, kept for
+    # its history). It was internal and nothing read ina260_power: Battery Power is
+    # the signed V x I template. Without it the platform's update() reads 02h and
+    # 01h only (2026.10.2 ina260.cpp skips 03h when power_sensor_ is null): one I2C
+    # transfer and one throttle_average scheduler interval fewer per second. The
+    # V-then-I order, and so the paired-block accumulator, is unchanged.
+    # power:
+    #   # V1.16: renamed + internal. The INA260 POWER register computes an
+    #   # UNSIGNED product per internal conversion; near zero current it reports
+    #   # the rectified noise floor (0.07-0.40 W observed on this unit at float)
+    #   # instead of the true ~0.01 W. Same silicon-family behavior characterized
+    #   # on the bank monitor's INA228 (2026-07-17). "Battery Power" is now the
+    #   # signed V x I template below — same name, so HA entity id continuity holds.
+    #   name: "INA260 Power Register"
+    #   id: ina260_power
+    #   internal: true
+    #   unit_of_measurement: "W"
+    #   accuracy_decimals: 3
+    #   device_class: power
+    #   state_class: measurement
+    #   filters:
+    #     - throttle_average: 5s
 
   # V1.20 — the HA-facing Battery Voltage / Battery Current. Published ONLY by the
   # paired-block accumulator on ina260_current_raw above; never polled.
@@ -2615,6 +2848,43 @@ sensor:
     lambda: 'return id(shed_hold_lost_count);'
     update_interval: 60s
 
+  # REV 4.1 [F02] — supervisor shed-path reads with CVRF clear. Expected 0. Any
+  # count means the INA260 answered without a new conversion: a power-down left
+  # behind, a stalled chip, or an unexpected 06h reader. RAM: resets on reboot.
+  - platform: template
+    name: "Shed Path Stale Reads"
+    id: shed_path_stale_reads_sensor
+    accuracy_decimals: 0
+    icon: "mdi:counter"
+    state_class: total_increasing
+    entity_category: diagnostic
+    lambda: 'return (float) id(g_shed_stale_reads);'
+    update_interval: 60s
+
+  # REV 4.1 [F05] — open item 6: seconds from the INA260 load step to the first
+  # PSU-sense poll below mains_present_v. Published once per outage start.
+  - platform: template
+    name: "PSU Decay To Threshold"
+    id: psu_decay_s
+    unit_of_measurement: "s"
+    accuracy_decimals: 1
+    icon: "mdi:timer-sand"
+    entity_category: diagnostic
+    update_interval: never
+
+  # REV 4.1 [F06] — pack current at the last survival exit test (NVS). Amps
+  # positive = charging (mains was back); tens of mA negative = a resting pack
+  # that crossed survival_exit_v (design doc 8.1 deviation 1). NAN until the first.
+  - platform: template
+    name: "Survival Exit Test Current"
+    id: survival_exit_test_i_sensor
+    unit_of_measurement: "A"
+    accuracy_decimals: 3
+    device_class: current
+    entity_category: diagnostic
+    lambda: 'return id(survival_exit_test_i);'
+    update_interval: 60s
+
   # --------------------------------------------------------------------------
   # V1.14 — Survival-event capture sensors (doc S9.2, S13).
   # Populated only after a survival episode; NaN/zero-guarded until then.
@@ -2836,6 +3106,7 @@ text_sensor:
         case 3:  return std::string("Max cycles");    // 15-day backstop
         // REV 4: 1 = PSU sense confirmed mains; 5 = bus >= exit x2 with PSU
         // sense still reading absent (check the PSU_SENSE wire).
+        case 4:  return std::string("Reset during survival");  // REV 4.1 [F03]
         case 5:  return std::string("Recovery, PSU sense absent");
         default: return std::string("None");          // no episode / armed
       }
@@ -2919,10 +3190,13 @@ binary_sensor:
             // double-increment total_outage_count, undoing the -100 preservation.
             // TIMING COUPLING: relies on -100 (delay 6 s) running before this on_press
             // (on_battery delayed_on 10 s) on a reboot — keep delayed_on > the -100 delay.
+            // REV 4.1 [F01]: -100 now waits for the supervisor's first mains decision
+            // and runs in the loop that sets g_mains_state = 0; on_battery's
+            // delayed_on still puts this on_press 10 s after it.
             if (id(outage_start_uptime) != 0) {
               ESP_LOGW("ups",
                 "on_press suppressed — already in an outage (start=%u); counters preserved",
-                id(outage_start_uptime));
+                (unsigned) id(outage_start_uptime));   // REV 4.1 [F09]: uint32_t is long on riscv32 (-Wformat)
               return;
             }
             id(outage_start_uptime)  = (uint32_t)id(device_uptime).state;
@@ -3052,7 +3326,10 @@ binary_sensor:
     device_class: problem
     lambda: |-
       // Within 100 mV of BP-65 hardware disconnect (11.80 V, Setting 7)
-      return id(ina260_voltage).state < (${lvd_voltage} + 0.10f) &&
+      // REV 4.1 [F10]: no BP-65 here; the disconnect is this node's own shed, so
+      // test 100 mV above shed_voltage (11.90 V, as before). It is the last alert
+      // HA can see: a working shed takes the network with it.
+      return id(ina260_voltage).state < (${shed_voltage} + 0.10f) &&
              id(ina260_current).state < -0.10f;
 
   # --------------------------------------------------------------------------
@@ -3128,6 +3405,7 @@ binary_sensor:
   # line is held high in hardware; the internal INPUT_PULLUP below is redundant
   # (kept as belt-and-suspenders, harmless). Adafruit #4226 has no pull-up of its
   # own — R2 supplies it.
+  # REV 4.1 [F09]: on the Rev 4 board this pull-up is R1 10k (design doc 4.6).
   #
   # V1.11 — GPIO3 is now a SINGLE-OWNER passive input. Event-wake is backed out, so
   # this pin is no longer the deep_sleep wakeup_pin and allow_other_uses is REMOVED
@@ -3231,6 +3509,9 @@ binary_sensor:
       // 13.179-13.193 V [M, n=5] -- load bursts at float, not a charge change.
       // The VOLTAGE half stays strict, so exclusivity with on_battery (V below
       // the same threshold) still holds by construction.
+      // REV 4.1 [F09]: no longer true. REV 4's on_battery comes from PSU sense,
+      // not from this threshold, so both can be ON at once: for example with the
+      // PSU_SENSE wire off on mains, which "PSU Sense Lost" reports.
       if (!(id(ina260_voltage).state > ${on_battery_threshold_v}f)) return false;
       float i_lim = id(battery_fully_charged).state ? ${fully_charged_hold_i_a}f : 0.10f;
       return fabs(id(ina260_current).state) < i_lim;
@@ -3289,6 +3570,25 @@ binary_sensor:
     id: modem_shed
     icon: "mdi:router-network-wireless"
     lambda: 'return id(shed_latched);'
+
+  # REV 4.1 [F04] — the Q1-path alarm. "Modem Shed" ON reaches HA only if the
+  # network outlives the shed, but its ON edge can also race out in the moment
+  # before a WORKING shed drops the AP, so it is a noisy alert source. This one
+  # needs the shed latched AND the modem's load still on the bus (fresh block
+  # current below survival_entry_current_lo, the bound that also blocks survival
+  # entry) for plausibility_alert_delay: Q1/R2 open, EN not wired to U4, or Q2
+  # stuck on. Alert only; it does not drive GPIO5.
+  - platform: template
+    name: "Modem Shed Ineffective"
+    id: modem_shed_ineffective
+    device_class: problem
+    lambda: |-
+      if (!id(shed_latched) || id(last_ina_publish_ms) == 0 ||
+          (millis() - id(last_ina_publish_ms)) > 15000u) return false;
+      float i = id(ina260_current).state;
+      return !isnan(i) && i < ${survival_entry_current_lo}f;
+    filters:
+      - delayed_on: ${plausibility_alert_delay}
 
   # Pad read back differs from the commanded level on 2 consecutive polls. This
   # includes MODEM_OFF HIGH with mains present (open item 16).
@@ -3428,6 +3728,7 @@ binary_sensor:
             id(survival_min_wake_v)   = 0.0f;
             id(survival_last_wake_v)  = 0.0f;
             id(survival_exit_reason)  = 0;
+            id(survival_exit_test_i)  = NAN;   // REV 4.1 [F06]: fresh per episode
             id(last_outage_ah)       = id(ah_delivered_outage).state;
             id(last_outage_wh)       = id(wh_delivered_outage).state;
             id(last_recharge_peak_a) = id(recharge_peak_a);
@@ -3538,6 +3839,7 @@ button:
           id(survival_min_wake_v)      = 0.0f;
           id(survival_last_wake_v)     = 0.0f;
           id(survival_exit_reason)     = 0;
+          id(survival_exit_test_i)     = NAN;   // REV 4.1 [F06]
           ESP_LOGI("ups", "Last outage data cleared manually");
 
 
@@ -3563,6 +3865,22 @@ script:
   # turn the modem off. gpio_config() logs one INFO line per call, which is why
   # the supervisor calls this only on a change.
   # Synchronous (no delay), so execute() has finished when it returns.
+  # REV 4.1 [F09]: gpio_config() logs at ESP_LOGD (ESP-IDF 5.5.6 gpio.c) and this
+  # build sets CONFIG_LOG_DEFAULT_LEVEL=1 (errors only), so it logs nothing here.
+  # Calling it only on a change is still right: fewer pad reconfigurations.
+  # REV 4.1 [F09] — which call holds GPIO5 (ESP-IDF 5.5.6 source, ESP32-C3):
+  # GPIO0-5 are VDD3P3_RTC pads; the digital ones are GPIO6-21
+  # (SOC_GPIO_VALID_DIGITAL_IO_PAD_MASK 0x3FFFC0). gpio_hold_en(GPIO_NUM_5) ->
+  # gpio_ll_hold_en sets bit 5 of RTC_CNTL_PAD_HOLD_REG, an RTC-domain latch: that
+  # bit is what holds this pad. gpio_deep_sleep_hold_en() sets the digital pads'
+  # autohold only, and makes deep-sleep entry isolate every digital pad that is not
+  # individually held (sleep_gpio.c, esp_sleep_isolate_digital_gpio): I2C, 1-Wire
+  # and the spare pins sit input-off, output-off, no pulls, through the sleep.
+  # After wake "the digital GPIO state can be changed freely" (gpio.h), so I2C
+  # works at -150. Both calls stay (design doc 8; hard invariant 4). On a timer
+  # wake cpu_start.c releases holds only on GPIO0-5 pads enabled as deep-sleep
+  # WAKE pins (esp_deep_sleep_wakeup_io_reset); GPIO5 is not one, so the app does
+  # not drop this hold. What the ROM does to it is not in source: open item 7.
   # --------------------------------------------------------------------------
   - id: modem_off_set
     mode: single
@@ -3597,12 +3915,14 @@ script:
           count: ${onset_sample_count}
           then:
             - lambda: |-
-                uint8_t reg; uint8_t b[2];
-                reg = 0x02; id(ina_raw).write_read(&reg, 1, b, 2);
+                // REV 4.1 [F08] — pre-zeroed, results checked (see the detector).
+                uint8_t reg; uint8_t b[2] = {0, 0};
+                reg = 0x02; bool ok = (id(ina_raw).write_read(&reg, 1, b, 2) == i2c::ERROR_OK);
                 uint16_t vraw = ((uint16_t)b[0] << 8) | b[1];
-                reg = 0x01; id(ina_raw).write_read(&reg, 1, b, 2);
+                b[0] = 0; b[1] = 0;
+                reg = 0x01; ok = (id(ina_raw).write_read(&reg, 1, b, 2) == i2c::ERROR_OK) && ok;
                 int16_t  iraw = (int16_t)(((uint16_t)b[0] << 8) | b[1]);
-                if (vraw != 0x0000 && vraw != 0xFFFF) {
+                if (ok && vraw != 0x0000 && vraw != 0xFFFF) {
                   id(g_cap_vsum) += vraw * 0.00125f;
                   id(g_cap_isum) += fabs(iraw * 0.00125f);   // discharge magnitude
                   id(g_cap_n)++;
@@ -3640,12 +3960,14 @@ script:
           count: ${onset_sample_count}
           then:
             - lambda: |-
-                uint8_t reg; uint8_t b[2];
-                reg = 0x02; id(ina_raw).write_read(&reg, 1, b, 2);
+                // REV 4.1 [F08] — pre-zeroed, results checked (see the detector).
+                uint8_t reg; uint8_t b[2] = {0, 0};
+                reg = 0x02; bool ok = (id(ina_raw).write_read(&reg, 1, b, 2) == i2c::ERROR_OK);
                 uint16_t vraw = ((uint16_t)b[0] << 8) | b[1];
-                reg = 0x01; id(ina_raw).write_read(&reg, 1, b, 2);
+                b[0] = 0; b[1] = 0;
+                reg = 0x01; ok = (id(ina_raw).write_read(&reg, 1, b, 2) == i2c::ERROR_OK) && ok;
                 int16_t  iraw = (int16_t)(((uint16_t)b[0] << 8) | b[1]);
-                if (vraw != 0x0000 && vraw != 0xFFFF) {
+                if (ok && vraw != 0x0000 && vraw != 0xFFFF) {
                   id(g_cap_vsum) += vraw * 0.00125f;
                   id(g_cap_isum) += iraw * 0.00125f;           // SIGNED (charge +)
                   id(g_cap_n)++;

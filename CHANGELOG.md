@@ -17,6 +17,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-11-15] — 2026-11-15
+
+### Changed
+- **UPS Monitor Rev 4 firmware V4.1** (`UPS-Monitor-Rev4/ups-monitor-rev4.yaml`), from a review of V4.0 against design doc section 8. Still never flashed. No substitution value from V4.0 changed. The report is `UPS-Monitor-Rev4/ups-monitor-rev4-v4.1-review.md`.
+  - **Behaviour fixes:**
+    - Priority -100 now re-anchors a mid-outage reboot on the debounced PSU-sense mains state. V4.0 still tested the bus against 13.15 V, so a reboot early in an outage counted a new outage and zeroed the restored Ah/Wh [F01].
+    - A shed read now also needs the INA260's conversion-ready flag (CVRF) and a clean I2C result, which is section 8's "fresh from this poll" [F02].
+    - A non-timer boot with the survival flag set now leaves survival sleep (exit reason 4) and lets the supervisor re-earn the shed. V4.0 re-shed on one sample [F03].
+  - **New diagnostics:** Modem Shed Ineffective [F04]; PSU Decay To Threshold, for open item 6 [F05]; Survival Exit Test Current [F06]; Shed Path Stale Reads [F02].
+  - **Optional gate, off by default:** exit reason 5 can be made to require a charging pack, which closes 8.1 deviation 1 without a measured rest voltage [F06].
+  - **Robustness and housekeeping:**
+    - The unused INA260 power channel is removed [F07].
+    - The onset detector and capture scripts check their I2C results. A failed current read could reuse the voltage bytes, so 13.5 V read back as +13.5 A [F08].
+    - LVD Imminent follows shed_voltage [F10].
+    - Comments are corrected against the ESPHome 2026.10.2 and ESP-IDF 5.5.6 source, including the TB2, R8 and R1 notes open item 28 asks for [F09].
+    - The values inherited from the previous pack are listed with TODOs [F11].
+  - **Verified** on ESPHome 2026.10.2 / ESP-IDF 5.5.6:
+    - config valid; the real compile succeeds, with 0 errors and `main.cpp` rebuilt;
+    - `-Wall -Wextra` gives 0 warnings (V4.0 had one inherited `-Wformat`);
+    - host-side tests of the generated supervisor and -150 lambdas: 30 checks pass.
+  - **Not verified:** anything on hardware (open items 7, 15 to 17 and 28).
+
+---
+
 ## [2026-11-09] — 2026-11-09
 
 ### Added
