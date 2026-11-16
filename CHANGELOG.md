@@ -40,6 +40,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     - bench Build B also compiles.
   - **Not verified:** anything on hardware.
 - **Rev 4 bench procedure** now names V4.2. The only expected line that changes is the boot line's version.
+- **UPS Monitor Rev 4 firmware V4.3** (`UPS-Monitor-Rev4/ups-monitor-rev4.yaml`), from a validation against the component datasheets and the ESPHome 2026.10.2 documentation (`UPS-Monitor-Rev4/ups-monitor-rev4-v4.3-review.md`). Three non-comment lines differ from V4.2 [M]. No pin, threshold, interval, filter or UPS logic changed. Still never flashed.
+  - **[C1] `use_address: 10.0.0.232` removed.** That is the deployed Rev 1 board's address, and both files name the same API key secret. So `esphome logs`, `esphome run` and the dashboard, given the Rev 4 file, targeted the Rev 1 board. The tooling now uses `ups-monitor-rev4.local`. No address is reserved for the Rev 4 board yet, because it has not joined the network (the owner, 2026-11-16).
+  - **[C2] "Battery Fully Charged":** `device_class: battery_charging` removed. Home Assistant shows that class as "Charging" when ON, and this sensor is ON for a full, idle pack. Name and entity ID unchanged.
+  - **[C3] Two comments corrected:** the mDNS host name and the entity ID prefix were the Rev 1 board's.
+  - **Checked, no change:**
+    - the ESP32-C3 pins against datasheet v1.2 (strapping pins, pad power domains, power-up glitches, ADC range);
+    - the INA260 address, bus speed, LSBs and CVRF bit against TI SBOS656C;
+    - the DS18B20 85 °C filter against its power-on reset value.
+  - **Could not be validated:** the battery thresholds. No cell or pack datasheet exists, so they stay placeholders (open item 14).
+  - **Verified** on ESPHome 2026.10.2 / ESP-IDF 5.5.6:
+    - config valid with 0 warnings;
+    - full compile and link, 0 errors and 0 warnings; flash 985,656 B, RAM 116,322 B [M] (V4.2: 985,700 B and 116,322 B [M]);
+    - bench Build B also compiles.
+  - **Not verified:** anything on hardware.
+- **Rev 4 bench procedure** now names V4.3 and points to the added checks in section 5 of the V4.3 review. The only expected line that changes is the boot line's version.
 
 ---
 

@@ -1,10 +1,17 @@
 # UPS Monitor Rev 4: bench commissioning procedure
 
-**Firmware:** V4.2 (2026-11-16), ESPHome 2026.10.2. Written for V4.1 (commit 8cafe2e). V4.2
+**Firmware:** V4.3 (2026-11-16), ESPHome 2026.10.2. Written for V4.1 (commit 8cafe2e). V4.2
 changes no test, step or expected line here except the version in the boot line and in the HA
 device info, whose model field now reads `esp32-c3` [S: a diff of every non-comment line, V4.1
 to V4.2]. One handling change: OTA now needs the API encryption key, which the dashboard and CLI
 already have from `secrets.yaml` (`ups-monitor-rev4-v4.2-review.md`).
+
+V4.3 changes no test or step either. The boot line reads V4.3. The file no longer carries the
+Rev 1 board's `use_address`, so `esphome logs`, `esphome run` and the dashboard reach this
+board at `ups-monitor-rev4.local` [S: a diff of every non-comment line, V4.2 to V4.3]. The
+added checks (address, I2C scan, ADC points, recharge records, OTA, restart, Wi-Fi loss and
+recovery) are in section 5 of `ups-monitor-rev4-v4.3-review.md`. Do its address check before
+the first `esphome logs` or OTA.
 
 **Requirements:** design doc revision 9, section 8. The findings (F01 to F19) are in
 `ups-monitor-rev4-v4.1-review.md`.
@@ -72,11 +79,11 @@ already have from `secrets.yaml` (`ups-monitor-rev4-v4.2-review.md`).
 
 ## 2. Builds and flashing
 
-- **Build P** is `ups-monitor-rev4.yaml` V4.2 as committed. Its serial log is off
+- **Build P** is `ups-monitor-rev4.yaml` V4.3 as committed. Its serial log is off
   (`baud_rate: 0`).
 - **Build B** is Build P with the two bench-only edits in Appendix A: the logger on UART0 at
   115200, and a "BENCH INA260 Power-Down" button. It compiled clean on ESPHome 2026.10.2
-  (0 errors), from V4.1 on 2026-11-15 and from V4.2 on 2026-11-16. **Never ship it.**
+  (0 errors), from V4.1 on 2026-11-15 and from V4.2 and V4.3 on 2026-11-16. **Never ship it.**
 - **First flash.** Nothing ESPHome is on the XIAO yet, so the first flash must be over USB.
   Take the XIAO out of its socket, or leave BUS unpowered: the board feeds the XIAO's 3V3
   from U3, and USB would set the XIAO's own regulator against it [I]. Use OTA after that.
@@ -110,7 +117,7 @@ already have from `secrets.yaml` (`ups-monitor-rev4-v4.2-review.md`).
 | ☐ | < 1 s | UART | `[I][ups.survival:…]: Boot wake cause = 0 (cold/reset)` |
 | ☐ | < 1 s | UART | `[I][deep_sleep:…]: Scheduling in 60000 ms` |
 | ☐ | < 1 s | UART | `[I][ups.watchdog:…]: INA usable (13.0… V) — normal/survival logic in control; run_duration watchdog disarmed` |
-| ☐ | < 1 s | UART | `[I][main:…]: UPS Monitor Rev 4 V4.2 boot complete -- INA260 @ 0x40 …` |
+| ☐ | < 1 s | UART | `[I][main:…]: UPS Monitor Rev 4 V4.3 boot complete -- INA260 @ 0x40 …` |
 | ☐ | Wi-Fi up | UART | `[I][ups.watchdog:…]: Normal operation confirmed by WiFi association — run_duration watchdog disarmed` |
 
 **Must not appear:** `INA UNUSABLE`, `SURVIVAL`, `MODEM SHED`, `Booted during outage`.
@@ -348,7 +355,7 @@ order:
 | 3 | `[I][ups.survival:…]: Wake #N \| V1=1…V \| PSU=0.00V (mains absent)`. N runs 0, 1, 2, … |
 | 4 | `[I][ups.survival:…]: V=1…V < 13.0V, mains absent — scheduling re-sleep (cycle N+1)` |
 | 5 | `[I][ups.survival:…]: Re-entering survival sleep \| INA260 powered down (~2 µA) \| timer-wake 120s` |
-| 6 | `[I][main:…]: UPS Monitor Rev 4 V4.2 boot complete -- …` |
+| 6 | `[I][main:…]: UPS Monitor Rev 4 V4.3 boot complete -- …` |
 | 7 | `[I][deep_sleep:…]: Beginning sleep`, then `[I][deep_sleep:…]: Sleeping for 120000000us` |
 
 Tick as each wake completes: Wake 1 ☐  2 ☐  3 ☐  4 ☐  5 ☐
@@ -372,7 +379,7 @@ inflates this.
 | ☐ | `[I][ups.survival:…]: SURVIVAL EXIT (mains on PSU sense) \| V1=…V V2=…V \| PSU 13.6…V / 13.6…V \| I=…A \| recovery — normal boot, modem released` |
 | ☐ | `[I][ups.recharge:…]: Recharge-step Ri not captured for this outage: …` |
 | ☐ | `[I][ups.watchdog:…]: INA usable (… V) — normal/survival logic in control; run_duration watchdog disarmed` |
-| ☐ | `[I][main:…]: UPS Monitor Rev 4 V4.2 boot complete -- …` |
+| ☐ | `[I][main:…]: UPS Monitor Rev 4 V4.3 boot complete -- …` |
 
 CH1 falls LOW at that wake.
 
@@ -659,7 +666,7 @@ lead before AC returns (as T7 part B).
 ☐ 1. **Update the placeholders** in the YAML. Tag each new value [M], with the test it came
 from.
 
-| Substitution | V4.2 value | Measured | From test | New value |
+| Substitution | V4.3 value | Measured | From test | New value |
 |---|---|---|---|---|
 | `psu_divider_ratio` | 6.556 | | T1 | |
 | `mains_present_v` | 7.0 | V_Q2 = | T8, T2 | |
@@ -697,7 +704,7 @@ Signed: ____________________   Date: ____________
 ## Appendix A: Build B, the bench-only edits
 
 Apply these to a **copy** of `ups-monitor-rev4.yaml`. They compiled on ESPHome 2026.10.2 with
-0 errors and 0 warnings, applied to V4.1 (2026-11-15) and to V4.2 (2026-11-16). Never flash
+0 errors and 0 warnings, applied to V4.1 (2026-11-15) and to V4.2 and V4.3 (2026-11-16). Never flash
 Build B into service.
 
 ```yaml
@@ -724,7 +731,7 @@ Add under `button:`, after the Restart button:
 
 ---
 
-## Appendix B: log line reference (V4.2)
+## Appendix B: log line reference (V4.3)
 
 These are the firmware's own lines, with the substitutions resolved. `…` is a value.
 "Seen" says where a line can be observed: UART, NET, or both.
@@ -735,7 +742,7 @@ These are the firmware's own lines, with the substitutions resolved. `…` is a 
 | I | ups.watchdog | `INA usable (… V) — normal/survival logic in control; run_duration watchdog disarmed` | UART | T1, T5, T10 |
 | W | ups.watchdog | `INA UNUSABLE (raw=0x… V=…) — awaiting WiFi; run_duration will sleep the device if no AP confirms …` | UART | fault only |
 | I | ups.watchdog | `Normal operation confirmed by WiFi association — run_duration watchdog disarmed` | UART | T1 |
-| I | main | `UPS Monitor Rev 4 V4.2 boot complete -- INA260 @ 0x40 …` | UART | every boot |
+| I | main | `UPS Monitor Rev 4 V4.3 boot complete -- INA260 @ 0x40 …` | UART | every boot |
 | W | ups | `Booted during outage -- counters PRESERVED from NVS (… Ah), tracking re-anchored` | UART, NET | T3, T9, T10 |
 | W | ups | `on_press suppressed — already in an outage (start=…); counters preserved` | UART, NET | T3, T9 |
 | I | ups.mains | `PSU sense … V < 7.0 V, … s after the INA260 load step (HDR decay, open item 6)` | NET | T2, T6 |

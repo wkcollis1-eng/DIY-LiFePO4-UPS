@@ -1,5 +1,5 @@
 # ============================================================================
-# UPS Monitor REV 4 BOARD — firmware V4.2 (2026-11-16) — NOT YET BENCH-TESTED
+# UPS Monitor REV 4 BOARD — firmware V4.3 (2026-11-16) — NOT YET BENCH-TESTED
 # ============================================================================
 # Derived from UPS-Monitor/ups-monitor.yaml V1.20 (the deployed Rev 1 firmware,
 # which is unchanged). Requirements: UPS-Monitor-Rev4/ups-monitor-rev4-design.md
@@ -72,6 +72,17 @@
 #   [F11] Every value inherited from the previous pack is listed with a TODO and
 #         the measurement that replaces it. No substitution value from V4.0 was
 #         changed. F01, F02 and F03 change behaviour; the rest add or annotate.
+#
+# What V4.3 changes against V4.2 (datasheet and docs validation of 2026-11-16;
+# search "REV 4.3 [C" for every site; report:
+# UPS-Monitor-Rev4/ups-monitor-rev4-v4.3-review.md). No substitution value,
+# interval, threshold, pin, filter or UPS logic changed.
+#   [C1] wifi: `use_address: 10.0.0.232` removed. It is the deployed Rev 1
+#        board's address, so the tooling run on this file targeted that board.
+#   [C2] "Battery Fully Charged": `device_class: battery_charging` removed (Home
+#        Assistant shows "Charging" for that class when ON; this sensor is ON
+#        for a full, idle pack). Name and entity ID unchanged.
+#   [C3] Two comments corrected (mDNS host name; entity ID prefix).
 #
 # What V4.2 changes against V4.1 (optimization review of 2026-11-15, checked
 # against the ESPHome 2026.10.2 source and TI SBOS656C on 2026-11-16; search
@@ -1253,7 +1264,7 @@ esphome:
       then:
         - logger.log:
             level: INFO
-            format: "UPS Monitor Rev 4 V4.2 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4, paired 5 s V/I blocks), DS18B20 on GPIO10, PSU sense on GPIO4, modem shed on GPIO5 (hold through survival sleep), timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri (windowed gate)"
+            format: "UPS Monitor Rev 4 V4.3 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4, paired 5 s V/I blocks), DS18B20 on GPIO10, PSU sense on GPIO4, modem shed on GPIO5 (hold through survival sleep), timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri (windowed gate)"
 
 esp32:
   # REV 4.2 [O2]: variant, not board (ESPHome esp32 docs: board "is no longer
@@ -1292,7 +1303,14 @@ wifi:
   # normally on the very same network.
   # Read from this YAML by the dashboard - no reflash needed to take effect.
   # Pair with a DHCP reservation, or this goes stale when the lease moves.
-  use_address: 10.0.0.232
+  # REV 4.3 [C1]: was `use_address: 10.0.0.232`, inherited from V1.20. That is
+  # the address in UPS-Monitor/ups-monitor.yaml, the deployed Rev 1 board, and
+  # this file names the same API key secret. So `esphome logs`, `esphome run`
+  # and the dashboard, given THIS file, targeted the Rev 1 board. Removed: the
+  # tooling now uses the default, ups-monitor-rev4.local ("Defaults to
+  # auto-generated value", esphome.io/components/wifi, `use_address`). Add
+  # `use_address: <address>` back only with an address reserved for THIS
+  # board's MAC; the paragraph above says why the add-on may need it.
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   fast_connect: true
@@ -1333,6 +1351,8 @@ captive_portal:
 # "ups-monitor.local" via multicast DNS. Home Assistant uses this for auto-
 # discovery and OTA. Setting disabled: true would hide it from LAN browsers
 # and break HA discovery — leave this false.
+# REV 4.3 [C3]: this board announces "ups-monitor-rev4.local" (device_name).
+# "ups-monitor.local" above is the Rev 1 board's name, inherited from V1.20.
 # ----------------------------------------------------------------------------
 mdns:
   disabled: false
@@ -2990,6 +3010,9 @@ sensor:
   # normalize (handoff 2A). NaN-guarded like the existing last-outage sensors
   # (return NAN until the first capture). Entity IDs land as
   # sensor.ups_monitor_last_onset_step_resistance, etc. (V1.15)
+  # REV 4.3 [C3]: that is the Rev 1 prefix. This board's friendly name is
+  # "UPS Monitor Rev 4", so expect sensor.ups_monitor_rev_4_last_onset_...
+  # (not yet observed: the board has not been adopted by Home Assistant).
   # --------------------------------------------------------------------------
   - platform: template
     name: "Last Onset Step Resistance"
@@ -3513,7 +3536,12 @@ binary_sensor:
   - platform: template
     name: "Battery Fully Charged"
     id: battery_fully_charged
-    device_class: battery_charging
+    # REV 4.3 [C2]: was `device_class: battery_charging`. Home Assistant shows
+    # that class as "Charging" when ON and "Not charging" when OFF
+    # (home-assistant.io/integrations/binary_sensor, device class), which is
+    # the opposite of this sensor: ON means full and idle at float. No class
+    # means "full", so it has none now and reads plain on/off. Name and
+    # entity ID unchanged.
     lambda: |-
       // V1.17: was (${float_voltage} - 0.05f) = 13.25 V, a threshold derived from
       // the HDR-60 NAMEPLATE [S] that the PSU has never reached -- highest bus
