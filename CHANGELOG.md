@@ -17,6 +17,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-11-16] — 2026-11-16
+
+### Changed
+- **UPS Monitor Rev 4 firmware V4.2** (`UPS-Monitor-Rev4/ups-monitor-rev4.yaml`), from the 2026-11-15 optimization review. The review was checked against the ESPHome 2026.10.2 source, TI SBOS656C and two compiles before it was applied. Still never flashed. No substitution value, interval, threshold or UPS behaviour changed: five non-comment lines differ from V4.1. The report is `UPS-Monitor-Rev4/ups-monitor-rev4-v4.2-review.md`.
+  - **[O1] OTA:** authenticates with the API encryption key (`encryption:`) in place of a password. The esphome OTA port now refuses plaintext uploads. Saves 1,262 B of flash and 32 B of RAM [M]; the review estimated ~3.5 KB and 60 B.
+  - **[O2] Board:** `variant: esp32c3` replaces `board: seeed_xiao_esp32c3`. HA's device model now reads `esp32-c3`.
+  - **[O4] Dead text deleted:** the unused `lvd_voltage` substitution and the commented-out INA260 power channel.
+  - **[O5] INA260 timing comments corrected:** the INA260 refreshes every 4.96 ms, not ~8.8 ms [AVG 4 × (1.1 ms + 140 µs)].
+  - **Review corrections:**
+    - **[O3] not applied.** ESPHome already compiles for size by default, so it changes nothing.
+    - **Keep `ota_password` in `secrets.yaml`.** The review said to delete it, but the deployed Rev 1 monitor and the top-off charger still use it.
+    - **O5's account of 8.8 ms was wrong.** The reset config 0x6127 is AVG=1, a 2.2 ms refresh.
+  - **Settled from source, still held:**
+    - unchanged sensor values are still sent to HA;
+    - NVS writes are coalesced, to at most one per key per 60 s plus one per sleep entry;
+    - the supervisor's ADC `sample()` takes all 8 samples;
+    - the shed path's two INA260 reads cannot be merged into one burst read.
+  - **Verified** on ESPHome 2026.10.2 / ESP-IDF 5.5.6:
+    - config valid with 0 warnings (V4.1 warned about the OTA password);
+    - full compile and link, 0 errors and 0 warnings;
+    - bench Build B also compiles.
+  - **Not verified:** anything on hardware.
+- **Rev 4 bench procedure** now names V4.2. The only expected line that changes is the boot line's version.
+
+---
+
 ## [2026-11-15] — 2026-11-15
 
 ### Added
