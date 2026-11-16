@@ -1,5 +1,5 @@
 # ============================================================================
-# UPS Monitor REV 4 BOARD — firmware V4.1 (2026-11-15) — NOT YET BENCH-TESTED
+# UPS Monitor REV 4 BOARD — firmware V4.2 (2026-11-16) — NOT YET BENCH-TESTED
 # ============================================================================
 # Derived from UPS-Monitor/ups-monitor.yaml V1.20 (the deployed Rev 1 firmware,
 # which is unchanged). Requirements: UPS-Monitor-Rev4/ups-monitor-rev4-design.md
@@ -72,6 +72,33 @@
 #   [F11] Every value inherited from the previous pack is listed with a TODO and
 #         the measurement that replaces it. No substitution value from V4.0 was
 #         changed. F01, F02 and F03 change behaviour; the rest add or annotate.
+#
+# What V4.2 changes against V4.1 (optimization review of 2026-11-15, checked
+# against the ESPHome 2026.10.2 source and TI SBOS656C on 2026-11-16; search
+# "REV 4.2 [O" for every site; report: UPS-Monitor-Rev4/ups-monitor-rev4-v4.2-review.md).
+# No substitution value, interval, threshold, cadence or behaviour of the UPS
+# logic changed.
+#   [O1] OTA uses the API encryption key ("encryption:" with no key inherits
+#        api: encryption: key) in place of a password. The esphome OTA port now
+#        refuses an unencrypted upload, and the password-auth code is no longer
+#        built. Unchanged from V4.1: captive_portal auto-loads the web_server OTA
+#        platform, whose /update exists only on the fallback AP (ap_password)
+#        and is not covered by the key.
+#        KEEP ota_password in secrets.yaml: UPS-Monitor/ups-monitor.yaml and
+#        Top-Off-Charger/firmware/top-off-charger.yaml still read it.
+#   [O2] esp32: "variant: esp32c3" replaces "board: seeed_xiao_esp32c3" (ESPHome
+#        esp32 docs: board "is no longer recommended"). Every pin in this file is
+#        a GPIO number, so no board alias is lost. Side effect: HA's device
+#        "model" field (ESPHOME_BOARD) changes from seeed_xiao_esp32c3 to esp32-c3.
+#   [O4] Dead text deleted: the lvd_voltage substitution (unreferenced since F10)
+#        and the commented-out INA260 power channel (F07). Both stay in git history.
+#   [O5] Comment fix: under the platform's config 0x0307 the INA260 refreshes
+#        every 4.96 ms [AVG 4 x (VBUSCT 1.1 ms + ISHCT 140 us); SBOS656C 8.4.1 and
+#        Table 5], not ~8.8 ms. 8.8 ms is AVG=4 with both conversion times at the
+#        1.1 ms reset default, a configuration the chip never runs here.
+#   The review's [O3] (sdkconfig COMPILER_OPTIMIZATION_SIZE) is NOT applied:
+#   ESPHome 2026.10.2 already defaults framework: advanced: compiler_optimization
+#   to SIZE, so it would change nothing.
 #
 # PLACEHOLDERS - not measured, set in the "REV 4" substitutions block: the divider
 # ratio, the mains threshold, the mains debounce (the HDR output decay is
@@ -265,7 +292,8 @@
 #           captures R_recharge on the discharge->charge step at restore. Reads
 #           data registers ONLY -- never writes INA config (platform-owned, AVG=4)
 #           -- so it cannot disturb the platform. Sample spacing 30 ms > the
-#           ~8.8 ms AVG=4 refresh => independent samples. Onset R is a DIFFERENCE
+#           4.96 ms AVG=4 refresh (REV 4.2 [O5]; this entry said ~8.8 ms)
+#           => independent samples. Onset R is a DIFFERENCE
 #           of two same-channel reads, so the bus-voltage offset cancels. New raw
 #           entities (Last Onset Step Resistance / Current / Temperature / Float
 #           Voltage / Loaded Voltage, Last Recharge Step Resistance / Current, and
@@ -510,9 +538,8 @@ substitutions:
   on_battery_threshold_v:   "13.15"  # Below this for >10s → on battery
   warning_voltage:          "12.40"  # HA first-warning notification
   critical_voltage:         "12.20"  # Software-controlled HA Green shutdown
-  lvd_voltage:              "11.80"  # BP-65 hardware disconnect (Setting 7)
-                                     # REV 4.1 [F10]: no longer referenced; no BP-65
-                                     # here. LVD Imminent now uses shed_voltage.
+  # REV 4.2 [O4]: lvd_voltage (11.80, the BP-65's disconnect) is deleted; it was
+  # unreferenced since F10, and LVD Imminent uses shed_voltage.
 
   # --- Discharge phase boundary voltages (May 2026 characterisation) --------
   settling_min_v:           "13.00"  # Above → settling  (OCV relaxation, ~5 min)
@@ -625,7 +652,8 @@ substitutions:
   recharge_step_current:    "0.5"    # I > this (A, charging) after discharge = restore step
   onset_settle_ms:          "250"    # wait after detection before sampling (past inrush)
   onset_sample_count:       "5"      # samples to average in the capture window
-  onset_sample_spacing_ms:  "30"     # >= worst-case INA260 refresh (~8.8 ms) => independent
+  onset_sample_spacing_ms:  "30"     # REV 4.2 [O5]: >= 6x the INA260 refresh, 4.96 ms
+                                     # under 0x0307 (was given as ~8.8 ms) => independent
   onset_float_v_min:        "13.15"  # V above this with |I|<float_i_max = "floating"
   onset_float_i_max:        "0.20"   # |I| below this = not loaded/charging.
                                      # V1.17: 0.05 -> 0.20 to match the "at rest"
@@ -700,7 +728,7 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.ups-monitor-rev4"
-    version: "4.1"
+    version: "4.2"
   on_boot:
     # ── Priority 900: REV 4 — GPIO5 / MODEM_OFF, decided on the wake cause ──
     # Runs before everything else in this file, including the NVS globals
@@ -1225,10 +1253,13 @@ esphome:
       then:
         - logger.log:
             level: INFO
-            format: "UPS Monitor Rev 4 V4.1 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4, paired 5 s V/I blocks), DS18B20 on GPIO10, PSU sense on GPIO4, modem shed on GPIO5 (hold through survival sleep), timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri (windowed gate)"
+            format: "UPS Monitor Rev 4 V4.2 boot complete -- INA260 @ 0x40 (platform-configured, AVG=4, paired 5 s V/I blocks), DS18B20 on GPIO10, PSU sense on GPIO4, modem shed on GPIO5 (hold through survival sleep), timer-wake + run_duration watchdog + stale-data watchdog + onset/recharge Ri capture (one-shot) + settled-step Apparent Ri (windowed gate)"
 
 esp32:
-  board: seeed_xiao_esp32c3
+  # REV 4.2 [O2]: variant, not board (ESPHome esp32 docs: board "is no longer
+  # recommended"). Pins below are all GPIO numbers, so no XIAO alias is needed.
+  # HA's device "model" now reads esp32-c3 (was seeed_xiao_esp32c3).
+  variant: esp32c3
   framework:
     type: esp-idf
 
@@ -1244,8 +1275,14 @@ api:
                              # −58 mV/min cliff rate (would reboot ~11.33V, below LVD).
 
 ota:
+  # REV 4.2 [O1]: authenticated and encrypted with the api key above (a bare
+  # "encryption:" inherits it); this port refuses a plaintext upload. ESPHome
+  # 2026.10.2 warned that a password "wastes significant flash and RAM". The
+  # first flash is over USB (bench procedure section 2), so no
+  # allow_plaintext_upload migration step is needed. Keep ota_password in
+  # secrets.yaml: the Rev 1 monitor and the top-off charger still use it.
   - platform: esphome
-    password: !secret ota_password
+    encryption:
 
 wifi:
   # Tell the TOOLING where to find this device. Default is
@@ -2404,28 +2441,14 @@ sensor:
             // still unpaired means that update's current read failed.
             if (id(g_v_pending)) id(ina_unpaired_reads)++;
             id(g_v_pending) = true;
-    # REV 4.1 [F07] — the power channel below is REMOVED (commented out, kept for
-    # its history). It was internal and nothing read ina260_power: Battery Power is
-    # the signed V x I template. Without it the platform's update() reads 02h and
-    # 01h only (2026.10.2 ina260.cpp skips 03h when power_sensor_ is null): one I2C
-    # transfer and one throttle_average scheduler interval fewer per second. The
-    # V-then-I order, and so the paired-block accumulator, is unchanged.
-    # power:
-    #   # V1.16: renamed + internal. The INA260 POWER register computes an
-    #   # UNSIGNED product per internal conversion; near zero current it reports
-    #   # the rectified noise floor (0.07-0.40 W observed on this unit at float)
-    #   # instead of the true ~0.01 W. Same silicon-family behavior characterized
-    #   # on the bank monitor's INA228 (2026-07-17). "Battery Power" is now the
-    #   # signed V x I template below — same name, so HA entity id continuity holds.
-    #   name: "INA260 Power Register"
-    #   id: ina260_power
-    #   internal: true
-    #   unit_of_measurement: "W"
-    #   accuracy_decimals: 3
-    #   device_class: power
-    #   state_class: measurement
-    #   filters:
-    #     - throttle_average: 5s
+    # REV 4.1 [F07] — no power channel. It was internal and nothing read
+    # ina260_power: Battery Power is the signed V x I template. Without it the
+    # platform's update() reads 02h and 01h only (2026.10.2 ina260.cpp skips 03h
+    # when power_sensor_ is null): one I2C transfer and one throttle_average
+    # scheduler interval fewer per second. The V-then-I order, and so the
+    # paired-block accumulator, is unchanged. REV 4.2 [O4]: the commented-out
+    # block is deleted (in git history; the POWER register is an unsigned
+    # product, so it read the rectified noise floor near zero current).
 
   # V1.20 — the HA-facing Battery Voltage / Battery Current. Published ONLY by the
   # paired-block accumulator on ina260_current_raw above; never polled.
