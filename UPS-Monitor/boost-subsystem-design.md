@@ -2,7 +2,7 @@
 
 **Subsystem:** 12 V bus → 18 V regulated feed for ASRock N100DC-ITX (Home Assistant host)
 **Parent system:** DIY LiFePO4 UPS (`wkcollis1-eng/DIY-LiFePO4-UPS`)
-**Date:** 2026-07-20 · **Version:** BOOST-DS-r1 · **Status:** Design complete — pending bench validation (§10)
+**Date:** 2026-07-20 · **Version:** BOOST-DS-r2 · **Status:** Design complete — pending bench validation (§10) · **r2 2026-11-19:** as-built integrated PCB and EN-control operating spec added as §12
 
 Every numeric claim in this document carries its basis inline. Figures marked **[est.]** are engineering estimates, **[unpub.]** rest on unpublished vendor data, and **[meas.]** are measured. Anything not [meas.] that gates a pass/fail is listed in §10.
 
@@ -34,6 +34,8 @@ Cyclenbatt 12V 10Ah LiFePO4 (10 A BMS) ─────────────�
 
 Co-loads on the 12 V bus (outside this subsystem, inside its blast radius): Xfinity XB7 (~12.2 W DC [meas.]), UPS monitor (XIAO ESP32-C3 + INA260 + DS18B20 via D24V7F3, ~30–40 mA [meas.]). The INA260 sits in the main load path and coulomb-counts the whole system, including this subsystem's input current.
 
+**r2 (2026-11-19):** the as-built UPS for this subsystem carries **no XB7** (owner, 2026-11-19: "no modem ... the ups with asrock pc and pololu"). Its bus loads are the host through this subsystem and the monitor. The XB7 figures in §3 (R5), §7 and §10 (V3) describe the earlier shared-bus plan; §12.5 gives the consequence at LVD.
+
 ---
 
 ## 3. Requirements
@@ -60,7 +62,7 @@ Co-loads on the 12 V bus (outside this subsystem, inside its blast radius): Xfin
 | Vout carrier | Same PCB family | **100 µF/50 V Panasonic EEH-AZA1H101B hybrid** (28 mΩ, 2 A/100 kHz, D10/5 mm, AEC-Q200) + 10 µF/50 V TDK X7R | §5 sizing analysis |
 | Lead | 2 ft, 22 AWG twisted pair, 5 A fuse | 64.6 mΩ round trip; ~1–1.5 µH [est.] | §6 |
 | Plug | Tensility 10-02937, 5.5×2.5 mm center-positive | — | — |
-| EN control (planned) | XIAO GPIO → level-safe N-FET pulldown on EN (EN idles at VIN ~12.5 V) | Monitor-commanded shed after graceful shutdown | No respin — EN already on header |
+| EN control (as built, r2) | XIAO D3/GPIO5 → R2 100k → 2N3904 Q1 pulls EN low; AC (PSU_SENSE) → 2N3904 Q2 holds Q1 off. Supersedes the planned N-FET pulldown | Monitor-commanded shed after graceful shutdown; AC forces the boost on in hardware | §12.3 |
 
 Setpoint: 18.0 V, trimmer **lacquered after setting** (same practice as the HDR-60 float trimmer). Optional hardening: 20 V-standoff TVS (SMCJ20A class) at the barrel jack — decide after the §10 scope session.
 
@@ -137,7 +139,7 @@ All *undervoltage* failures (module dead, EN shed, LVD, sag) pass ≤13.3 V to a
 ## 9. Operating procedures
 
 - **OP-1 — Energization order (teardown/reconnect):** *battery last-off, first-on; barrel jack last-on, first-off.* Equivalently, jumper EN low at the Vin-carrier header across any battery connection, then release for a controlled soft-start. Rationale: the BP-65's own reconnect is not a hot-plug (short in-enclosure wiring into the damped 220 µF input — no 2× ring geometry); the manual battery connect is, and OP-1 ensures the host is never present for it. Plugging the barrel into a stabilized 18 V rail is a designed-for, brick-equivalent event (ζ ≈ 0.8, §6). Note: the future GPIO EN control cannot cover the connect instant itself (XIAO boot ~1–2 s while EN idles at VIN) — OP-1 remains the teardown procedure permanently.
-- **OP-2 — DR-1 latch:** no boost enable on battery-only power. Enforced in monitor firmware; also the manual rule.
+- **OP-2 — DR-1 latch:** no boost enable on battery-only power. Enforced in monitor firmware; also the manual rule. The firmware rule is specified in §12.4 (r2).
 - **OP-3 — BIOS:** *Restore on AC/Power Loss = Power On* — required for unattended recovery.
 - **OP-4 — Spares:** EEH-AZA1H101B replenishment ~43 weeks; hold spares.
 
@@ -173,6 +175,144 @@ Closes on measurement the assumptions marked [est.]/[unpub.] in §§5.1, 6, 7, 8
 | R8 | 53.3 Wh ÷ 23.2 W arithmetic on measured values | **Closed [meas.]** |
 
 **Confidence statement:** ~90 % on paper that the subsystem integrates reliably (with DR-1 adopted); moves to ~95 % on a passed §10 session, residual being first-real-outage unknowns.
+
+---
+
+## 12. As-built PCB and EN-control operating spec (r2, 2026-11-19)
+
+This section uses the R15 tags: **[M]** measured, **[S]** spec with source, **[D]** derived with the formula, **[I]** inferred and not yet tested. It records the board as it stands and the behaviour the next monitor firmware must implement. No firmware implements it yet: the deployed `ups-monitor.yaml` is written for the UPS-Monitor-THT Rev 1 board and uses neither GPIO4 nor GPIO5.
+
+### 12.1 Board
+
+- File `UPS for HA with Boost.kicad_pcb` (KiCad file version 20260206), the owner's working copy; there is no schematic. Every board figure below comes from a pcbnew inventory of that file [M].
+- One board now carries the monitor and this subsystem, replacing the separate Vin and Vout carriers of §4.
+- Power path: 4-pole `BUS` terminal, 1 BUS+, 2 GND, 3 BP+ (from the BP-65 output), 4 18 V out [M].
+  - BUS+ → F2 → `+3V3_Fused` → D24V7F3 VIN. Despite its name, `+3V3_Fused` carries the ~12 V bus.
+  - BP+ → F1 → `V_FUSED` (220 µF bulk `220uF`, 10 µF C6) → U3V70A VIN.
+  - U3V70A VOUT → `18V_OUT` (100 µF `100uF`, 10 µF C5) → BUS.4 → the 5 A fused output lead → N100DC.
+  - GND: BUS.2 goes to the common star ground shared by the battery, PSU and BP-65. The host's 18 V return lands on that star (owner, 2026-11-19).
+- The U3V70A's printed pin order matches the footprint (owner, 2026-11-19).
+- The U3V70A footprint has 9 pads in two rows 30.4 mm apart, and the numbers 1-4 repeat across the rows on different nets [M]:
+  - input row: 1 EN, 2-3 GND, 4-5 VIN;
+  - output row: 1-2 GND, 3-4 VOUT.
+  - Name these pins by net, never by pad number. Nets pushed from a schematic would give every pad of one number the same net, joining EN to GND and VIN to VOUT [I: KiCad pad-number behaviour, not tested here; falsified by Update PCB from Schematic on a sandbox copy].
+
+### 12.2 Components
+
+Fuse values to fit (same footprint, DIN0309 Ø 3.2 mm, 0.80 mm drill [M]):
+
+| Ref | On the board file | Fit | Why |
+| :-- | :-- | :-- | :-- |
+| F1 | 3.5 A | **Littelfuse 0251005.MXL, 5 A** | Opens in 1 s or less at the BMS's 10 A [S: Littelfuse 251 rev GK p1, 200 % point]. Derated 3.75 A [D: 5 x 0.75] against 2.46 A, the highest outlet sample [D: 29.0 W / 11.8 V; M: Kasa outlet power, n = 450,427, 2026-11-05..11-19, 2 s poll]. Body 3.18 mm max, lead 0.64 mm [S: p3] |
+| F2 | 0.75 A | **Littelfuse 0251002.MXL, 2 A** | The D24V7F3 socket is Pololu #1013, 3 A [S: pololu.com item 1013]. Opens in 1 s or less at 4 A [S: p1]. The 1.5 mm trace carries 3.2 A at a 10 C rise [D: IPC-2221, 1 oz] |
+
+Residual on F1: at 5 A the U3V70A's two VIN header pins carry 2.5 A each [D], and Pololu publishes no pin rating [S: pololu.com/product/2890].
+
+**Duplicate reference C5 [M]:** two footprints carry C5. One is the 0.1 µF disc at (74.17, 66.37) on `+3V3_Fused`, the D24V7F3 input. The other is the 10 µF disc at (96.45, 69.50) on `18V_OUT`. A BOM or assembly note cannot tell them apart; rename one before ordering.
+
+Full reference list, generated from the board inventory [M] (values truncated at 34 characters):
+
+| Ref | Footprint | Value |
+| :-- | :-- | :-- |
+| 100uF | CP_Radial_D10.0mm_P5.00mm | CAP ALUM HYBRID 100UF 20% 50V TH, |
+| 220uF | CP_Radial_D10.0mm_P5.00mm | CAP ALU HYBRID RADL 220UF 50V, A7C |
+| BUS | TerminalBlock_Phoenix_MKDS-1-4-3.81_1x04_P3.81mm_Horizontal | TerminalBlock_Phoenix_MKDS-1-4-3.8 |
+| C1 | C_Disc_D5.0mm_W2.5mm_P2.50mm | CAP CER 10UF 25V X5R RADIAL, FG18X |
+| C2 | C_Disc_D3.8mm_W2.6mm_P2.50mm | CAP CER 0.1UF 50V X7R RADIAL, K104 |
+| C3 | C_Disc_D3.8mm_W2.6mm_P2.50mm | CAP CER 0.1UF 50V X7R RADIAL, K104 |
+| C4 | C_Radial_D6.3mm_H11.0mm_P2.50mm | CAP ALUM 47UF 20% 50V RADIAL TH, E |
+| C5 | C_Disc_D3.8mm_W2.6mm_P2.50mm | CAP CER 0.1UF 50V X7R RADIAL, K104 |
+| C5 | C_Disc_D6.0mm_W4.4mm_P5.00mm | 10 µF ±10% 50V Ceramic Capacitor X |
+| C6 | C_Disc_D6.0mm_W4.4mm_P5.00mm | 10 µF ±10% 50V Ceramic Capacitor X |
+| C7 | C_Disc_D3.8mm_W2.6mm_P2.50mm | CAP CER 0.1UF 50V X7R RADIAL, K104 |
+| C8 | C_Disc_D3.8mm_W2.6mm_P2.50mm | CAP CER 10000PF 50V X7R RADIAL, K1 |
+| F1 | R_Axial_DIN0309_L9.0mm_D3.2mm_P12.70mm_Horizontal | 3.5 A 125 V 125 V Fuse Board Mount |
+| F2 | R_Axial_DIN0309_L9.0mm_D3.2mm_P12.70mm_Horizontal | FUSE BRD MT 750MA 125VAC/VDC AXL, |
+| H1 | MountingHole_3.2mm_M3 | M3 |
+| H2 | MountingHole_3.2mm_M3 | M3 |
+| H3 | MountingHole_3.2mm_M3 | M3 |
+| Q1 | TO-92_Inline_Wide | 2N3904 |
+| Q2 | TO-92_Inline_Wide | 2N3904 |
+| R1 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 10k RNMF14FTC10K0 |
+| R2 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 100K RNMF14FTC100K |
+| R3 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 100K RNMF14FTC100K |
+| R4 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 100K RNMF14FTC100K |
+| R5 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 22k RNMF14FTC22K0 |
+| R6 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 18K RNMF14FTC18K0 |
+| R7 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 100K RNMF14FTC100K |
+| R8 | R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal | 4.7K RNMF14FTC4K70 |
+| TB2 | TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal | TerminalBlock_VN04A1500000G_1x04_P |
+| U1 | XIAO_ESP32C3_Socketed | Xiao ESP32C3 |
+| U2 | PinSocket_1x08_P2.54mm_Vertical | Adafruit INA260 |
+| U3 | PinSocket_1x03_P2.54mm_Vertical | Pololu D24V7F3 |
+| U3V70A | PinHeader_1x05_P2.54mm_Vertical | Pololu U3V70A |
+### 12.3 EN-control circuit
+
+- **U3V70A EN** (net `ENABLE`) has a 100 kΩ pull-up to the module's reverse-protected VIN; below 0.4 V the module is off with true shutdown [S: pololu.com/product/2890].
+- **Q1** 2N3904: E to GND, C to `ENABLE`. Its base node takes R2 100k from D3/GPIO5, R3 100k to GND, C8 10 nF to GND and Q2's collector. Q1 on means EN low, which means the boost is off.
+  - D3 high gives Q1 about 20 µA of base current [D: (3.3 - 0.65) V / 100k - 0.65 V / 100k]. Q1 then sinks the EN pull-up's ~133 µA [D: 13.3 V / 100k].
+- **Q2** 2N3904: base from `PSU_SENSE` through R4 100k with R5 22k to GND; collector on Q1's base. With AC present Q2 holds Q1 off, so **the boost is on whenever AC is present, whatever D3 does**. Base current is about 97 µA at 13.3 V [D: (13.3 - 0.65) / 100k - 0.65 / 22k].
+- **PSU_SENSE** (TB2.4) reads 0 V with AC off (owner, 2026-11-19). R7 100k / R6 18k with C7 0.1 µF feed `PSU_ADC` on D2/GPIO4: 2.03 V at the 13.3 V float [D: 13.3 x 18k / 118k].
+- **D3 floating** (XIAO in reset, unflashed or dead): R3 holds Q1 off, so the boost runs. The circuit fails toward power.
+
+XIAO ESP32-C3 pin map, from the board nets [M]:
+
+| XIAO pin | GPIO | Net | Use |
+| :-- | :-- | :-- | :-- |
+| D1 | GPIO3 | /Alert | INA260 ALERT |
+| D2 | GPIO4 | PSU_ADC | AC present (ADC) |
+| D3 | GPIO5 | /MODEM_OFF | EN control through Q1. The net name is a leftover: there is no modem |
+| D4 | GPIO6 | /SDA | I2C to the INA260 socket |
+| D5 | GPIO7 | /SCL | I2C to the INA260 socket |
+| D10 | GPIO10 | /GPIO10_DQ | DS18B20 1-Wire (TB2.2) |
+| D0, D6-D9 | | unconnected | |
+
+### 12.4 Mode of operation (what the firmware must do)
+
+| State | Condition | D3 | Boost |
+| :-- | :-- | :-- | :-- |
+| AC present | `PSU_ADC` above the AC threshold | Low once AC has been present for 60 s continuously | On (Q2) |
+| Outage, host running | AC absent; battery discharge above the host-off threshold | Low | On |
+| Shed | AC absent; battery discharge at or below the host-off threshold for 30 s | **High, held** | Off |
+| Monitor not running | D3 floating | - | On (R3) |
+
+1. **Shed.** When AC is absent and the battery current has sat at the host-off level for 30 s, drive D3 high. One stateless test covers three cases:
+   - after the ladder's graceful shutdown, with the host in soft-off;
+   - after a BP-65 LVD cut, when the boost is unpowered;
+   - a battery-only power-up, where nothing draws during the BP-65's 30 s reconnect delay. That is DR-1 (§7).
+2. **Release.** Drive D3 low once `PSU_ADC` has shown AC continuously for 60 s. Q2 has already turned the boost on the moment AC returned. The 60 s only decides what a short blip does: if AC drops again inside the minute, the host loses 18 V again early in its boot.
+3. **Never release on battery.** No path drives D3 low while AC is absent. Missing data means no new decision: if the INA260 or ADC reading is unavailable, D3 keeps its state. AC still releases a shed, through Q2 and then rule 2.
+4. **Keep D3 through resets and sleep.**
+   - While D3 is high, hold the pad (ESP32-C3 GPIO hold). A software restart, OTA, the task and interrupt watchdogs and deep-sleep wakes are core resets and keep it [S: ESP32-C3 TRM v1.4 s5.9 p167, s6.1.3 p192].
+   - If the firmware deep-sleeps (survival mode) while shed, the hold must last through the sleep.
+   - On boot, do not release a held D3 until the first valid `PSU_ADC` and INA260 readings call for it.
+   - A power-on, brown-out, RESET-button or RTC-watchdog system reset clears the hold [S: TRM Table 6.1-1 p193]. D3 then floats, the boost restarts, and the host boots on battery once. The rule sheds again after the ladder's next shutdown. This is the accepted residual.
+5. **Thresholds.**
+   - AC: about 1.0 V on `PSU_ADC` [D: midway between 0 V and 2.03 V].
+   - Host-off: **not yet set.** It needs one reading on battery on this UPS, on the INA260 as wired (its power terminals are wired off-board [M]): the host shut down. The threshold must sit clearly between that and the running draw.
+   - Running draw, N100 alone on the bus (owner, 2026-11-04): median 0.907 A discharge, 0.66-1.23 A [M: `sensor.ups_monitor_battery_current`, n = 85 change-only rows at ~5 s after the first 30 s of the owner's AC-cut test, 2026-11-04 21:49:47-21:56:47 EST, bus 13.11-13.21 V]. A lower bus should raise it [I: constant-power boost load, report §3.2; falsified by a lower reading nearer the 12.2 V tier].
+   - The two September cuts read about 2.0 A: medians 2.065 A on 09-16 and 2.011 A on 09-18 [M: same sensor, n = 97 and 70 rows]. That matches the shared bus with the XB7. What was on the bus then is open (§12.6).
+   - Host-off, a loose bound until it is read:
+     - On 2026-09-15 the bus still drew ~1.40 A after the shutdown, with the XB7 on it. The XB7 and monitor alone drew ~1.18 A on 2026-05-06 [M: report §3, §4.2].
+     - That puts the shut-down host plus the boost's own draw at roughly 0 to 0.2 A [D: 1.40 - 1.18; I: two runs at different states of charge, falsified by the direct reading].
+   - The 2.089 A in the `ups-monitor.yaml` header is the whole earlier shared bus, XB7 included [S: report §4.6 Test C], not this host.
+
+### 12.5 LVD evidence (2026-09-15 full-discharge test, earlier shared-bus system)
+
+Source: `reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md` §1 and §3.
+- The BP-65 tripped at 10:47:18 EDT, 102 s after the first sample below 11.800 V [D: 10:45:36 to 10:47:18; M: report §1]. The last telemetry before the trip read 11.675 V at 10:47:07.7 [M: report §1].
+- After the trip the pack rested at 11.9275 V, rising to 11.9762 V by 11:00:09, at about 0 A [M: report §1, n = 1 outage, 13 min]. The BP-65 reconnects only above 12.8 V for 30 s (§2); the rebound came nowhere near it. Not established: the rest voltage over hours.
+- After the host's graceful shutdown that bus still drew ~1.40 A for the remaining ~51 min to LVD, with the XB7 on it [M: report §3; 51 m 26 s from ICMP sustained-down to the trip, report §6]. The XB7 and monitor alone drew ~1.18 A on 2026-05-06 [M: report §4.2].
+- This UPS has no XB7, so after the ladder's shutdown nothing large drains the pack, and the LVD may not come before AC returns [I: wrong if the shut-down host draws close to its running current]. If 18 V never drops, BIOS *Restore on AC/Power Loss* (OP-3) never fires and the host stays off with AC back. **Rule 1's shed, not the BP-65, is what makes the host restart.**
+- That day the pack delivered 2.5331 Ah / 31.821 Wh to LVD [M: report Abstract]. R8's 53.3 Wh is the 2026-05-06 coulomb count [S: report §4.2].
+
+### 12.6 Open
+
+- The host-off threshold (§12.4 rule 5): one reading on battery, host shut down.
+- What was on the bus at the 2026-09-16 and 09-18 cuts (§12.4 rule 5): asked of the owner.
+- Duplicate reference C5 (§12.2): the owner's call.
+- The firmware for this board's pin map: not written.
+- §10 bench validation: still open.
 
 ---
 
