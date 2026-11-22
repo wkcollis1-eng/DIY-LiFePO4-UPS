@@ -2,7 +2,7 @@
 
 **Subsystem:** 12 V bus → 18 V regulated feed for ASRock N100DC-ITX (Home Assistant host)
 **Parent system:** DIY LiFePO4 UPS (`wkcollis1-eng/DIY-LiFePO4-UPS`)
-**Date:** 2026-07-20 · **Version:** BOOST-DS-r2 · **Status:** Design complete — pending bench validation (§10) · **r2 2026-11-19:** as-built integrated PCB and EN-control operating spec added as §12
+**Date:** 2026-07-20 · **Version:** BOOST-DS-r2 · **Status:** Design complete — pending bench validation (§10) · **r2 2026-11-19:** as-built integrated PCB and EN-control operating spec added as §12 · **2026-11-22:** the September cut readings identified (§12.4 rule 5)
 
 Every numeric claim in this document carries its basis inline. Figures marked **[est.]** are engineering estimates, **[unpub.]** rest on unpublished vendor data, and **[meas.]** are measured. Anything not [meas.] that gates a pass/fail is listed in §10.
 
@@ -291,7 +291,7 @@ XIAO ESP32-C3 pin map, from the board nets [M]:
    - AC: about 1.0 V on `PSU_ADC` [D: midway between 0 V and 2.03 V].
    - Host-off: **not yet set.** It needs one reading on battery on this UPS, on the INA260 as wired (its power terminals are wired off-board [M]): the host shut down. The threshold must sit clearly between that and the running draw.
    - Running draw, N100 alone on the bus (owner, 2026-11-04): median 0.907 A discharge, 0.66-1.23 A [M: `sensor.ups_monitor_battery_current`, n = 85 change-only rows at ~5 s after the first 30 s of the owner's AC-cut test, 2026-11-04 21:49:47-21:56:47 EST, bus 13.11-13.21 V]. A lower bus should raise it [I: constant-power boost load, report §3.2; falsified by a lower reading nearer the 12.2 V tier].
-   - The two September cuts read about 2.0 A: medians 2.065 A on 09-16 and 2.011 A on 09-18 [M: same sensor, n = 97 and 70 rows]. That matches the shared bus with the XB7. What was on the bus then is open (§12.6).
+   - The two September cuts read about 2.0 A: medians 2.065 A on 09-16 and 2.011 A on 09-18 [M: same sensor, n = 97 and 70 rows]. That matches the shared bus with the XB7. What was on the bus then is open (§12.6). **Answered 2026-11-22:** the N100 and the XB7 were both on the UPS at both cuts (owner), and the outlet's Kasa plug agrees. Its hourly means read 30.63 W before the 09-16 16:00 EDT cut and 30.15 W before the 09-18 21:05 cut, and its daily medians 29.08–30.49 W from 09-01 to 10-30, against 13.97–14.30 W from 11-05 to 11-22 with the N100 alone, median 14.20 W [M: `sensor.ups_outlet_current_consumption`, HA long-term statistics]. That is about 16 W more [D: 30.15 and 30.63 − 14.20], which matches the 1.10 and 1.16 A more battery current at the cuts, 14.5–15.3 W at 13.2 V [D: 2.011 and 2.065 − 0.907 A]. So both September readings are N100 plus XB7, and 2026-11-04's 0.907 A is the only N100-alone reading.
    - Host-off, a loose bound until it is read:
      - On 2026-09-15 the bus still drew ~1.40 A after the shutdown, with the XB7 on it. The XB7 and monitor alone drew ~1.18 A on 2026-05-06 [M: report §3, §4.2].
      - That puts the shut-down host plus the boost's own draw at roughly 0 to 0.2 A [D: 1.40 - 1.18; I: two runs at different states of charge, falsified by the direct reading].
@@ -309,7 +309,7 @@ Source: `reports/UPS_Report_2026-09-15_Full_Discharge_Survival_Test.md` §1 and 
 ### 12.6 Open
 
 - The host-off threshold (§12.4 rule 5): one reading on battery, host shut down.
-- What was on the bus at the 2026-09-16 and 09-18 cuts (§12.4 rule 5): asked of the owner.
+- What was on the bus at the 2026-09-16 and 09-18 cuts (§12.4 rule 5): asked of the owner. **Answered 2026-11-22:** the N100 plus the XB7 (§12.4 rule 5).
 - Duplicate reference C5 (§12.2): the owner's call.
 - The firmware for this board's pin map: not written.
 - §10 bench validation: still open.
