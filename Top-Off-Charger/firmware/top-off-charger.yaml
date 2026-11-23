@@ -1,5 +1,5 @@
 # ============================================================================
-# Top-Off Charger V0.6 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
+# Top-Off Charger V0.7 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
 #   Unvalidated until 2026-10-22 (owner's call, 2026-10-16: "no validation at
 #   this point"). On 2026-10-22 the owner asked for it, and V0.4 passed the
 #   esp-firmware-validation gate (design §9) on ESPHome 2026.10.0, the add-on's
@@ -16,6 +16,9 @@
 #   V0.6's at 2026.11.0, the add-on's version (ina2xx_base, ina2xx_i2c,
 #   globals, esp32 preferences, template sensor): refactors only, and the
 #   tick's facts (a) and (b) below still hold.
+#   V0.7's at 2026.11.0, the add-on's version (globals, template sensor):
+#   a restoring global's key is the md5 of its id [S: globals/__init__.py
+#   :100-105], so the two new record fields move no saved value.
 # ============================================================================
 # Purpose : Supervisor for the bench top-balance HOLD of the UPS's Cyclenbatt
 #           12 V 10 Ah pack, after a full charge on the Dylannet P20 (§4.3).
@@ -230,12 +233,23 @@
 #          (3) FW-5 dead blocks, bms_i_dead (BMS OPEN, above): S21's FAULT
 #          "BMS open" was an O21 dropout, not an open [M]. Replayed on HA and
 #          InfluxDB rows before the compile (design §11.1, rev 0.22).
+#   V0.7 — 2026-11-23. Owner's request (2026-11-23), design rev 0.23. Not
+#          validated by T1-T16. Three net sensors: Charge Power Net (V x
+#          Charge Current Net), Session Charge Net (Session Charge less the
+#          Start snapshot of the idle offset x elapsed) and Charge After Settle
+#          Net (the same, from settle). Why: CHARGE integrates the INA228's own
+#          zero, which the BMS opens read at -0.0826 to -0.0922 mA [M, n=3], so
+#          the raw figures read low: 0.81 mAh over S19 [D: 0.1012 mA x 28,830
+#          s]. The snapshot also holds the VBUS-pin backflow, which is absent
+#          with the switch ON, so net reads high by it: 12-18 uA [I; falsifier:
+#          lift the VBUS jumper]. The raw sensors stay, so their history
+#          continues. NaN, never the raw figure, when no offset was snapshotted.
 # ============================================================================
 
 substitutions:
   device_name: top-off-charger
   friendly_name: Top-Off Charger
-  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.6 DRAFT"
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.7 DRAFT"
 
   # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
   # point ("10.0", not "10"), or "10f" will not compile.
@@ -319,7 +333,7 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.top-off-charger"
-    version: "0.6"
+    version: "0.7"
   on_boot:
     - priority: -200
       then:
@@ -368,6 +382,8 @@ ota:
             id(rec_tail_last) = id(tail_last);
             id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
             id(rec_idle_off) = id(idle_off_start);
+            id(rec_ah_net) = id(session_ah_net_live);   // V0.7
+            id(rec_q_settle_net_ah) = std::isnan(id(q_at_settle_net)) ? NAN : (id(session_ah_net_live) - id(q_at_settle_net));
             const ESPTime t = id(ha_time).utcnow();    // V0.5; 0 = no clock
             id(rec_end_epoch) = t.is_valid() ? (uint32_t) t.timestamp : 0u;
             id(rec_edge_off_vb) = NAN;       // V0.5: this edge is not captured
@@ -621,6 +637,14 @@ globals:
     type: float
     restore_value: no
     initial_value: 'NAN'
+  - id: session_ah_net_live  # V0.7: session_ah_live less idle_off_start x elapsed (tick step 7);
+    type: float              #   NAN when no offset was snapshotted at Start
+    restore_value: no
+    initial_value: 'NAN'
+  - id: q_at_settle_net      # V0.7: session_ah_net_live when settle was reached
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
 
   # ---- FW-12 edge capture
   - id: on_edge_tick
@@ -687,6 +711,7 @@ globals:
   #      its last figures, and cleared at Start. A checkpoint changes ~8 values,
   #      each one NVS blob write; sync() skips the rest [M: esp32/preferences.cpp
   #      :232-233, is_changed_, 2026.10.1].
+  #      V0.7 adds two to a checkpoint: rec_ah_net, rec_q_settle_net_ah.
   - id: rec_reason
     type: int
     restore_value: yes
@@ -724,6 +749,14 @@ globals:
     restore_value: yes
     initial_value: 'NAN'
   - id: rec_idle_off
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_ah_net           # V0.7: Session Charge Net; NAN if no offset was snapshotted
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_q_settle_net_ah  # V0.7: Charge After Settle Net; NAN if settle never reached
     type: float
     restore_value: yes
     initial_value: 'NAN'
@@ -878,6 +911,14 @@ sensor:
     accuracy_decimals: 3
     update_interval: never
   - platform: template
+    id: pbat_net_ha
+    name: "Charge Power Net"   # V0.7 (owner, 2026-11-23): V x Charge Current Net
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 4
+    update_interval: never
+  - platform: template
     id: die_t_ha
     name: "INA228 Die Temperature"   # enclosure proxy, report-only (FW-10)
     unit_of_measurement: "°C"
@@ -891,6 +932,13 @@ sensor:
     unit_of_measurement: Ah
     state_class: measurement
     accuracy_decimals: 4
+    update_interval: never
+  - platform: template
+    id: session_ah_net_ha
+    name: "Session Charge Net"   # V0.7: Session Charge less the Start offset x elapsed
+    unit_of_measurement: Ah
+    state_class: measurement
+    accuracy_decimals: 5
     update_interval: never
   - platform: template
     id: t_at_v_ha
@@ -964,6 +1012,7 @@ sensor:
 
   # ---- FW-14 tail floor (report-only). Raw values: subtract the idle offset
   #      downstream, as V_batt and R_edge are computed downstream (§6.4).
+  #      V0.7: Charge After Settle Net is the exception, net in the firmware.
   - platform: template
     id: tail_mean_ha
     name: "Tail Window Mean"
@@ -983,6 +1032,13 @@ sensor:
   - platform: template
     id: q_settle_ha
     name: "Charge After Settle"
+    unit_of_measurement: Ah
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: q_settle_net_ha
+    name: "Charge After Settle Net"   # V0.7: Charge After Settle less the offset over the same span
     unit_of_measurement: Ah
     state_class: measurement
     accuracy_decimals: 5
@@ -1289,6 +1345,8 @@ interval:
             id(rec_tail_last) = id(tail_last);
             id(rec_q_settle_ah) = std::isnan(id(q_at_settle)) ? NAN : (id(session_ah_live) - id(q_at_settle));
             id(rec_idle_off) = id(idle_off_start);
+            id(rec_ah_net) = id(session_ah_net_live);   // V0.7
+            id(rec_q_settle_net_ah) = std::isnan(id(q_at_settle_net)) ? NAN : (id(session_ah_net_live) - id(q_at_settle_net));
             const ESPTime t = id(ha_time).utcnow();
             id(rec_end_epoch) = t.is_valid() ? (uint32_t) t.timestamp : 0u;   // 0 = no clock
           };
@@ -1332,6 +1390,7 @@ interval:
             ESP_LOGI(TAG, "  record: %.5f Ah, %.0f s at voltage, %.0f s elapsed, %u BMS cuts",
                      id(rec_ah), id(rec_t_at_v_s), id(rec_elapsed_s), (unsigned) id(rec_cuts));
             id(session_ah).publish_state(id(rec_ah));
+            id(session_ah_net_ha).publish_state(id(rec_ah_net));   // V0.7
             id(t_at_v_ha).publish_state(id(rec_t_at_v_s));
             id(t_elapsed_ha).publish_state(id(rec_elapsed_s));
             id(last_reason_txt).publish_state(rtxt(id(rec_reason)));
@@ -1347,8 +1406,10 @@ interval:
             id(last_cuts).publish_state(id(rec_cuts));
             publish_end_time();
             if (!std::isnan(id(rec_q_settle_ah))) id(q_settle_ha).publish_state(id(rec_q_settle_ah));
+            if (!std::isnan(id(rec_q_settle_net_ah))) id(q_settle_net_ha).publish_state(id(rec_q_settle_net_ah));   // V0.7
             ESP_LOGI(TAG, "  tail: floor %.5f A, final window %.5f A, %.5f Ah after settle, idle offset %.5f A",
                      id(rec_tail_floor), id(rec_tail_last), id(rec_q_settle_ah), id(rec_idle_off));
+            ESP_LOGI(TAG, "  net (V0.7): %.5f Ah, %.5f Ah after settle", id(rec_ah_net), id(rec_q_settle_net_ah));
           };
           auto latch_fault = [&](int reason) {      // outside a session: no record
             if (id(charge_sw).state) id(charge_sw).turn_off();
@@ -1476,6 +1537,7 @@ interval:
               id(prev_i) = NAN;
               id(i_net_pub) = NAN;                  // V0.6
               id(session_ah_live) = 0.0f;
+              id(session_ah_net_live) = 0.0f;       // V0.7
               id(sess_ah_peak) = 0.0f;              // V0.4 (#2)
               id(sess_open) = true;                 // V0.4 (#1): flushed ~1.5 s from now;
               id(sync_due_tick) = tk + 3u;          //   a reset before then is not caught
@@ -1505,6 +1567,8 @@ interval:
               id(rec_tail_last) = NAN;
               id(rec_q_settle_ah) = NAN;
               id(rec_idle_off) = NAN;
+              id(rec_ah_net) = NAN;                 // V0.7
+              id(rec_q_settle_net_ah) = NAN;
               id(rec_end_epoch) = 0u;
               id(rec_edge_on_vb) = NAN;
               id(rec_edge_on_ib) = NAN;
@@ -1521,11 +1585,13 @@ interval:
               id(tail_floor) = NAN;
               id(tail_last) = NAN;
               id(q_at_settle) = NAN;
+              id(q_at_settle_net) = NAN;            // V0.7
               id(idle_off_start) = id(idle_off);
               id(sess_idle_off_ha).publish_state(id(idle_off_start));
               id(tail_mean_ha).publish_state(NAN);
               id(tail_floor_ha).publish_state(NAN);
               id(q_settle_ha).publish_state(NAN);
+              id(q_settle_net_ha).publish_state(NAN);   // V0.7
               id(charge_sw).turn_on();
               st = ST_CHARGING;
               id(cur_reason) = R_NONE;
@@ -1562,6 +1628,11 @@ interval:
                                 q < 0.5f * id(sess_ah_peak) - q_slack;
             if (!std::isnan(q) && !q_fell) {
               id(session_ah_live) = q;
+              // V0.7: the one net definition. CHARGE integrates the INA228's own
+              // zero from Start, so take off the Start snapshot of the offset over
+              // the same span (A x h = Ah). NAN, never raw, with no snapshot.
+              id(session_ah_net_live) = std::isnan(id(idle_off_start)) ? NAN
+                  : q - id(idle_off_start) * (elapsed / 3600000.0f);
               if (q > id(sess_ah_peak)) id(sess_ah_peak) = q;
             }
             if (i > I_OL) id(t_ol_ms) += dt;          // cumulative, rev 0.9
@@ -1609,6 +1680,7 @@ interval:
                 //      decisions only so a session ending on this tick records
                 //      this block's samples; no decision below reads tail_*.
                 if (id(blk_tail_n) > 0u && id(t_at_v_ms) >= TAIL_SETTLE_MS) {
+                  if (std::isnan(id(q_at_settle))) id(q_at_settle_net) = id(session_ah_net_live);   // V0.7: first
                   if (std::isnan(id(q_at_settle))) id(q_at_settle) = id(session_ah_live);
                   id(tail_sum) += id(blk_tail_sum);
                   id(tail_n) += id(blk_tail_n);
@@ -1745,10 +1817,12 @@ interval:
             id(sessions_ha).publish_state(id(rec_sessions));
             id(bms_cuts_ha).publish_state(id(rec_cuts));
             id(session_ah).publish_state(id(rec_ah));
+            id(session_ah_net_ha).publish_state(id(rec_ah_net));   // V0.7
             id(t_at_v_ha).publish_state(id(rec_t_at_v_s));
             id(t_remain_ha).publish_state(std::isnan(rem_s) ? NAN : (rem_s < 0.0f ? 0.0f : rem_s));
             id(t_elapsed_ha).publish_state(id(rec_elapsed_s));
             id(q_settle_ha).publish_state(id(rec_q_settle_ah));
+            id(q_settle_net_ha).publish_state(id(rec_q_settle_net_ah));   // V0.7
             id(tail_mean_ha).publish_state(id(rec_tail_last));
             id(tail_floor_ha).publish_state(id(rec_tail_floor));
             id(sess_idle_off_ha).publish_state(id(rec_idle_off));
@@ -1766,19 +1840,24 @@ interval:
             id(ibat_ha).publish_state(valid ? i : NAN);
             // V0.6: Charge Current Net. FW-5's i_net while charging (one definition,
             // step 7a); I less the live EWMA otherwise; NaN until settled (step 5b)
-            id(ibat_net_ha).publish_state(!valid ? NAN
+            const float i_net_now = !valid ? NAN
                 : (st == ST_CHARGING) ? id(i_net_pub)
-                : (id(idle_n) >= IDLE_SETTLE_TICKS) ? i - id(idle_off) : NAN);
+                : (id(idle_n) >= IDLE_SETTLE_TICKS) ? i - id(idle_off) : NAN;
+            id(ibat_net_ha).publish_state(i_net_now);   // V0.7: named, for Charge Power Net
             id(pbat_ha).publish_state(valid ? v * i : NAN);
+            id(pbat_net_ha).publish_state(v * i_net_now);   // V0.7: NaN whenever i_net_now is
             id(die_t_ha).publish_state(valid ? id(die_t_raw).state : NAN);
             if (st == ST_CHARGING) {
               id(session_ah).publish_state(id(session_ah_live));
+              id(session_ah_net_ha).publish_state(id(session_ah_net_live));   // V0.7
               id(t_at_v_ha).publish_state(id(t_at_v_ms) / 1000.0f);
               const uint32_t rem = (id(t_at_v_ms) >= T_HOLD_MS) ? 0u : (T_HOLD_MS - id(t_at_v_ms));
               id(t_remain_ha).publish_state(rem / 1000.0f);
               id(t_elapsed_ha).publish_state((now - id(t_start_ms)) / 1000.0f);
               if (!std::isnan(id(q_at_settle)))
                 id(q_settle_ha).publish_state(id(session_ah_live) - id(q_at_settle));
+              if (!std::isnan(id(q_at_settle_net)))   // V0.7
+                id(q_settle_net_ha).publish_state(id(session_ah_net_live) - id(q_at_settle_net));
             } else if ((tk % 20u) == 0u) {           // V0.6: DONE, FAULT too (was ST_IDLE)
               id(idle_off_ha).publish_state(id(idle_off));
             }
