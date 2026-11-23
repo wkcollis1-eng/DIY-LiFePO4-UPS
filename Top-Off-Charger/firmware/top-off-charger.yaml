@@ -1,5 +1,5 @@
 # ============================================================================
-# Top-Off Charger V0.5 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
+# Top-Off Charger V0.6 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
 #   Unvalidated until 2026-10-22 (owner's call, 2026-10-16: "no validation at
 #   this point"). On 2026-10-22 the owner asked for it, and V0.4 passed the
 #   esp-firmware-validation gate (design §9) on ESPHome 2026.10.0, the add-on's
@@ -13,6 +13,9 @@
 #   uptime, i2c, ina2xx_base, ina2xx_i2c, globals). V0.5's at 2026.10.1, the
 #   add-on's version (globals, esp32 preferences, core/time, time, text_sensor,
 #   debug, wifi_signal, internal_temperature).
+#   V0.6's at 2026.11.0, the add-on's version (ina2xx_base, ina2xx_i2c,
+#   globals, esp32 preferences, template sensor): refactors only, and the
+#   tick's facts (a) and (b) below still hold.
 # ============================================================================
 # Purpose : Supervisor for the bench top-balance HOLD of the UPS's Cyclenbatt
 #           12 V 10 Ah pack, after a full charge on the Dylannet P20 (§4.3).
@@ -114,6 +117,11 @@
 #   idle offset . EWMA (~60 s) of the current in IDLE with the switch settled
 #                 OFF, where the true current is 0 (FW-13's argument). Published,
 #                 snapshotted at Start, and subtracted DOWNSTREAM, not here.
+#                 V0.6: updated in every state with the switch settled OFF
+#                 (not R_SWITCH_ON), and Start waits idle_settle_s of such ticks
+#                 after boot. V0.5 updated it in IDLE only: S19 snapshotted it
+#                 76 s after boot, DONE froze it, and S20 reused it, both
+#                 15-17 µA off the -0.1012 mA idle [M] (changelog V0.6).
 # A "balancer activity" flag is deliberately absent: the floor is bleed + BMS
 # draw + self-discharge on a sealed pack, and the residual only shows across
 # sessions. Define the flag after T11 (design FW-14).
@@ -132,6 +140,12 @@
 #                been measured; S5's lowest 10 s block was 0.129 mA at one block
 #                phase [M, n=1299] and 0.079 mA at another [M, replay, +5.64 h]:
 #                near-zero samples among 0.25-0.46 mA, longest run 2 s, no open.
+#                V0.6, 2026-11-23: "No such tail has been measured" is stale. S20
+#                and S21's tails sat under twice bms_i_open for 11.4 % and 20 % of
+#                their blocks [D, HA rows], and the test was disarmed there. 0.14 mA
+#                is this design's arming level, not the INA228's: idle 10 s blocks
+#                read sd 0.005 mA, S20-S21's tail blocks 0.043-0.045 mA [M, HA rows,
+#                n=4720 and 600 blocks; design §11.1].
 #   BMS trip ... low, and one of those means >= bms_i_from: ends the session at
 #                the first low block, <= 19.5 s after the cut [D: 39 ticks],
 #                before the ~30 s reconnect [M, n=2].
@@ -145,6 +159,21 @@
 # last sample with i_net >= twice bms_i_open: the step can be 19.5 s old by the
 # time it is detected, and no open sample came near that [M: corrected max
 # 0.0414 mA, n=21 samples, one event].
+# V0.6 (design rev 0.22): a DEAD block is a low block whose mean is also under
+#   bms_i_dead. Two dead blocks in a row are one cut, bms_open_max_s of them in
+#   a row are the FAULT, and a low block at or above bms_i_dead restarts that
+#   count. The low test, the refs and the credit are V0.5's. So on any run whose
+#   blocks all read under bms_i_dead, V0.6 cuts and FAULTs on the same block as
+#   V0.5; it differs only on a low block of bms_i_dead..bms_i_open. Why: S20-S21's
+#   tails fell to 0.106 mA [D], so low blocks came in noise pairs: 12 of the 13
+#   counted cuts had no spike and no zero longer than 9 s [M], and phase-
+#   randomised surrogates counted as many [D, n=400]. S21's FAULT was an O21
+#   dropout: 88 s at the idle level, then current back at 0.043-0.062 mA, under
+#   bms_i_open, so the run never ended [M]. Open blocks read 0.007-0.0185 mA [M,
+#   S2, S6]. NOT SEEN: an open reading 0.04-0.07 mA, which V0.5 would FAULT and
+#   V0.6 will not; none has been measured. An open's first, partial block can
+#   read bms_i_dead..bms_i_open: V0.6 then FAULTs one block (10 s) after V0.5,
+#   on the same opens [host replay, 26 injected, design §11.1].
 #
 # ---------------------------------------------------------------------------
 # PLACEHOLDERS: every value marked PLACEHOLDER below is TBD from T11 (O5) or
@@ -189,12 +218,24 @@
 #          R13: the CHARGE guard's "only rises" ignored the INA228's offset, so
 #          a healthy small session could end in FAULT "INA228 reset" (step 7).
 #          Found by the V0.5 replay, never seen on the device.
+#   V0.6 — 2026-11-23. Owner's two changes (2026-11-23), design rev 0.22. Not
+#          validated by T1-T16. (1) "build in a delay until the idle-offset
+#          average is settled": Start waits idle_settle_s (300 s [D]: 5 x the
+#          EWMA's ~60 s) of switch-settled-OFF ticks after boot, and the EWMA
+#          also runs in DONE and FAULT. Start Permitted and the LED follow.
+#          (2) "shouldn't the idle offset be used for the current in HA": new
+#          sensor Charge Current Net, I less the offset in force: the session's
+#          snapshot while charging (FW-5's i_net), the live EWMA otherwise, NaN
+#          until settled. Charge Current stays raw, so its history continues.
+#          (3) FW-5 dead blocks, bms_i_dead (BMS OPEN, above): S21's FAULT
+#          "BMS open" was an O21 dropout, not an open [M]. Replayed on HA and
+#          InfluxDB rows before the compile (design §11.1, rev 0.22).
 # ============================================================================
 
 substitutions:
   device_name: top-off-charger
   friendly_name: Top-Off Charger
-  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.5 DRAFT"
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.6 DRAFT"
 
   # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
   # point ("10.0", not "10"), or "10f" will not compile.
@@ -247,14 +288,28 @@ substitutions:
                          #   and a lone low block costs 10 s of credit, not the session
   bms_block_s: "10"      # FW-5 block. 10 s puts at least one whole block inside a 28 s open
                          #   [D: needs >= 2 x block]. Must be a whole number of seconds
-  bms_open_max_s: "120"  # PLACEHOLDER. FW-5: low blocks this long in a row end the session.
+  bms_open_max_s: "300"  # PLACEHOLDER. FW-5: low blocks this long in a row end the session.
                          #   ~4 x the ~30 s the BMS has stayed open [M, n=2]
+                         #   V0.6 (owner, 2026-11-23): 300, was 120 from the line above. BMS
+                         #   reconnects have since read 28 s, 31 s, ~76-80 s and >= 122 s [M,
+                         #   design §11.1 "S7: the cuts"], and two of S7's dropouts reached 10
+                         #   of the 12 blocks [D]. V0.6 counts DEAD blocks here (bms_i_dead).
+                         #   Cost: a stuck open keeps the switch on, with no current, 180 s
+                         #   longer before the FAULT [D: 300 s - 120 s]
+  bms_i_dead: "0.00004"  # V0.6, FW-5: a low block under this is dead (A). Open blocks read
+                         #   0.007-0.0185 mA [M]; S21's current came back at 0.043-0.062 mA
+                         #   [M], under bms_i_open, and V0.5 called it open. Replay: 0.04 caught
+                         #   as many injected opens as V0.5 up to +0.025 mA, 0.035 fewer
+                         #   [D, design §11.1]
   # ---- FW-14 tail floor (report-only). Integers are seconds.
   tail_settle_s: "1800"  # PLACEHOLDER (T11): time at voltage before the floor counts.
                          #   T11 shows how long the absorption tail takes to flatten.
                          #   Must stay well under t_hold_s
   tail_window_s: "600"   # 10-min window means (1200 ticks at 2 Hz)
   ckpt_s: "600"          # V0.5, FW-9: record checkpoint while charging (1200 ticks at 2 Hz)
+  idle_settle_s: "300"   # V0.6, FW-3 / FW-14 (owner, 2026-11-23): Start waits this long after
+                         #   boot for the idle EWMA (tau ~60 s): 5 tau leaves e^-5 of the seed
+                         #   [D], under 0.6 µA for S19's seed, 75 µA off the idle [M]
   # ---- PLACEHOLDER, set from T0's idle reading and T15 (FW-13)
   i_off_floor: "0.050"   # PLACEHOLDER. FW-13: current with the switch commanded OFF (A)
 
@@ -264,7 +319,7 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.top-off-charger"
-    version: "0.5"
+    version: "0.6"
   on_boot:
     - priority: -200
       then:
@@ -427,7 +482,7 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
-  - id: ready_flag           # FW-3 met on this tick's pair (drives "Ready to charge")
+  - id: ready_flag           # FW-3 met on this tick's pair (drives "Ready to charge"); V0.6: and idle settled
     type: bool
     restore_value: no
     initial_value: 'false'
@@ -504,6 +559,10 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: '0'
+  - id: bms_dead_n           # V0.6: consecutive dead blocks, low AND under bms_i_dead
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
   - id: bms_cuts             # cuts this session (header: BMS OPEN)
     type: uint32_t
     restore_value: no
@@ -551,6 +610,14 @@ globals:
     restore_value: no
     initial_value: 'NAN'
   - id: idle_off_start       # idle_off snapshotted at Start
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: idle_n               # V0.6: valid switch-settled-OFF ticks since boot, saturating at
+    type: uint32_t           #   IDLE_SETTLE_TICKS; the Start gate and the net current wait on it
+    restore_value: no
+    initial_value: '0'
+  - id: i_net_pub            # V0.6: this tick's FW-5 i_net, for Charge Current Net
     type: float
     restore_value: no
     initial_value: 'NAN'
@@ -795,6 +862,14 @@ sensor:
     accuracy_decimals: 4
     update_interval: never
   - platform: template
+    id: ibat_net_ha
+    name: "Charge Current Net"   # V0.6 (owner, 2026-11-23): I less the idle offset in force
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
     id: pbat_ha
     name: "Charge Power"       # signed V x I, not the INA228's unsigned POWER register
     unit_of_measurement: W
@@ -914,7 +989,7 @@ sensor:
     update_interval: never
   - platform: template
     id: idle_off_ha
-    name: "Idle Current Offset"       # live, in IDLE, every 10 s
+    name: "Idle Current Offset"       # live, in IDLE, every 10 s; V0.6: DONE and FAULT too
     unit_of_measurement: A
     device_class: current
     state_class: measurement
@@ -1146,6 +1221,8 @@ interval:
           const float BMS_I_OPEN = ${bms_i_open}f;
           const uint32_t BMS_BLOCK_TICKS = ${bms_block_s}u * 2u;       // 2 ticks per second
           const uint32_t BMS_OPEN_BLOCKS = ${bms_open_max_s}u / ${bms_block_s}u;
+          const float BMS_I_DEAD = ${bms_i_dead}f;                     // V0.6
+          const uint32_t IDLE_SETTLE_TICKS = ${idle_settle_s}u * 2u;   // V0.6, 2 ticks per second
           const float I_OFF_FLOOR = ${i_off_floor}f;
           const uint32_t T_HOLD_MS = ${t_hold_s}u * 1000u;
           const uint32_t T_MAX_MS = ${t_max_s}u * 1000u;
@@ -1351,13 +1428,19 @@ interval:
           // ---- 5b. FW-14 idle offset (report-only). IDLE with the switch settled
           //          OFF, so the true current is 0 (FW-13's argument). EWMA with a
           //          120-tick (~60 s) time constant.
-          if (st == ST_IDLE && valid && off_settled) {
+          //          V0.6: any state with the switch settled OFF, except a switch
+          //          that conducts while OFF (R_SWITCH_ON, latched in step 5 first).
+          //          V0.5 ran it in IDLE only, so DONE froze it. idle_n counts these
+          //          ticks for the Start gate (step 6) and Charge Current Net.
+          if (valid && off_settled && id(cur_reason) != R_SWITCH_ON) {
             id(idle_off) = std::isnan(id(idle_off)) ? i : id(idle_off) + (i - id(idle_off)) / 120.0f;
+            if (id(idle_n) < IDLE_SETTLE_TICKS) id(idle_n)++;
           }
 
           // ---- 6. IDLE: the start gate (FW-3), on this tick's pair only.
           //         NaN cannot pass: every comparison with NaN is false.
-          id(ready_flag) = (st == ST_IDLE) && valid && (v > V_START_MIN) && (v < V_START_MAX);
+          id(ready_flag) = (st == ST_IDLE) && valid && (v > V_START_MIN) && (v < V_START_MAX) &&
+                           (id(idle_n) >= IDLE_SETTLE_TICKS);   // V0.6 (owner): offset settled
           bool just_started = false;
           // V0.3 (2026-10-22): Stop beats Start. V0.2 tested want_start alone, so a
           // Stop pressed on the same tick was dropped and the session started
@@ -1373,9 +1456,12 @@ interval:
               else if (!(v > V_START_MIN))
                 ESP_LOGW(TAG, "Start refused: VBUS %.3f V <= %.1f V (pack absent, reversed, or below UVP)",
                          v, V_START_MIN);
-              else
+              else if (!(v < V_START_MAX))
                 ESP_LOGW(TAG, "Start refused: VBUS %.3f V >= V_start_max %.3f V (pack still resting above the gate)",
                          v, V_START_MAX);
+              else
+                ESP_LOGW(TAG, "Start refused: idle offset settling, %u of %u s of idle readings",
+                         (unsigned) (id(idle_n) / 2u), (unsigned) (IDLE_SETTLE_TICKS / 2u));
             } else if (!id(ina).reset_energy_counters()) {
               ESP_LOGE(TAG, "Start refused: CHARGE register reset failed (I2C write)");
             } else {
@@ -1388,6 +1474,7 @@ interval:
               id(t_ol_ms) = 0u;
               id(prev_v) = NAN;
               id(prev_i) = NAN;
+              id(i_net_pub) = NAN;                  // V0.6
               id(session_ah_live) = 0.0f;
               id(sess_ah_peak) = 0.0f;              // V0.4 (#2)
               id(sess_open) = true;                 // V0.4 (#1): flushed ~1.5 s from now;
@@ -1400,6 +1487,7 @@ interval:
               id(bms_ref_a) = INFINITY;
               id(bms_ref_b) = INFINITY;
               id(bms_low_n) = 0u;
+              id(bms_dead_n) = 0u;                  // V0.6
               id(bms_cuts) = 0u;
               id(cut_v) = NAN;
               id(cut_i) = NAN;
@@ -1480,6 +1568,7 @@ interval:
             // ---- 7a. V0.5 (O18): the block (header: BMS OPEN). No voltage gate:
             //          a gate at V_hold would blind it to every cut below V_hold.
             const float i_net = i - (std::isnan(id(idle_off_start)) ? 0.0f : id(idle_off_start));
+            id(i_net_pub) = i_net;                    // V0.6: Charge Current Net (step 11)
             id(blk_sum) += (double) i_net;
             id(blk_n)++;
             if (v >= V_HOLD) {
@@ -1497,8 +1586,11 @@ interval:
               const float ref = std::max(id(bms_ref_a), id(bms_ref_b));
               if (bm < BMS_I_OPEN && ref >= 2.0f * BMS_I_OPEN) {
                 id(bms_low_n)++;
+                // V0.6: a dead block is a low block under bms_i_dead; a low block
+                // at or above it restarts the count (header: BMS OPEN).
+                id(bms_dead_n) = (bm < BMS_I_DEAD) ? id(bms_dead_n) + 1u : 0u;
                 bms_trip = (ref >= BMS_I_FROM);
-                if (bms_trip || id(bms_low_n) == 2u) {
+                if (bms_trip || id(bms_dead_n) == 2u) {     // V0.6: was bms_low_n
                   id(bms_cuts)++;
                   id(cut_v) = id(prev_v);
                   id(cut_i) = id(prev_i);
@@ -1506,11 +1598,12 @@ interval:
                   ESP_LOGW(TAG, "BMS cut %u: block mean %.6f A, last sample with current %.4f V, %.6f A",
                            (unsigned) id(bms_cuts), bm, id(cut_v), id(cut_i));
                 }
-                bms_open = (id(bms_low_n) >= BMS_OPEN_BLOCKS);
+                bms_open = (id(bms_dead_n) >= BMS_OPEN_BLOCKS);   // V0.6: was bms_low_n
               } else {
                 id(bms_ref_b) = std::isinf(id(bms_ref_a)) ? bm : id(bms_ref_a);
                 id(bms_ref_a) = bm;
                 id(bms_low_n) = 0u;
+                id(bms_dead_n) = 0u;                  // V0.6
                 id(t_at_v_ms) += id(blk_t_at_v);
                 // ---- FW-14 tail floor: OBSERVATION ONLY. It sits before the
                 //      decisions only so a session ending on this tick records
@@ -1671,6 +1764,11 @@ interval:
           if ((tk & 1u) == 0u) {
             id(vbus_ha).publish_state(valid ? v : NAN);
             id(ibat_ha).publish_state(valid ? i : NAN);
+            // V0.6: Charge Current Net. FW-5's i_net while charging (one definition,
+            // step 7a); I less the live EWMA otherwise; NaN until settled (step 5b)
+            id(ibat_net_ha).publish_state(!valid ? NAN
+                : (st == ST_CHARGING) ? id(i_net_pub)
+                : (id(idle_n) >= IDLE_SETTLE_TICKS) ? i - id(idle_off) : NAN);
             id(pbat_ha).publish_state(valid ? v * i : NAN);
             id(die_t_ha).publish_state(valid ? id(die_t_raw).state : NAN);
             if (st == ST_CHARGING) {
@@ -1681,7 +1779,7 @@ interval:
               id(t_elapsed_ha).publish_state((now - id(t_start_ms)) / 1000.0f);
               if (!std::isnan(id(q_at_settle)))
                 id(q_settle_ha).publish_state(id(session_ah_live) - id(q_at_settle));
-            } else if (st == ST_IDLE && (tk % 20u) == 0u) {
+            } else if ((tk % 20u) == 0u) {           // V0.6: DONE, FAULT too (was ST_IDLE)
               id(idle_off_ha).publish_state(id(idle_off));
             }
           }
