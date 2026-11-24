@@ -1,5 +1,5 @@
 # ============================================================================
-# Top-Off Charger V0.7 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
+# Top-Off Charger V0.8 — DRAFT, COMPILE-VALIDATED, NOT BENCH-TESTED
 #   Unvalidated until 2026-10-22 (owner's call, 2026-10-16: "no validation at
 #   this point"). On 2026-10-22 the owner asked for it, and V0.4 passed the
 #   esp-firmware-validation gate (design §9) on ESPHome 2026.10.0, the add-on's
@@ -19,6 +19,11 @@
 #   V0.7's at 2026.11.0, the add-on's version (globals, template sensor):
 #   a restoring global's key is the md5 of its id [S: globals/__init__.py
 #   :100-105], so the two new record fields move no saved value.
+#   V0.8's at 2026.11.0, the add-on's version (ina2xx_base, ina2xx_i2c, i2c,
+#   globals): CHARGE is 40 bits, big-endian, two's complement, in CURRENT_LSB
+#   coulombs [S: ina2xx_base.cpp:342, 520-521, 561-573, 587-588]; the tick
+#   reads it with I2CDevice's public read_register [S: i2c.h:182]. Its two new
+#   record fields move no saved value, as V0.7's did.
 # ============================================================================
 # Purpose : Supervisor for the bench top-balance HOLD of the UPS's Cyclenbatt
 #           12 V 10 Ah pack, after a full charge on the Dylannet P20 (§4.3).
@@ -85,7 +90,8 @@
 #   dark ............ no AC, or firmware not running (dark > ~10 s, §5.4)
 #   Waiting ......... on, 100 ms wink every 3 s IDLE, Start would be refused
 #   Ready to charge . 1 s on, 2 s off           IDLE, FW-3 met: press Start
-#   Charging ........ 500 ms on / 500 ms off    switch ON
+#   Charging ........ steady on                 switch ON (V0.8; was 500 ms on /
+#                     500 ms off, see below)
 #   Final minute .... 150 on,150 off,150 on, 550 off (1 s)
 #                     switch ON, T_hold - time-at-voltage <= final_lead_s
 #   Done ............ on, two 100 ms winks every 3 s (latched)
@@ -98,6 +104,10 @@
 # LED, only CHG-LED [S: Seeed wiki, XIAO_ESP32C3_Getting_Started, pin map].
 # Every powered state moves, so a STEADY LED means a hung CPU (L3 then resets
 # it, and the LED goes dark). The renderer only displays the tick's state.
+# V0.8 (owner, 2026-11-24): Charging is steady, the falsifier for the Q1 model
+# (CHANGELOG 2026.11.24: tick-locked board load moving the charge current [I]).
+# So the line above no longer holds in Charging: a CPU hung there looks like
+# Charging until L3 resets it. Every other powered state still moves.
 # Its one other job: if the tick stops running for > 2 s while the loop is
 # alive, it turns the switch OFF and shows Fault (the L3 gap, "logic error
 # that keeps the loop alive", §8). OFF is the only action it may take.
@@ -128,6 +138,12 @@
 # A "balancer activity" flag is deliberately absent: the floor is bleed + BMS
 # draw + self-discharge on a sealed pack, and the residual only shows across
 # sessions. Define the flag after T11 (design FW-14).
+# V0.8 (owner, 2026-11-24): Tail Window Mean Net and Tail Floor Net are the
+#   same windows from the CHARGE register's delta less the Start offset, net in
+#   the firmware like Charge After Settle Net. They take whole at-voltage blocks
+#   only; the raw pair also takes the at-voltage ticks of a partial block, so
+#   the two can cover slightly different spans. The raw pair stays raw, so its
+#   history continues.
 #
 # ---------------------------------------------------------------------------
 # BMS OPEN (FW-5, O18, rev 0.13). A BMS that opens at the tail leaves nothing
@@ -177,10 +193,35 @@
 #   V0.6 will not; none has been measured. An open's first, partial block can
 #   read bms_i_dead..bms_i_open: V0.6 then FAULTs one block (10 s) after V0.5,
 #   on the same opens [host replay, 26 injected, design §11.1].
+# V0.8 (owner, 2026-11-24; CHANGELOG 2026.11.24, second entry). The block mean
+#   is the CHARGE register's delta over the block less the Start offset, not
+#   the mean of its 20 ticks: CHARGE takes every conversion, and the tick mean
+#   read 0.0025-0.0075 mA above it with 0.010-0.020 mA of noise per block [M:
+#   fit to each session's credit sequence, 8 sessions]. The tick mean is still
+#   logged at a cut. There is no low rule:
+#   dead ...... mean < bms_i_dead, counted only while armed: one of the last
+#               two non-dead means >= twice bms_i_dead. Opens read 0.001 mA
+#               median in CHARGE [M, 37 blocks, 5 opens]; S22's cut 1 was a
+#               0.0196-0.0291 mA dip [M], so V0.6's 0.040 mA was not safe
+#   BMS trip .. dead, and one of those means >= bms_i_from, as V0.5
+#   tail cut .. two dead in a row are one cut, bms_open_max_s of them in a row
+#               the FAULT, as V0.6
+#   credit .... a dead block earns nothing, nor does the block either side of
+#               it: each block is credited when the next is known not dead.
+#               DONE lands up to two blocks late, and a session's last whole
+#               block is never credited [D: S22 withheld 39 of 3,015 at-voltage
+#               blocks on replay]
+#   prev_v/prev_i keep V0.5's 0.14 mA, now bms_i_pair (report-only).
+#   NOT SEEN: an open reading over 0.020 mA in CHARGE; V0.8 would credit it.
 #
 # ---------------------------------------------------------------------------
 # PLACEHOLDERS: every value marked PLACEHOLDER below is TBD from T11 (O5) or
 # T0/T15 (FW-13). T11 is a SUPERVISED session. Do not run unattended on them.
+# V0.8 (owner, 2026-11-24): the sessions to date have set v_hold, t_max_s,
+#   bms_i_from and bms_open_max_s (CHANGELOG 2026.11.24, T11 status per limit;
+#   each says so below, with its evidence). t_hold_s, t_ol_s and tail_settle_s
+#   are the owner's values. One PLACEHOLDER is left: i_off_floor, until T15.
+#   T15 and T17 have not been run.
 #
 # Changelog:
 #   V0.1 — 2026-10-16. First draft from design rev 0.9. Not validated.
@@ -244,12 +285,33 @@
 #          with the switch ON, so net reads high by it: 12-18 uA [I; falsifier:
 #          lift the VBUS jumper]. The raw sensors stay, so their history
 #          continues. NaN, never the raw figure, when no offset was snapshotted.
+#   V0.8 — 2026-11-24. Owner's go on items 1-7 and T_hold 9 h (2026-11-24),
+#          from the CHANGELOG 2026.11.24 analysis; no design rev yet. Not
+#          validated by T1-T17. (1) FW-5's block mean from the CHARGE register
+#          delta (BMS OPEN, V0.8). (2) Dead under bms_i_dead 0.020 mA while armed
+#          at twice it; credit withheld either side of a dead block; no low rule,
+#          bms_i_open retired. (3) Tail Window Mean Net, Tail Floor Net and their
+#          Last Session pair (TAIL FLOOR). (4) Block Current Net: each FW-5 block's
+#          mean, net, and each FW-13 block with the switch OFF. (5) FW-13 on a
+#          bms_block_s CHARGE block mean less the last session's Start offset
+#          (rec_idle_off), not one raw tick: i_off_floor 0.050 A was 50 mA, and
+#          missed the 1.66 mA failed-on switch [M, design §7.2]. Now 0.050 mA,
+#          still a PLACEHOLDER (T15). A FAULT takes one block (~11 s) for a current
+#          there from the OFF edge and under ~20 s for one that starts mid-block
+#          (step 5 has the bound), not 1.5 s. (6) LED steady while Charging (LED).
+#          (7) PLACEHOLDER labels
+#          the data has set are dropped (PLACEHOLDERS). T_hold 32,400 s; T_max
+#          stays 36,000 s. R13: V0.4-V0.7's valid left out cfg_read, so a failed
+#          read-back kept the tick valid and step 4's read-back branch could not
+#          run [source read]. V0.8 tests it, because a failed CHARGE read would
+#          feed a block a delta from 0: a failed read-back now ends a session in
+#          FAULT "sensor", as V0.4 intended.
 # ============================================================================
 
 substitutions:
   device_name: top-off-charger
   friendly_name: Top-Off Charger
-  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.7 DRAFT"
+  device_description: "LiFePO4 top-balance hold supervisor (UPS Cyclenbatt 10 Ah) - V0.8 DRAFT"
 
   # Float substitutions are pasted into C++ as ${x}f, so each needs a decimal
   # point ("10.0", not "10"), or "10f" will not compile.
@@ -261,20 +323,29 @@ substitutions:
   i_max: "5.0"           # FW-4 / RQ-1
   i_overload: "2.0"      # FW-4 / RQ-12: HDR-30-15 rated current [S, HDR-30-SPEC p.2]
   final_lead_s: "60"     # FW-11: final-minute cue lead time (owner, 2026-10-16)
+  ina_max_current: "10.0" # V0.8: the INA228 block's max_current, so CURRENT_LSB is this / 2^19,
+                         #   and that is the CHARGE register's LSB in coulombs [S: ina2xx_base.cpp
+                         #   :342, 520-521]. One definition for both (R10)
 
   # ---- PLACEHOLDERS, set from T11 (O5). Integers here are seconds.
+  #      V0.8: none is left in this group; each says what set it (header: PLACEHOLDERS).
   v_start_max: "14.40"   # V0.5, FW-3 (owner, 2026-10-30): Start needs VBUS below this. Was
                          #   V_hold until the two jobs split: the pack rested at 14.354 V after
                          #   14 h [M] and Start was refused. Only 2.7 mV under VBUS at the
                          #   trimmed PSU [D: S5 mean 14.4027], so FW-13's current test, not
                          #   this gate, is what catches a shorted switch
-  v_hold: "14.38"        # PLACEHOLDER. FW-6, was 14.30 and FW-3 too. Must sit below V_SET 14.40 V
+  v_hold: "14.38"        # V0.8: set by the data (was PLACEHOLDER): 52 mV under the 14.4322 V
+                         #   hold [D, CHANGELOG 2026.11.24].
+                         #   FW-6, was 14.30 and FW-3 too. Must sit below V_SET 14.40 V
                          #   by more than the tail-current drops, and above the pack's rest voltage
                          #   V0.5: 22.1 mV under S5's lowest hold reading 14.4021 [M, n=12103],
                          #   ~5.1 degC at the design's 4.32 mV/degC [D]; reached 6 s after Start
                          #   [M, n=1]. "Above rest" no longer holds and no longer matters: FW-3
                          #   has its own threshold, and a rest above this only starts the count
-  t_hold_s: "28800"      # 8 h (owner, 2026-10-30): the tail shows no plateau [D: log-log slope
+  t_hold_s: "32400"      # 9 h (owner, 2026-11-24). Leaves T_max 3,165-3,590 s for the approach
+                         #   and the withheld credit, across the eight block-firmware sessions [D:
+                         #   replay on InfluxDB rows, extrapolated ~1 h past their ~8 h]. Was 28800:
+                         #   8 h (owner, 2026-10-30): the tail shows no plateau [D: log-log slope
                          #   -0.80, -1.18, n=33 windows each], so this is a longer MEASUREMENT.
                          #   6 to 8 h moved 0.48-0.62 mAh, ~0.005 % of 10 Ah [D, extrapolated].
                          #   Was 21600:
@@ -285,24 +356,33 @@ substitutions:
                          #   10 Ah [D; the bleed rate is an assumption until T11]. Size the
                          #   later sessions from T11's floor: hold time = imbalance / floor.
                          #   Still the owner's trade against the no-backup window (§10.2).
-  t_max_s: "36000"       # 10 h (V0.5; 8 h until then). T11 START VALUE, FW-4 session cap: T_hold plus 2 h for the
+  t_max_s: "36000"       # 10 h (V0.5; 8 h until then). V0.8: set by the data (was T11 START VALUE). FW-4 session cap: T_hold plus 2 h for the
                          #   pack to reach V_hold and margin. The L6 timer must be set above it
                          #   (§10.1 step 5), so it must reach > 10 h.
-  t_ol_s: "300"          # PLACEHOLDER. FW-4 cumulative time with I > i_overload
-  bms_i_from: "0.100"    # PLACEHOLDER. FW-5: "charging" before the step (A)
+                         #   V0.8: 5,840 s over the longest session to DONE at T_hold 8 h [D,
+                         #   CHANGELOG 2026.11.24]. At T_hold 9 h it is T_hold plus 1 h, and the
+                         #   replay leaves 3,165-3,590 s [D, t_hold_s]. Raising it needs the L6
+                         #   timer's range (owner)
+  t_ol_s: "300"          # Owner's value (V0.8; was PLACEHOLDER). FW-4 cumulative time with I > i_overload.
+                         #   S9 spent 118 s above 2.0 A [M, n = 1]
+  bms_i_from: "0.100"    # V0.8: set by the data (was PLACEHOLDER). FW-5: "charging" before the step (A).
+                         #   BMS trips have read 0.116-0.310 A before the step [M, n = 4]
   # R13, 2026-10-30: V0.1-V0.4 had bms_i_zero 0.005 here (A, "~0" after the step)
   # and tested one tick against the tick before. Under 5 mA is every tail tick,
   # so it could not see a tail cut (O21), and S2's first cut went unseen with
   # V0.4 running [M]; the 1 Hz history does not show why [I: a sample in the odd
   # tick between 0.95 A and 0; R18]. Removed with the one-tick test (O18).
-  bms_i_open: "0.00007"  # PLACEHOLDER. FW-5: a block mean below this is "no current" (A).
+  # V0.8: bms_i_open retired, no low rule (header: BMS OPEN, V0.8). Was:
+  # bms_i_open: "0.00007"  # PLACEHOLDER. FW-5: a block mean below this is "no current" (A).
                          #   0.07 mA: open blocks reached +0.0185 mA [M, 4 blocks, 2 events];
                          #   the lowest tail block was 0.129 mA [M, S5 2-6 h, n=1299],
                          #   0.079 mA at another block phase [M, replay]: a thin margin,
                          #   and a lone low block costs 10 s of credit, not the session
   bms_block_s: "10"      # FW-5 block. 10 s puts at least one whole block inside a 28 s open
                          #   [D: needs >= 2 x block]. Must be a whole number of seconds
-  bms_open_max_s: "300"  # PLACEHOLDER. FW-5: low blocks this long in a row end the session.
+  bms_open_max_s: "300"  # V0.8: set by the data (was PLACEHOLDER): the longest open, 13 blocks
+                         #   under 0.04 mA [M, S22], is 130 s.
+                         #   FW-5: low blocks this long in a row end the session.
                          #   ~4 x the ~30 s the BMS has stayed open [M, n=2]
                          #   V0.6 (owner, 2026-11-23): 300, was 120 from the line above. BMS
                          #   reconnects have since read 28 s, 31 s, ~76-80 s and >= 122 s [M,
@@ -310,13 +390,20 @@ substitutions:
                          #   of the 12 blocks [D]. V0.6 counts DEAD blocks here (bms_i_dead).
                          #   Cost: a stuck open keeps the switch on, with no current, 180 s
                          #   longer before the FAULT [D: 300 s - 120 s]
-  bms_i_dead: "0.00004"  # V0.6, FW-5: a low block under this is dead (A). Open blocks read
+  bms_i_dead: "0.00002"  # V0.8: 0.020 mA, was 0.00004. No low test now: dead is under this while
+                         #   armed, one of the last two non-dead means >= twice this (0.040 mA).
+                         #   Opens read 0.001 mA median in CHARGE [M, 37 blocks, 5 opens]; no
+                         #   two-block run under 0.020 mA falls outside an open in 8 sessions [M].
+                         #   V0.6, FW-5: a low block under this is dead (A). Open blocks read
                          #   0.007-0.0185 mA [M]; S21's current came back at 0.043-0.062 mA
                          #   [M], under bms_i_open, and V0.5 called it open. Replay: 0.04 caught
                          #   as many injected opens as V0.5 up to +0.025 mA, 0.035 fewer
                          #   [D, design §11.1]
+  bms_i_pair: "0.00014"  # V0.8, FW-5 (report-only): prev_v/prev_i hold the last sample with
+                         #   i_net at or above this; V0.5-V0.7's twice bms_i_open, the same 0.14 mA
   # ---- FW-14 tail floor (report-only). Integers are seconds.
-  tail_settle_s: "1800"  # PLACEHOLDER (T11): time at voltage before the floor counts.
+  tail_settle_s: "1800"  # Owner's value (V0.8; was PLACEHOLDER, T11): time at voltage before
+                         #   the floor counts. Report-only; the tails show no plateau [M].
                          #   T11 shows how long the absorption tail takes to flatten.
                          #   Must stay well under t_hold_s
   tail_window_s: "600"   # 10-min window means (1200 ticks at 2 Hz)
@@ -325,7 +412,13 @@ substitutions:
                          #   boot for the idle EWMA (tau ~60 s): 5 tau leaves e^-5 of the seed
                          #   [D], under 0.6 µA for S19's seed, 75 µA off the idle [M]
   # ---- PLACEHOLDER, set from T0's idle reading and T15 (FW-13)
-  i_off_floor: "0.050"   # PLACEHOLDER. FW-13: current with the switch commanded OFF (A)
+  i_off_floor: "0.00005" # PLACEHOLDER. FW-13: current with the switch commanded OFF (A)
+                         #   V0.8: 0.050 mA on a bms_block_s block mean less the last session's
+                         #   Start offset. Was 0.050 (50 mA) on one raw tick, and missed the
+                         #   1.66 mA failed-on switch [M, design §7.2]. The idle EWMA ran at most
+                         #   0.020 mA above the snapshot in force, 10-29 to 11-24 [M, InfluxDB],
+                         #   and idle 10 s blocks read sd 0.005 mA [M, design §11.2]. T15(b)'s
+                         #   test build sets this below the net idle, e.g. "-0.001"
 
 esphome:
   name: ${device_name}
@@ -333,13 +426,14 @@ esphome:
   comment: ${device_description}
   project:
     name: "wkcollis1.top-off-charger"
-    version: "0.7"
+    version: "0.8"
   on_boot:
     - priority: -200
       then:
         - logger.log:
             level: INFO
-            format: "Top-Off Charger V0.5 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
+            # R13, 2026-11-24: said V0.5 through V0.6 and V0.7 [source read].
+            format: "Top-Off Charger V0.8 DRAFT boot -- switch OFF (ALWAYS_OFF), INA228 @ 0x40"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -384,6 +478,8 @@ ota:
             id(rec_idle_off) = id(idle_off_start);
             id(rec_ah_net) = id(session_ah_net_live);   // V0.7
             id(rec_q_settle_net_ah) = std::isnan(id(q_at_settle_net)) ? NAN : (id(session_ah_net_live) - id(q_at_settle_net));
+            id(rec_tail_floor_net) = id(tail_floor_net);   // V0.8
+            id(rec_tail_last_net) = id(tail_last_net);
             const ESPTime t = id(ha_time).utcnow();    // V0.5; 0 = no clock
             id(rec_end_epoch) = t.is_valid() ? (uint32_t) t.timestamp : 0u;
             id(rec_edge_off_vb) = NAN;       // V0.5: this edge is not captured
@@ -563,15 +659,52 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: '0'
+  # ---- V0.8: the block's CHARGE origin, and the pending block (header: BMS OPEN, V0.8)
+  - id: blk_q0               # CHARGE register (raw LSBs) at the block's start
+    type: int64_t
+    restore_value: no
+    initial_value: '0'
+  - id: blk_t0               # millis() at the block's start
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: pend_ok              # the pending block may be credited: no dead block before it
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: pend_t_at_v          # the pending block's blk_t_at_v, blk_tail_sum, blk_tail_n
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: pend_tail_sum
+    type: double
+    restore_value: no
+    initial_value: '0.0'
+  - id: pend_tail_n
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: pend_q               # its CHARGE delta (C) and length (s) if wholly at voltage, else 0
+    type: double
+    restore_value: no
+    initial_value: '0.0'
+  - id: pend_s
+    type: double
+    restore_value: no
+    initial_value: '0.0'
+  - id: prev_dead            # the block just closed was dead
+    type: bool
+    restore_value: no
+    initial_value: 'false'
   - id: bms_ref_a            # the last two non-low block means. INFINITY at Start, so a
-    type: float              # BMS already open at Start fires
+    type: float              # BMS already open at Start fires. V0.8: the last two non-dead means
     restore_value: no
     initial_value: 'INFINITY'
   - id: bms_ref_b
     type: float
     restore_value: no
     initial_value: 'INFINITY'
-  - id: bms_low_n            # consecutive low blocks
+  - id: bms_low_n            # consecutive low blocks. V0.8: unused, no low rule
     type: uint32_t
     restore_value: no
     initial_value: '0'
@@ -645,6 +778,47 @@ globals:
     type: float
     restore_value: no
     initial_value: 'NAN'
+  - id: tailq_sum            # V0.8: CHARGE (C) and seconds of the whole at-voltage blocks in
+    type: double             #   the open window, for the net window mean
+    restore_value: no
+    initial_value: '0.0'
+  - id: tailq_s
+    type: double
+    restore_value: no
+    initial_value: '0.0'
+  - id: tail_floor_net       # V0.8: lowest net window mean after settle
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: tail_last_net        # V0.8: last completed net window mean
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  # ---- V0.8, FW-13: the switch-OFF block (tick step 5)
+  - id: off_org              # a valid switch-settled-OFF tick has set an origin
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: off_q0               # CHARGE (raw LSBs) and millis() at the origin
+    type: int64_t
+    restore_value: no
+    initial_value: '0'
+  - id: off_t0
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: off_n                # ticks since the origin
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: off_bm               # the last OFF block's mean less the reference (A)
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: off_hot              # that mean was over i_off_floor; held to the next block or ON edge
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
   # ---- FW-12 edge capture
   - id: on_edge_tick
@@ -712,6 +886,7 @@ globals:
   #      each one NVS blob write; sync() skips the rest [M: esp32/preferences.cpp
   #      :232-233, is_changed_, 2026.10.1].
   #      V0.7 adds two to a checkpoint: rec_ah_net, rec_q_settle_net_ah.
+  #      V0.8 adds two more: rec_tail_floor_net, rec_tail_last_net.
   - id: rec_reason
     type: int
     restore_value: yes
@@ -757,6 +932,14 @@ globals:
     restore_value: yes
     initial_value: 'NAN'
   - id: rec_q_settle_net_ah  # V0.7: Charge After Settle Net; NAN if settle never reached
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_tail_floor_net   # V0.8: Tail Floor Net; NAN if settle was never reached
+    type: float
+    restore_value: yes
+    initial_value: 'NAN'
+  - id: rec_tail_last_net    # V0.8: the last net window mean
     type: float
     restore_value: yes
     initial_value: 'NAN'
@@ -834,7 +1017,7 @@ sensor:
     # 13107.2e6 x 19.07e-6 x 0.015 = 3750, inside 15 bits [D: formulas from
     # ina2xx_base.cpp:355-356]. Range 0 spans ±163.84 mV / 0.015 Ω = ±10.92 A
     # [D], and the ADC's own step is 20.8 µA [D: 312.5 nV / 0.015 Ω].
-    max_current: 10 A
+    max_current: ${ina_max_current} A   # V0.8: a substitution, shared with the tick's CHARGE_LSB_C
     adc_range: 0
     # FW-10: 1052 µs x 64 = 67.3 ms per channel (> one 8.3 ms ripple period,
     # FW-8); bus + shunt + temp = 202 ms per cycle [D].
@@ -1013,6 +1196,7 @@ sensor:
   # ---- FW-14 tail floor (report-only). Raw values: subtract the idle offset
   #      downstream, as V_batt and R_edge are computed downstream (§6.4).
   #      V0.7: Charge After Settle Net is the exception, net in the firmware.
+  #      V0.8: so are Tail Window Mean Net, Tail Floor Net and Block Current Net.
   - platform: template
     id: tail_mean_ha
     name: "Tail Window Mean"
@@ -1028,6 +1212,30 @@ sensor:
     device_class: current
     state_class: measurement
     accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: tail_mean_net_ha
+    name: "Tail Window Mean Net"     # V0.8: the window's CHARGE delta less the Start offset
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: tail_floor_net_ha
+    name: "Tail Floor Net"           # V0.8: the lowest Tail Window Mean Net after settle
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: blk_net_ha
+    name: "Block Current Net"        # V0.8: each 10 s block's CHARGE mean, net. Charging: FW-5's
+    unit_of_measurement: A           #   block less the Start offset. Switch OFF: FW-13's block less
+    device_class: current            #   the last session's offset. NaN with no offset to subtract
+    state_class: measurement
+    accuracy_decimals: 6
     update_interval: never
   - platform: template
     id: q_settle_ha
@@ -1067,6 +1275,18 @@ sensor:
   - platform: template
     id: last_tail_last
     name: "Last Session Final Window Mean"
+    unit_of_measurement: A
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: last_tail_floor_net
+    name: "Last Session Tail Floor Net"            # V0.8
+    unit_of_measurement: A
+    accuracy_decimals: 5
+    update_interval: never
+  - platform: template
+    id: last_tail_last_net
+    name: "Last Session Final Window Mean Net"     # V0.8
     unit_of_measurement: A
     accuracy_decimals: 5
     update_interval: never
@@ -1274,10 +1494,13 @@ interval:
           const float I_MAX = ${i_max}f;
           const float I_OL = ${i_overload}f;
           const float BMS_I_FROM = ${bms_i_from}f;
-          const float BMS_I_OPEN = ${bms_i_open}f;
+          // V0.8: BMS_I_OPEN retired with bms_i_open (no low rule).
           const uint32_t BMS_BLOCK_TICKS = ${bms_block_s}u * 2u;       // 2 ticks per second
           const uint32_t BMS_OPEN_BLOCKS = ${bms_open_max_s}u / ${bms_block_s}u;
           const float BMS_I_DEAD = ${bms_i_dead}f;                     // V0.6
+          const float BMS_I_ARM = 2.0f * BMS_I_DEAD;                   // V0.8: armed at twice dead
+          const float BMS_I_PAIR = ${bms_i_pair}f;                     // V0.8: prev_v/prev_i, report-only
+          const double CHARGE_LSB_C = std::ldexp((double) ${ina_max_current}, -19);   // V0.8: C per LSB
           const uint32_t IDLE_SETTLE_TICKS = ${idle_settle_s}u * 2u;   // V0.6, 2 ticks per second
           const float I_OFF_FLOOR = ${i_off_floor}f;
           const uint32_t T_HOLD_MS = ${t_hold_s}u * 1000u;
@@ -1314,9 +1537,19 @@ interval:
           static uint32_t cfg_ref = 0u;             // 0 = not yet read (MODE 0xF: never 0)
           uint16_t adc_cfg = 0, shunt_cal = 0;
           bool cfg_read = true, cfg_ok = true;
+          // V0.8: and the CHARGE register, raw. Its sensor's float holds Ah, and its
+          // step is ~0.011 mA over a 10 s block in a 0.25-0.5 Ah session [D: float
+          // ulp 3e-8 Ah]; the raw count's is CURRENT_LSB C, 1.9 uA over 10 s [D].
+          // 40 bits, big-endian, two's complement (header, V0.8's source read).
+          int64_t q_raw = 0;
           if (fresh) {
+            uint8_t qb[5] = {0, 0, 0, 0, 0};
             cfg_read = id(ina).read_byte_16(ina2xx_base::REG_ADC_CONFIG, &adc_cfg) &&
-                       id(ina).read_byte_16(ina2xx_base::REG_SHUNT_CAL, &shunt_cal);
+                       id(ina).read_byte_16(ina2xx_base::REG_SHUNT_CAL, &shunt_cal) &&
+                       id(ina).read_register(ina2xx_base::REG_CHARGE, qb, 5) == i2c::ERROR_OK;   // V0.8
+            uint64_t qu = 0;
+            for (int k = 0; k < 5; k++) qu = (qu << 8) | qb[k];
+            q_raw = (int64_t) (qu << 24) >> 24;
             if (cfg_read) {
               const uint32_t cfg = ((uint32_t) adc_cfg << 16) | shunt_cal;
               if (cfg_ref == 0u) {
@@ -1347,6 +1580,8 @@ interval:
             id(rec_idle_off) = id(idle_off_start);
             id(rec_ah_net) = id(session_ah_net_live);   // V0.7
             id(rec_q_settle_net_ah) = std::isnan(id(q_at_settle_net)) ? NAN : (id(session_ah_net_live) - id(q_at_settle_net));
+            id(rec_tail_floor_net) = id(tail_floor_net);   // V0.8
+            id(rec_tail_last_net) = id(tail_last_net);
             const ESPTime t = id(ha_time).utcnow();
             id(rec_end_epoch) = t.is_valid() ? (uint32_t) t.timestamp : 0u;   // 0 = no clock
           };
@@ -1401,6 +1636,9 @@ interval:
             id(bms_pre_i).publish_state(id(rec_bms_i));
             id(last_tail_floor).publish_state(id(rec_tail_floor));
             id(last_tail_last).publish_state(id(rec_tail_last));
+            id(last_tail_floor_net).publish_state(id(rec_tail_floor_net));   // V0.8
+            id(last_tail_last_net).publish_state(id(rec_tail_last_net));
+            id(blk_net_ha).publish_state(NAN);      // V0.8: switch OFF; FW-13's blocks follow
             id(last_q_settle).publish_state(id(rec_q_settle_ah));
             id(last_idle_off).publish_state(id(rec_idle_off));
             id(last_cuts).publish_state(id(rec_cuts));
@@ -1410,6 +1648,8 @@ interval:
             ESP_LOGI(TAG, "  tail: floor %.5f A, final window %.5f A, %.5f Ah after settle, idle offset %.5f A",
                      id(rec_tail_floor), id(rec_tail_last), id(rec_q_settle_ah), id(rec_idle_off));
             ESP_LOGI(TAG, "  net (V0.7): %.5f Ah, %.5f Ah after settle", id(rec_ah_net), id(rec_q_settle_net_ah));
+            ESP_LOGI(TAG, "  net tail (V0.8): floor %.5f A, final window %.5f A",
+                     id(rec_tail_floor_net), id(rec_tail_last_net));
           };
           auto latch_fault = [&](int reason) {      // outside a session: no record
             if (id(charge_sw).state) id(charge_sw).turn_off();
@@ -1459,13 +1699,17 @@ interval:
           //         V0.4 (#2): so is a failed configuration read-back (step 1),
           //         and a changed configuration is FAULT "INA228 reset". Only an
           //         AC cycle clears that: the next boot's setup() rewrites it.
-          const bool valid = fresh && cfg_ok && !(st == ST_CHARGING && v < V_START_MIN);
+          // R13, 2026-11-24: V0.4-V0.7 left cfg_read out of valid, so a failed
+          // read-back kept the tick valid and the read-back branch below could not
+          // run [source read]. V0.8 needs it: a failed CHARGE read (step 1) would
+          // hand FW-5 and FW-13 a delta from 0.
+          const bool valid = fresh && cfg_read && cfg_ok && !(st == ST_CHARGING && v < V_START_MIN);
           if (have_data && !valid) {
             if (!fresh)
               ESP_LOGE(TAG, "INA228 cycle not valid: seen=%d warning=%d failed=%d V=%.4f I=%.4f",
                        (int) seen, (int) id(ina).status_has_warning(), (int) id(ina).is_failed(), v, i);
             else if (!cfg_read)
-              ESP_LOGE(TAG, "INA228 configuration read-back failed (I2C)");
+              ESP_LOGE(TAG, "INA228 configuration or CHARGE read-back failed (I2C)");   // V0.8: or CHARGE
             else if (!cfg_ok)
               ESP_LOGE(TAG, "INA228 configuration changed: ADC_CONFIG 0x%04X, SHUNT_CAL %u (was 0x%04X, %u)",
                        (unsigned) adc_cfg, (unsigned) shunt_cal, (unsigned) (cfg_ref >> 16), (unsigned) (cfg_ref & 0xFFFFu));
@@ -1480,9 +1724,43 @@ interval:
           //         ticks after the last OFF edge (the after-edge rule, header), and
           //         at boot the switch has been OFF since reset. The firmware cannot
           //         open a shorted #2814; it announces it, and L6 ends it.
+          //         V0.8: the test is on a bms_block_s block's CHARGE mean less
+          //         rec_idle_off (the last session's Start offset, restored at
+          //         boot; 0 when there is none), not on one tick. Not the live EWMA:
+          //         step 5b folds a failed-on current into it. A FAULT takes up to
+          //         one block, ~11 s from settled, for a current there from the edge.
+          //         A current I (net) that starts mid-block fires at the end of the
+          //         first block whose mean, the on-fraction x I, reaches i_off_floor
+          //         F: within about 10 s x (1 + F/I) of its onset [D], 10.3 s at
+          //         1.66 mA and under ~20 s for any I above F [harness test08 2g,
+          //         +0.06 mA: 22 ticks]. off_hot holds to the next
+          //         block, so an Ack re-latches on the same tick while the current
+          //         persists. A hot block also restarts idle_n: 5b took that block
+          //         in, so Start waits idle_settle_s again (step 6).
           const bool off_settled = !id(charge_sw).state && (tk - id(off_edge_tick) >= 2u);
-          if (valid && off_settled && i > I_OFF_FLOOR && id(cur_reason) != R_SWITCH_ON) {
-            ESP_LOGE(TAG, "FW-13: %.4f A with the switch commanded OFF", i);
+          if (!(valid && off_settled)) {
+            id(off_org) = false;
+            id(off_n) = 0u;
+            if (!off_settled) id(off_hot) = false;
+          } else if (!id(off_org)) {
+            id(off_q0) = q_raw;
+            id(off_t0) = now;
+            id(off_n) = 0u;
+            id(off_org) = true;
+          } else if (++id(off_n) >= BMS_BLOCK_TICKS) {
+            const float off_ref = std::isnan(id(rec_idle_off)) ? 0.0f : id(rec_idle_off);
+            const double off_s = (now - id(off_t0)) / 1000.0;
+            id(off_bm) = (float) ((double) (q_raw - id(off_q0)) * CHARGE_LSB_C / off_s) - off_ref;
+            id(off_hot) = (id(off_bm) > I_OFF_FLOOR);
+            if (id(off_hot)) id(idle_n) = 0u;
+            id(blk_net_ha).publish_state(std::isnan(id(rec_idle_off)) ? NAN : id(off_bm));
+            id(off_q0) = q_raw;
+            id(off_t0) = now;
+            id(off_n) = 0u;
+          }
+          if (valid && off_settled && id(off_hot) && id(cur_reason) != R_SWITCH_ON) {
+            ESP_LOGE(TAG, "FW-13: %.5f A over a %u s block with the switch commanded OFF",
+                     id(off_bm), (unsigned) (BMS_BLOCK_TICKS / 2u));
             latch_fault(R_SWITCH_ON);
           }
 
@@ -1550,6 +1828,10 @@ interval:
               id(bms_ref_b) = INFINITY;
               id(bms_low_n) = 0u;
               id(bms_dead_n) = 0u;                  // V0.6
+              id(blk_q0) = 0;                       // V0.8: CHARGE was reset just above
+              id(blk_t0) = now;
+              id(pend_ok) = false;
+              id(prev_dead) = false;
               id(bms_cuts) = 0u;
               id(cut_v) = NAN;
               id(cut_i) = NAN;
@@ -1569,6 +1851,8 @@ interval:
               id(rec_idle_off) = NAN;
               id(rec_ah_net) = NAN;                 // V0.7
               id(rec_q_settle_net_ah) = NAN;
+              id(rec_tail_floor_net) = NAN;         // V0.8
+              id(rec_tail_last_net) = NAN;
               id(rec_end_epoch) = 0u;
               id(rec_edge_on_vb) = NAN;
               id(rec_edge_on_ib) = NAN;
@@ -1586,12 +1870,19 @@ interval:
               id(tail_last) = NAN;
               id(q_at_settle) = NAN;
               id(q_at_settle_net) = NAN;            // V0.7
+              id(tailq_sum) = 0.0;                  // V0.8
+              id(tailq_s) = 0.0;
+              id(tail_floor_net) = NAN;
+              id(tail_last_net) = NAN;
               id(idle_off_start) = id(idle_off);
               id(sess_idle_off_ha).publish_state(id(idle_off_start));
               id(tail_mean_ha).publish_state(NAN);
               id(tail_floor_ha).publish_state(NAN);
               id(q_settle_ha).publish_state(NAN);
               id(q_settle_net_ha).publish_state(NAN);   // V0.7
+              id(tail_mean_net_ha).publish_state(NAN);  // V0.8
+              id(tail_floor_net_ha).publish_state(NAN);
+              id(blk_net_ha).publish_state(NAN);
               id(charge_sw).turn_on();
               st = ST_CHARGING;
               id(cur_reason) = R_NONE;
@@ -1638,6 +1929,8 @@ interval:
             if (i > I_OL) id(t_ol_ms) += dt;          // cumulative, rev 0.9
             // ---- 7a. V0.5 (O18): the block (header: BMS OPEN). No voltage gate:
             //          a gate at V_hold would blind it to every cut below V_hold.
+            //          V0.8: the block's mean is its CHARGE delta (header: BMS OPEN,
+            //          V0.8); the tick sum below is kept for the cut log only.
             const float i_net = i - (std::isnan(id(idle_off_start)) ? 0.0f : id(idle_off_start));
             id(i_net_pub) = i_net;                    // V0.6: Charge Current Net (step 11)
             id(blk_sum) += (double) i_net;
@@ -1647,55 +1940,97 @@ interval:
               id(blk_tail_sum) += (double) i;
               id(blk_tail_n)++;
             }
-            if (i_net >= 2.0f * BMS_I_OPEN) {
+            if (i_net >= BMS_I_PAIR) {                // V0.8: was 2.0f * BMS_I_OPEN, the same 0.14 mA
               id(prev_v) = v;
               id(prev_i) = i;
             }
             bool bms_trip = false, bms_open = false;
             if (id(blk_n) >= BMS_BLOCK_TICKS) {
-              const float bm = (float) (id(blk_sum) / (double) id(blk_n));
+              // V0.8: CHARGE over the block, less the Start offset. The block runs
+              // from the last boundary's read (Start's reset for the first) to this
+              // tick's read (step 1), timed by millis().
+              const double blk_s = (now - id(blk_t0)) / 1000.0;
+              const double blk_q = (double) (q_raw - id(blk_q0)) * CHARGE_LSB_C;   // C
+              const float off0 = std::isnan(id(idle_off_start)) ? 0.0f : id(idle_off_start);
+              const float bm = (float) (blk_q / blk_s) - off0;
+              const float bm_ticks = (float) (id(blk_sum) / (double) id(blk_n));   // V0.5-V0.7's mean
+              id(blk_net_ha).publish_state(std::isnan(id(idle_off_start)) ? NAN : bm);
               const float ref = std::max(id(bms_ref_a), id(bms_ref_b));
-              if (bm < BMS_I_OPEN && ref >= 2.0f * BMS_I_OPEN) {
-                id(bms_low_n)++;
+              const bool dead = (ref >= BMS_I_ARM) && (bm < BMS_I_DEAD);
+              if (dead) {                             // V0.8: was bm < BMS_I_OPEN && ref >= 2.0f * BMS_I_OPEN
                 // V0.6: a dead block is a low block under bms_i_dead; a low block
                 // at or above it restarts the count (header: BMS OPEN).
-                id(bms_dead_n) = (bm < BMS_I_DEAD) ? id(bms_dead_n) + 1u : 0u;
+                // V0.8: no low test. Dead is under bms_i_dead while armed (ref at or
+                // above twice it), and only a block that is not dead restarts the
+                // count. bms_low_n is no longer counted.
+                id(bms_dead_n)++;
                 bms_trip = (ref >= BMS_I_FROM);
                 if (bms_trip || id(bms_dead_n) == 2u) {     // V0.6: was bms_low_n
                   id(bms_cuts)++;
                   id(cut_v) = id(prev_v);
                   id(cut_i) = id(prev_i);
                   id(bms_cuts_ha).publish_state(id(bms_cuts));
-                  ESP_LOGW(TAG, "BMS cut %u: block mean %.6f A, last sample with current %.4f V, %.6f A",
-                           (unsigned) id(bms_cuts), bm, id(cut_v), id(cut_i));
+                  ESP_LOGW(TAG, "BMS cut %u: block mean %.6f A (ticks %.6f A), last sample with current %.4f V, %.6f A",
+                           (unsigned) id(bms_cuts), bm, bm_ticks, id(cut_v), id(cut_i));
                 }
                 bms_open = (id(bms_dead_n) >= BMS_OPEN_BLOCKS);   // V0.6: was bms_low_n
+                id(pend_ok) = false;                  // V0.8: the block before a dead one earns nothing
+                id(prev_dead) = true;
               } else {
                 id(bms_ref_b) = std::isinf(id(bms_ref_a)) ? bm : id(bms_ref_a);
                 id(bms_ref_a) = bm;
-                id(bms_low_n) = 0u;
                 id(bms_dead_n) = 0u;                  // V0.6
-                id(t_at_v_ms) += id(blk_t_at_v);
-                // ---- FW-14 tail floor: OBSERVATION ONLY. It sits before the
-                //      decisions only so a session ending on this tick records
-                //      this block's samples; no decision below reads tail_*.
-                if (id(blk_tail_n) > 0u && id(t_at_v_ms) >= TAIL_SETTLE_MS) {
-                  if (std::isnan(id(q_at_settle))) id(q_at_settle_net) = id(session_ah_net_live);   // V0.7: first
-                  if (std::isnan(id(q_at_settle))) id(q_at_settle) = id(session_ah_live);
-                  id(tail_sum) += id(blk_tail_sum);
-                  id(tail_n) += id(blk_tail_n);
-                  if (id(tail_n) >= TAIL_WINDOW_TICKS) {
-                    const float m = (float) (id(tail_sum) / (double) id(tail_n));
-                    id(tail_last) = m;
-                    if (std::isnan(id(tail_floor)) || m < id(tail_floor)) id(tail_floor) = m;
-                    id(tail_sum) = 0.0;
-                    id(tail_n) = 0u;
-                    id(tail_mean_ha).publish_state(m);
-                    id(tail_floor_ha).publish_state(id(tail_floor));
-                    ESP_LOGI(TAG, "Tail window mean %.5f A, floor %.5f A", m, id(tail_floor));
+                // V0.8: the PENDING block, the one before this, is credited now that
+                // this one is known not dead; this one waits for the next. So time at
+                // voltage and the tail run one block behind V0.7, and q_at_settle is
+                // read up to one block after settle (report-only).
+                if (id(pend_ok)) {
+                  id(t_at_v_ms) += id(pend_t_at_v);
+                  // ---- FW-14 tail floor: OBSERVATION ONLY. It sits before the
+                  //      decisions only so a session ending on this tick records
+                  //      this block's samples; no decision below reads tail_*.
+                  //      V0.8: the pending block's samples; this block's wait.
+                  if (id(pend_tail_n) > 0u && id(t_at_v_ms) >= TAIL_SETTLE_MS) {
+                    if (std::isnan(id(q_at_settle))) id(q_at_settle_net) = id(session_ah_net_live);   // V0.7: first
+                    if (std::isnan(id(q_at_settle))) id(q_at_settle) = id(session_ah_live);
+                    id(tail_sum) += id(pend_tail_sum);
+                    id(tail_n) += id(pend_tail_n);
+                    id(tailq_sum) += id(pend_q);          // V0.8: whole at-voltage blocks only
+                    id(tailq_s) += id(pend_s);
+                    if (id(tail_n) >= TAIL_WINDOW_TICKS) {
+                      const float m = (float) (id(tail_sum) / (double) id(tail_n));
+                      id(tail_last) = m;
+                      if (std::isnan(id(tail_floor)) || m < id(tail_floor)) id(tail_floor) = m;
+                      // V0.8: the same window, net. NaN with no offset or no whole block.
+                      const float mq = (std::isnan(id(idle_off_start)) || id(tailq_s) <= 0.0) ? NAN
+                          : (float) (id(tailq_sum) / id(tailq_s)) - id(idle_off_start);
+                      id(tail_last_net) = mq;
+                      if (!std::isnan(mq) && (std::isnan(id(tail_floor_net)) || mq < id(tail_floor_net)))
+                        id(tail_floor_net) = mq;
+                      id(tail_sum) = 0.0;
+                      id(tail_n) = 0u;
+                      id(tailq_sum) = 0.0;
+                      id(tailq_s) = 0.0;
+                      id(tail_mean_ha).publish_state(m);
+                      id(tail_floor_ha).publish_state(id(tail_floor));
+                      id(tail_mean_net_ha).publish_state(mq);
+                      id(tail_floor_net_ha).publish_state(id(tail_floor_net));
+                      ESP_LOGI(TAG, "Tail window mean %.5f A, floor %.5f A", m, id(tail_floor));
+                      ESP_LOGI(TAG, "  net (V0.8): window mean %.5f A, floor %.5f A", mq, id(tail_floor_net));
+                    }
                   }
                 }
+                id(pend_t_at_v) = id(blk_t_at_v);     // V0.8: this block is now the pending one
+                id(pend_tail_sum) = id(blk_tail_sum);
+                id(pend_tail_n) = id(blk_tail_n);
+                const bool whole = (id(blk_tail_n) == id(blk_n));   // every tick at voltage
+                id(pend_q) = whole ? blk_q : 0.0;
+                id(pend_s) = whole ? blk_s : 0.0;
+                id(pend_ok) = !id(prev_dead);         // not the block after a dead one
+                id(prev_dead) = false;
               }
+              id(blk_q0) = q_raw;                     // V0.8: the next block's origin
+              id(blk_t0) = now;
               id(blk_sum) = 0.0;
               id(blk_n) = 0u;
               id(blk_t_at_v) = 0u;
@@ -1807,6 +2142,8 @@ interval:
             id(bms_pre_i).publish_state(id(rec_bms_i));
             id(last_tail_floor).publish_state(id(rec_tail_floor));
             id(last_tail_last).publish_state(id(rec_tail_last));
+            id(last_tail_floor_net).publish_state(id(rec_tail_floor_net));   // V0.8
+            id(last_tail_last_net).publish_state(id(rec_tail_last_net));
             id(last_q_settle).publish_state(id(rec_q_settle_ah));
             id(last_idle_off).publish_state(id(rec_idle_off));
             // V0.5: the Session card and the edge pairs, which HA otherwise shows
@@ -1825,6 +2162,8 @@ interval:
             id(q_settle_net_ha).publish_state(id(rec_q_settle_net_ah));   // V0.7
             id(tail_mean_ha).publish_state(id(rec_tail_last));
             id(tail_floor_ha).publish_state(id(rec_tail_floor));
+            id(tail_mean_net_ha).publish_state(id(rec_tail_last_net));   // V0.8
+            id(tail_floor_net_ha).publish_state(id(rec_tail_floor_net));
             id(sess_idle_off_ha).publish_state(id(rec_idle_off));
             id(edge_on_vb).publish_state(id(rec_edge_on_vb));
             id(edge_on_ib).publish_state(id(rec_edge_on_ib));
@@ -1901,7 +2240,7 @@ interval:
           switch (mode) {
             case 0: on = (ph % 3000u) >= 100u; break;                       // Waiting (V0.5: inverted)
             case 1: on = (ph % 3000u) < 1000u; break;                       // Ready to charge
-            case 2: on = (ph % 1000u) < 500u; break;                        // Charging
+            case 2: on = true; break;                                       // Charging (V0.8: steady; was (ph % 1000u) < 500u)
             case 3: { const uint32_t p = ph % 1000u;                        // Final minute
                       on = (p < 150u) || (p >= 300u && p < 450u); break; }
             case 4: { const uint32_t p = ph % 3000u;                        // Done (V0.5: inverted)
